@@ -1,0 +1,58 @@
+[
+  {
+    "id": "ALZ001",
+    "name": "Allianz-Tiriac Asigurari",
+    "country": "RO",
+    "products": ["RCA", "CASCO", "HOME", "LIFE", "HEALTH", "LIABILITY"],
+    "rating": "AA",
+    "broker_contact": "broker.relations@allianz-tiriac.ro"
+  },
+  {
+    "id": "GEN001",
+    "name": "Generali Romania",
+    "country": "RO",
+    "products": ["RCA", "CASCO", "HOME", "LIFE", "CMR", "TRANSPORT"],
+    "rating": "AA",
+    "broker_contact": "broker@generali.ro"
+  },
+  {
+    "id": "OMA001",
+    "name": "Omniasig Vienna Insurance Group",
+    "country": "RO",
+    "products": ["RCA", "CASCO", "PAD", "HOME", "CMR", "LIABILITY"],
+    "rating": "A+",
+    "broker_contact": "broker@omniasig.ro"
+  },
+  {
+    "id": "ASI001",
+    "name": "Asirom Vienna Insurance Group",
+    "country": "RO",
+    "products": ["RCA", "CASCO", "PAD", "HOME", "LIFE", "CMR"],
+    "rating": "A+",
+    "broker_contact": "broker@asirom.ro"
+  },
+  {
+    "id": "GRA001",
+    "name": "Grawe Romania",
+    "country": "RO",
+    "products": ["LIFE", "HEALTH"],
+    "rating": "A",
+    "broker_contact": "agentii@grawe.ro"
+  },
+  {
+    "id": "ALZ_DE",
+    "name": "Allianz Deutschland",
+    "country": "DE",
+    "products": ["KFZ", "GEBAEUDE", "LIABILITY", "LIFE", "BERUFSUNFAEHIGKEIT"],
+    "rating": "AA",
+    "broker_contact": "makler@allianz.de"
+  },
+  {
+    "id": "AXA_DE",
+    "name": "AXA Versicherung",
+    "country": "DE",
+    "products": ["KFZ", "GEBAEUDE", "LIABILITY", "LIFE", "HEALTH"],
+    "rating": "AA",
+    "broker_contact": "makler@axa.de"
+  }
+]

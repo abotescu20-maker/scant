@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Dashboard</h1>
+    <p>Overview of platform activity and usage</p>
+</div>
+
+<!-- Stats row -->
+<div class="grid grid-4" style="margin-bottom: 24px;">
+    <div class="card">
+        <div class="card-title">Companies</div>
+        <div class="card-value accent">{{ stats.companies }}</div>
+    </div>
+    <div class="card">
+        <div class="card-title">Active Users</div>
+        <div class="card-value">{{ stats.active_users }} <span style="font-size:14px;color:#7b82a6;">/ {{ stats.total_users }}</span></div>
+    </div>
+    <div class="card">
+        <div class="card-title">Tokens This Month</div>
+        <div class="card-value success">{{ "{:,}".format(stats.tokens_this_month) }}</div>
+    </div>
+    <div class="card">
+        <div class="card-title">Tool Calls Today</div>
+        <div class="card-value warn">{{ stats.calls_today }}</div>
+    </div>
+</div>
+
+<!-- Recent audit + top tools -->
+<div class="grid grid-2">
+    <!-- Recent Audit -->
+    <div class="table-wrap">
+        <div class="table-header">
+            <h3>Recent Tool Calls</h3>
+            <a href="/admin/audit" class="btn btn-secondary btn-sm">View All</a>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>User</th>
+                    <th>Tool</th>
+                    <th>Status</th>
+                    <th>Time</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in recent_audit %}
+                <tr>
+                    <td style="color:#7b82a6;font-size:12px;">{{ row.email or row.user_id }}</td>
+                    <td>
+                        <code style="font-size:11px;background:#22263a;padding:2px 6px;border-radius:4px;">
+                            {{ row.tool_name }}
+                        </code>
+                    </td>
+                    <td>
+                        {% if row.success %}
+                        <span class="badge badge-active">OK</span>
+                        {% else %}
+                        <span class="badge badge-inactive">FAIL</span>
+                        {% endif %}
+                    </td>
+                    <td style="color:#7b82a6;font-size:11px;">{{ row.created_at[:16] }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" style="text-align:center;color:#7b82a6;padding:24px;">No tool calls yet</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Token usage per company -->
+    <div class="table-wrap">
+        <div class="table-header">
+            <h3>Token Usage — This Month</h3>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Company</th>
+                    <th>Tokens Used</th>
+                    <th>Limit</th>
+                    <th>Usage %</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in company_usage %}
+                <tr>
+                    <td>{{ row.company_name }}</td>
+                    <td>{{ "{:,}".format(row.tokens_used or 0) }}</td>
+                    <td>
+                        {% if row.monthly_token_limit %}
+                        {{ "{:,}".format(row.monthly_token_limit) }}
+                        {% else %}
+                        <span style="color:#7b82a6;">Unlimited</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if row.monthly_token_limit and row.monthly_token_limit > 0 %}
+                        {% set pct = ((row.tokens_used or 0) / row.monthly_token_limit * 100)|int %}
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <div style="flex:1;height:6px;background:#22263a;border-radius:3px;">
+                                <div style="width:{{ [pct, 100]|min }}%;height:6px;border-radius:3px;
+                                    background:{% if pct > 90 %}#e05c5c{% elif pct > 70 %}#e0a050{% else %}#4caf8a{% endif %};"></div>
+                            </div>
+                            <span style="font-size:11px;color:#7b82a6;">{{ pct }}%</span>
+                        </div>
+                        {% else %}
+                        <span style="color:#7b82a6;font-size:12px;">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" style="text-align:center;color:#7b82a6;padding:24px;">No usage data</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

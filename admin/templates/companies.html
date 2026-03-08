@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}Companies{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;">
+    <div>
+        <h1>Companies</h1>
+        <p>Manage tenant companies on the platform</p>
+    </div>
+    <button class="btn btn-primary" onclick="openModal('modal-new-company')">+ New Company</button>
+</div>
+
+{% if message %}
+<div class="alert {% if 'Error' in message or 'error' in message %}alert-error{% else %}alert-success{% endif %}">
+    {{ message }}
+</div>
+{% endif %}
+
+<div class="table-wrap">
+    <table>
+        <thead>
+            <tr>
+                <th>Company</th>
+                <th>Slug</th>
+                <th>Country</th>
+                <th>Plan</th>
+                <th>Token Limit</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in companies %}
+            <tr>
+                <td><strong>{{ c.name }}</strong></td>
+                <td><code style="font-size:11px;background:#22263a;padding:2px 6px;border-radius:4px;">{{ c.slug }}</code></td>
+                <td>{{ c.country or '—' }}</td>
+                <td><span class="badge badge-{{ c.plan_tier or 'starter' }}">{{ c.plan_tier or 'starter' }}</span></td>
+                <td>
+                    {% if c.monthly_token_limit %}
+                    {{ "{:,}".format(c.monthly_token_limit) }}
+                    {% else %}
+                    <span style="color:#7b82a6;">Unlimited</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if c.is_active %}
+                    <span class="badge badge-active">Active</span>
+                    {% else %}
+                    <span class="badge badge-inactive">Disabled</span>
+                    {% endif %}
+                </td>
+                <td style="color:#7b82a6;font-size:11px;">{{ c.created_at[:10] if c.created_at else '—' }}</td>
+                <td>
+                    <form method="post" action="/admin/companies/{{ c.id }}/toggle" style="display:inline;">
+                        <button type="submit" class="btn btn-sm {% if c.is_active %}btn-danger{% else %}btn-secondary{% endif %}">
+                            {% if c.is_active %}Disable{% else %}Enable{% endif %}
+                        </button>
+                    </form>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="8" style="text-align:center;color:#7b82a6;padding:32px;">
+                    No companies yet. Create the first one.
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- New Company Modal -->
+<div id="modal-new-company" class="modal-backdrop" onclick="if(event.target===this)closeModal('modal-new-company')">
+    <div class="modal">
+        <h2>New Company</h2>
+        <form method="post" action="/admin/companies/create">
+            <div class="form-group">
+                <label>Company Name *</label>
+                <input type="text" name="name" placeholder="Acme Insurance SRL" required>
+            </div>
+            <div class="form-group">
+                <label>Slug (URL identifier) *</label>
+                <input type="text" name="slug" placeholder="acme-insurance" pattern="[a-z0-9\-]+" required>
+                <small style="color:#7b82a6;font-size:11px;margin-top:4px;display:block;">Lowercase letters, numbers, hyphens only</small>
+            </div>
+            <div class="form-group">
+                <label>Country</label>
+                <select name="country">
+                    <option value="RO">Romania</option>
+                    <option value="DE">Germany</option>
+                    <option value="EU">EU Other</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Plan Tier</label>
+                <select name="plan_tier">
+                    <option value="starter">Starter</option>
+                    <option value="growth">Growth</option>
+                    <option value="scale" selected>Scale</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Monthly Token Limit (leave blank = unlimited)</label>
+                <input type="number" name="monthly_token_limit" placeholder="e.g. 1000000" min="0">
+            </div>
+            <div style="display:flex;gap:10px;margin-top:8px;">
+                <button type="submit" class="btn btn-primary" style="flex:1;">Create Company</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal('modal-new-company')">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Auto-generate slug from name
+document.querySelector('input[name="name"]').addEventListener('input', function() {
+    const slug = this.value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    document.querySelector('input[name="slug"]').value = slug;
+});
+</script>
+{% endblock %}

@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+mcp-server/output/
+*.db-shm
+*.db-wal
+.DS_Store

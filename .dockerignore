@@ -1,0 +1,13 @@
+.env
+.git
+__pycache__
+*.pyc
+*.pyo
+.DS_Store
+cowork-deployment/
+demo/
+docs/
+*.md
+!chainlit.md
+!CLAUDE.md
+mcp-server/output/

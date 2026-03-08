@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Audit Log{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Audit Log</h1>
+    <p>All tool calls made by users on the platform</p>
+</div>
+
+<!-- Filters -->
+<form method="get" action="/admin/audit" style="display:flex;gap:10px;margin-bottom:16px;align-items:flex-end;flex-wrap:wrap;">
+    <div>
+        <label style="display:block;font-size:11px;color:#7b82a6;margin-bottom:4px;">Search email</label>
+        <input type="text" name="user_filter" value="{{ user_filter or '' }}"
+               placeholder="user@email.com" style="width:220px;">
+    </div>
+    <div>
+        <label style="display:block;font-size:11px;color:#7b82a6;margin-bottom:4px;">Tool name</label>
+        <input type="text" name="tool_filter" value="{{ tool_filter or '' }}"
+               placeholder="broker_create_client" style="width:200px;">
+    </div>
+    <div>
+        <label style="display:block;font-size:11px;color:#7b82a6;margin-bottom:4px;">Status</label>
+        <select name="status_filter" style="width:130px;">
+            <option value="" {% if not status_filter %}selected{% endif %}>All</option>
+            <option value="1" {% if status_filter == '1' %}selected{% endif %}>Success</option>
+            <option value="0" {% if status_filter == '0' %}selected{% endif %}>Failed</option>
+        </select>
+    </div>
+    <button type="submit" class="btn btn-primary">Filter</button>
+    <a href="/admin/audit" class="btn btn-secondary">Reset</a>
+</form>
+
+<div class="table-wrap">
+    <div class="table-header">
+        <h3>{{ total }} entries</h3>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>User</th>
+                {% if current_user.role == 'superadmin' %}<th>Company</th>{% endif %}
+                <th>Tool</th>
+                <th>Input Summary</th>
+                <th>Status</th>
+                <th>Tokens</th>
+                <th>Timestamp</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            <tr>
+                <td style="color:#7b82a6;font-size:11px;">{{ offset + loop.index }}</td>
+                <td style="font-size:12px;color:#7b82a6;">{{ row.email or row.user_id }}</td>
+                {% if current_user.role == 'superadmin' %}
+                <td style="font-size:12px;">{{ row.company_name or '—' }}</td>
+                {% endif %}
+                <td>
+                    <code style="font-size:11px;background:#22263a;padding:2px 6px;border-radius:4px;">
+                        {{ row.tool_name }}
+                    </code>
+                </td>
+                <td style="font-size:12px;color:#7b82a6;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                    {{ row.input_summary or '—' }}
+                </td>
+                <td>
+                    {% if row.success %}
+                    <span class="badge badge-active">OK</span>
+                    {% else %}
+                    <span class="badge badge-inactive">FAIL</span>
+                    {% endif %}
+                </td>
+                <td style="font-size:12px;color:#7b82a6;">{{ row.tokens_used or '—' }}</td>
+                <td style="font-size:11px;color:#7b82a6;white-space:nowrap;">{{ row.created_at[:16] }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="8" style="text-align:center;color:#7b82a6;padding:32px;">No audit records found.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Pagination -->
+{% if total > page_size %}
+<div class="pagination">
+    {% set total_pages = ((total - 1) // page_size) + 1 %}
+    {% for p in range(1, total_pages + 1) %}
+    <a href="/admin/audit?page={{ p }}&user_filter={{ user_filter or '' }}&tool_filter={{ tool_filter or '' }}&status_filter={{ status_filter or '' }}"
+       class="page-btn {% if p == current_page %}active{% endif %}">{{ p }}</a>
+    {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

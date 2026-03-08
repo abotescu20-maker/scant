@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Permissions — {{ target_user.email }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div style="display:flex;align-items:center;gap:12px;">
+        <a href="/admin/users" class="btn btn-secondary btn-sm">← Back</a>
+        <div>
+            <h1>Tool Permissions</h1>
+            <p>{{ target_user.full_name or target_user.email }} — <span class="badge badge-{{ target_user.role }}">{{ target_user.role }}</span></p>
+        </div>
+    </div>
+</div>
+
+{% if message %}
+<div class="alert {% if 'Error' in message or 'error' in message %}alert-error{% else %}alert-success{% endif %}">
+    {{ message }}
+</div>
+{% endif %}
+
+{% if target_user.role in ['superadmin', 'company_admin'] %}
+<div class="card" style="margin-bottom: 20px;">
+    <p style="color:#7b82a6;">
+        ℹ️ <strong>{{ target_user.role }}</strong> users have access to all tools automatically.
+        Individual permissions are only enforced for <strong>broker</strong> role users.
+    </p>
+</div>
+{% endif %}
+
+<form method="post" action="/admin/permissions/{{ target_user.id }}/save">
+    <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+            <h3 style="font-size:15px;">Allowed Tools</h3>
+            <div style="display:flex;gap:8px;">
+                <button type="button" class="btn btn-secondary btn-sm" onclick="toggleAll(true)">Select All</button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="toggleAll(false)">Deselect All</button>
+            </div>
+        </div>
+
+        <div class="perm-grid">
+            {% for tool in all_tools %}
+            <label class="perm-item" for="tool_{{ loop.index }}">
+                <input type="checkbox" id="tool_{{ loop.index }}"
+                       name="tools" value="{{ tool }}"
+                       {% if tool in user_tools %}checked{% endif %}>
+                <span>{{ tool }}</span>
+            </label>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:16px;">
+        <button type="submit" class="btn btn-primary">Save Permissions</button>
+        <a href="/admin/users" class="btn btn-secondary">Cancel</a>
+    </div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function toggleAll(state) {
+    document.querySelectorAll('input[name="tools"]').forEach(cb => cb.checked = state);
+}
+</script>
+{% endblock %}

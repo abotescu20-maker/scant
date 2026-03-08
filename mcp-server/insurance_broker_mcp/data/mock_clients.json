@@ -1,0 +1,80 @@
+[
+  {
+    "id": "CLI001",
+    "name": "Andrei Ionescu",
+    "id_number": "1820415251234",
+    "phone": "+40745123456",
+    "email": "andrei.ionescu@gmail.com",
+    "address": "Str. Mihai Viteazu 12, Ap. 3, București, 010101",
+    "client_type": "individual",
+    "country": "RO",
+    "source": "referral",
+    "notes": "Long-term client, always pays on time. Interested in life insurance.",
+    "created_at": "2023-03-15"
+  },
+  {
+    "id": "CLI002",
+    "name": "SC Logistic Trans SRL",
+    "id_number": "RO28456789",
+    "phone": "+40721987654",
+    "email": "office@logistictrans.ro",
+    "address": "Str. Industriilor 45, Ploiești, 100100",
+    "client_type": "company",
+    "country": "RO",
+    "source": "website",
+    "notes": "Fleet of 8 trucks. CMR and RCA priority. Contact: Mihai Dumitru (fleet manager).",
+    "created_at": "2022-11-01"
+  },
+  {
+    "id": "CLI003",
+    "name": "Maria Popescu",
+    "id_number": "2750602251234",
+    "phone": "+40730456789",
+    "email": "maria.popescu@yahoo.com",
+    "address": "Bd. Unirii 88, Apt 14, București, 030167",
+    "client_type": "individual",
+    "country": "RO",
+    "source": "walk-in",
+    "notes": "Has CASCO at Allianz. RCA expiring soon. Interested in PAD.",
+    "created_at": "2024-01-20"
+  },
+  {
+    "id": "CLI004",
+    "name": "Johann Schmidt",
+    "id_number": "DE 123456789",
+    "phone": "+4915112345678",
+    "email": "j.schmidt@firma-schmidt.de",
+    "address": "Musterstraße 12, 60313 Frankfurt am Main",
+    "client_type": "individual",
+    "country": "DE",
+    "source": "referral",
+    "notes": "German client with Romanian assets (apartment in Bucharest). Needs both KFZ and RCA.",
+    "created_at": "2024-06-10"
+  },
+  {
+    "id": "CLI005",
+    "name": "Ion Gheorghe",
+    "id_number": "1650318251234",
+    "phone": "+40722334455",
+    "email": "ion.gheorghe@hotmail.com",
+    "address": "Str. Florilor 7, Cluj-Napoca, 400001",
+    "client_type": "individual",
+    "country": "RO",
+    "source": "phone",
+    "notes": "CASCO renewal upcoming. Unhappy with previous insurer Omniasig claims handling.",
+    "created_at": "2021-08-05"
+  },
+  {
+    "id": "CLI006",
+    "name": "Immobilien GmbH Müller",
+    "id_number": "DE 987654321",
+    "phone": "+4969123456789",
+    "email": "info@mueller-immobilien.de",
+    "address": "Hauptstraße 100, 80331 München",
+    "client_type": "company",
+    "country": "DE",
+    "source": "referral",
+    "notes": "German property company. Needs Gebäudeversicherung for 3 properties. High value client.",
+    "created_at": "2025-01-15"
+  }
+]
