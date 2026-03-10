@@ -131,11 +131,11 @@ Alex checks the policy, confirms validity status, days remaining, and flags imme
 
 ## How We Work Together — Two Phases
 
-### Phase 1 — MVP: Agentic Platform Already Running
+### Phase 1 — MVP Pilot: 30-Day Onboarding and Validation
 
-We have built a fully functional agentic platform based on our research into insurance brokerage workflows. This is the starting point — not the final product.
+We have built a fully functional agentic platform based on our research into insurance brokerage workflows. Phase 1 is a **30-day structured pilot** — your employees use the system, we refine it together, and we identify exactly what needs to be built in Phase 2.
 
-**What is already built and running today:**
+**What is already built — available for the pilot:**
 - Chainlit browser chat interface — no installation for employees
 - Claude Sonnet (Anthropic) as the AI engine
 - 24 broker tools: client management, product search and comparison, offer generation, renewals dashboard, claims intake and tracking, ASF/BaFin compliance reports, Vision AI for document processing, web automation, desktop automation
@@ -144,8 +144,13 @@ We have built a fully functional agentic platform based on our research into ins
 - Local agent for desktop and intranet automation
 - Deployed on Google Cloud Run (Frankfurt, GDPR compliant)
 
-**The purpose of Phase 1:**
-We test and build together with your employees. They validate what is useful, what is missing, and what needs to be adjusted. The MVP is the foundation — not the ceiling.
+**What happens during the 30 days:**
+- Each employee gets access and works with the system on real daily tasks — using synthetic data
+- Weekly feedback sessions: what works, what doesn't, what's missing
+- We adjust tools, prompts, and workflows based on employee input
+- At the end of Phase 1, we have a clear, validated picture of exactly what to build in Phase 2
+
+The MVP is the foundation — not the ceiling.
 
 ---
 
@@ -248,7 +253,7 @@ Compliance templates are updated at no extra charge when regulatory guidance cha
 | Item | Cost |
 |---|---|
 | **Implementation (one-time)** | **TBD** |
-| Phase 1 — MVP deployment and onboarding | TBD |
+| Phase 1 — 30-day MVP pilot (onboarding, testing, validation) | TBD |
 | Phase 2 — Process mapping, dedicated build, VM migration | TBD |
 | | |
 | **Managed Service (monthly)** | **TBD** |
@@ -258,10 +263,10 @@ Compliance templates are updated at no extra charge when regulatory guidance cha
 
 ## Next Steps
 
-1. **Schedule a live demo** — See Alex running with real insurance scenarios. No commitment required. The demo environment is live today.
-2. **Discovery call (1 hour)** — We walk through your current workflows and identify where Phase 2 customisation will have the most impact.
-3. **MVP pilot** — Your employees use Alex on demo data, give feedback, validate which tools matter most.
-4. **Phase 2 kick-off** — Process mapping begins. We build the production system around your real workflows.
+1. **Schedule a live demo** — See Alex running with real insurance scenarios. No commitment required.
+2. **Discovery call (1 hour)** — We walk through your current workflows and confirm the scope of the Phase 1 pilot.
+3. **Phase 1 kick-off (30 days)** — Your employees access the platform with synthetic data, test daily workflows, give structured feedback. We refine together each week.
+4. **Phase 2 kick-off** — Based on Phase 1 findings, process mapping begins. We build the production system around your validated workflows.
 
 ---
 

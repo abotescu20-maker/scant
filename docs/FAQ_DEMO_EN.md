@@ -35,11 +35,11 @@ Alex is not a generic AI assistant. It is a structured AI agent built specifical
 
 ### How We Work Together — Two Phases
 
-**Phase 1 — MVP: Agentic Platform Built and Running**
+**Phase 1 — MVP Pilot: 30-Day Onboarding and Validation**
 
-We have built a fully functional agentic platform based on our research into insurance brokerage workflows. This is available today for demo and piloting.
+We have built a fully functional agentic platform based on our research into insurance brokerage workflows. Phase 1 is a **30-day structured pilot** — your employees use the system, we refine it together, and we identify exactly what needs to be built in Phase 2.
 
-What is running now:
+What is built and available for the pilot:
 - Chainlit browser chat interface — no installation for employees
 - Claude Sonnet (Anthropic) as the AI engine
 - 24 broker tools covering the full brokerage workflow
@@ -48,7 +48,7 @@ What is running now:
 - Local agent for desktop and intranet automation
 - Deployed on Google Cloud Run (Frankfurt, GDPR compliant)
 
-The purpose of Phase 1 is to test and build together with your employees. They use it, give feedback, and validate what matters. The MVP is the foundation — not the final product.
+During the 30 days: each employee works with the system on daily tasks (synthetic data), weekly feedback sessions are held, and tools/workflows are adjusted. At the end, we have a validated picture of what to build in Phase 2. The MVP is the foundation — not the final product.
 
 **Phase 2 — Full Implementation: Built Around Your Real Workflows**
 
@@ -429,14 +429,15 @@ The local agent is a small Python script that runs on an employee's computer. It
 It is optional — Alex works fully without it for all cloud-based tasks.
 
 ### Q15: What is the current deployment status and what changes in Phase 2?
-**Phase 1 — MVP (now):**
+**Phase 1 — MVP Pilot (30 days):**
 - Fully functional — all 24 tools operational
 - Running on Google Cloud Run (Frankfurt)
 - Synthetic demo data only — no real client records
 - No personal data processed — GDPR fully protected
-- Goal: test together with your employees, validate, adjust
+- Structured 30-day pilot: employees test daily workflows, weekly feedback, weekly refinements
+- Outcome: validated feature set and workflow map for Phase 2
 
-**Phase 2 — Production (after MVP validation + contract + DPA signed):**
+**Phase 2 — Production (after Phase 1 validation + contract + DPA signed):**
 - Your real processes mapped and built into the system
 - Real data imported (clients, products, policies) — only after DPA is signed
 - Migrated to a dedicated VM on Google Cloud — persistent, backed up, consistent performance

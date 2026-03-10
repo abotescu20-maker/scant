@@ -102,15 +102,19 @@ python scripts/create_superadmin.py
 
 ## 2. Phase 1 vs Phase 2 — MVP and Production
 
-### 2.1 Phase 1 — MVP (Current): Cloud Run
+### 2.1 Phase 1 — MVP Pilot: 30-Day Onboarding and Validation
 
-The system runs on Google Cloud Run (Frankfurt):
+The system runs on Google Cloud Run (Frankfurt) during the 30-day pilot:
 - **URL:** https://insurance-broker-alex-603810013022.europe-west3.run.app
 - **Database:** SQLite (file in container)
 - **Advantages:** rapid deployment, zero infrastructure management, automatic scaling
 - **Limitations:** stateless (data lost on restart), per-request cost at high volume
 
-**Purpose:** Test the platform with employees. Validate which tools are useful. Identify what needs to be built differently in Phase 2. The MVP is built on our research into brokerage workflows — not yet on the client's real processes.
+**Purpose:** Phase 1 is a **structured 30-day pilot**. Each employee gets access and works with the system on real daily tasks — using synthetic data only. Weekly feedback sessions determine what works, what doesn't, and what's missing. Tools, prompts, and workflows are adjusted based on employee input throughout the 30 days.
+
+**At the end of the pilot:** a clear, validated picture of exactly what to build in Phase 2 — based on how the brokerage actually works, not on assumptions.
+
+The MVP is the foundation — not the ceiling.
 
 ---
 
@@ -340,11 +344,17 @@ ADMIN_JWT_SECRET=<random 64-character string>
 
 ---
 
-## 4. Migration Plan: Cloud Run MVP → Production VM
+## 4. Migration Plan: Cloud Run MVP Pilot (30 Days) → Production VM
 
 > **GDPR prerequisite before Phase 2 data import:** Service contract signed + Data Processing Agreement (DPA) signed. Real client data is never imported before these are in place.
 
-### Week 1–2: Process Mapping + Contract (Phase 2 start)
+### Phase 1 — Days 1–30: MVP Pilot (Cloud Run, synthetic data)
+- Employees access the platform and work with it on real daily tasks — using synthetic demo data
+- Weekly feedback sessions: what works, what doesn't, what's missing
+- Tools, prompts, and workflows adjusted weekly based on employee input
+- Outcome: validated feature set and real workflow map for Phase 2
+
+### Week 1–2 of Phase 2: Process Mapping + Contract
 - [ ] Individual sessions with each employee — map real workflows
 - [ ] Full documentation: client intake, renewals, claims, reporting
 - [ ] Identify required integrations (CRM, email, insurer portals)

@@ -11,7 +11,7 @@ Alex este un asistent AI construit special pentru operatiunile de brokeraj de as
 
 Alex nu este un produs generic. Este o platforma agentiva pe care am construit-o bazat pe prospectia noastra despre nevoile unui birou de brokeraj — si pe care o personalizam impreuna cu echipa clientului.
 
-### Ce poate face Alex astazi
+### Ce poate face Alex in pilot
 
 | Domeniu | Ce Face | Exemplu |
 |---------|---------|---------|
@@ -39,11 +39,11 @@ Alex nu este un produs generic. Este o platforma agentiva pe care am construit-o
 
 ## 2. Cum Lucram Impreuna — Cele Doua Faze
 
-### Faza 1 — MVP: Platforma Agentiva Functionala (disponibila azi)
+### Faza 1 — Pilot MVP: 30 de Zile de Onboarding si Validare
 
-Am construit o platforma agentiva functionala bazata pe prospectia noastra despre nevoile unui birou de brokeraj de asigurari. Aceasta este punctul de start — nu produsul final.
+Am construit o platforma agentiva functionala bazata pe prospectia noastra despre nevoile unui birou de brokeraj de asigurari. Faza 1 este un **pilot structurat de 30 de zile** — angajatii folosesc sistemul, noi il rafinam impreuna si identificam exact ce trebuie construit in Faza 2.
 
-**Ce este construit si ruleaza azi:**
+**Ce este construit si disponibil pentru pilot:**
 - Interfata chat Chainlit in browser — fara instalare pentru angajati
 - Claude Sonnet (Anthropic) ca motor AI
 - 24 tool-uri broker: gestionare clienti, cautare si comparare produse, generare oferte, dashboard reinnoiri, inregistrare si urmarire daune, rapoarte ASF/BaFin, procesare documente cu Vision AI, automatizare web, automatizare desktop
@@ -52,8 +52,13 @@ Am construit o platforma agentiva functionala bazata pe prospectia noastra despr
 - Agent local pentru automatizare desktop si intranet
 - Deployment pe Google Cloud Run (Frankfurt, conform GDPR)
 
-**Scopul Fazei 1:**
-Testam si construim impreuna cu angajatii clientului. Ei folosesc sistemul, dau feedback si valideaza ce este util, ce lipseste si ce trebuie ajustat. MVP-ul este fundatia — nu plafonul.
+**Ce se intampla in cele 30 de zile:**
+- Fiecare angajat lucreaza cu sistemul pe taskuri zilnice reale — cu date sintetice
+- Sesiuni de feedback saptamanale: ce functioneaza, ce nu, ce lipseste
+- Ajustam tool-urile, prompts-urile si workflow-urile pe baza feedbackului
+- La finalul celor 30 de zile avem o imagine clara si validata despre ce exact se construieste in Faza 2
+
+MVP-ul este fundatia — nu plafonul.
 
 ---
 
@@ -266,7 +271,7 @@ Nici una, nici alta. Am construit deja o platforma agentiva functionala bazata p
 >
 > "Alex este un asistent AI care inlocuieste munca manuala din brokeraj. Angajatii tai vorbesc cu el ca si cum ar vorbi cu un coleg — in romana, engleza sau germana. Alex cauta clienti, compara produse, genereaza oferte profesionale, urmareste reinnoiri, inregistreaza daune si face rapoartele ASF si BaFin — totul din conversatie.
 >
-> Nu este un produs off-the-shelf. Am construit deja o platforma functionala si o aducem ca MVP — angajatii o testeaza si ne spun ce functioneaza. Dupa asta, construim versiunea finala pe procesele lor reale. Datele raman pe serverul vostru in Frankfurt, in UE."
+> Nu este un produs off-the-shelf. Am construit deja o platforma agentiva functionala bazata pe prospectia noastra despre nevoile unui birou de brokeraj. Propunem un pilot structurat de 30 de zile — angajatii tai lucreaza cu sistemul pe taskuri zilnice reale, ne spun ce functioneaza si ce lipseste, iar noi rafinam impreuna. Dupa cei 30 de zile stim exact ce trebuie construit in versiunea finala — pe procesele voastre reale, nu pe ipotezele noastre. Datele raman pe serverul vostru in Frankfurt, in UE."
 
 ---
 
