@@ -334,7 +334,7 @@ You talk naturally with brokers in whatever language they use (Romanian, English
 - broker_cross_sell — analizează portofoliul clientului și sugerează produse lipsă
 - broker_calculate_premium — estimează prima de asigurare (RCA/CASCO) pe baza factorilor de risc
 - broker_compliance_check — verifică completitudinea dosarului client (documente, polițe, conformitate)
-- broker_check_rca — verifică RCA în timp real pe portalul ASF/CEDAM via browser headless pe server (NU necesită agent local — funcționează direct din chat)
+- broker_check_rca — verifică RCA în timp real pe portalul AIDA/BAAR via browser headless pe server (NU necesită agent local). Returnează: rca_valid, expiry_date, insurer, policy_number, coverage_type, insured_sum, days_until_expiry, captcha_blocked, from_cache (cache TTL 6h), screenshot_b64 (la eșec).
 - broker_browse_web — accesează orice URL public și extrage text sau tabele (NU necesită agent local)
 - broker_computer_use_status — verifică dacă agentul local e conectat (necesar doar pentru desktop apps sau intranet)
 - broker_run_task — execută task pe calculatorul angajatului. Connectors disponibili: `desktop_generic` (desktop apps, rețea internă), `cedam` (verificare RCA via portal ASF/CEDAM), `web_generic` (orice site web via browser local), `anthropic_computer_use` (computer use avansat cu Claude Vision).
@@ -346,7 +346,7 @@ You talk naturally with brokers in whatever language they use (Romanian, English
 - broker_sharepoint_get_link — obține linkul unui fișier deja încărcat în SharePoint
 
 ## Când să folosești ce tool:
-- **RCA verificare** → `broker_check_rca` (instant, fără agent)
+- **RCA verificare** → `broker_check_rca` (instant, fără agent). Dacă răspunsul conține `captcha_blocked: true` → folosește automat `broker_run_task` cu connector=`cedam` (agent local, browser vizibil, ocolește CAPTCHA).
 - **Orice site web public** → `broker_browse_web` (fără agent)
 - **Deschide aplicație + scrie text** (TextEdit, Notes, Word, Excel) → `broker_run_task` cu connector=`desktop_generic`, action=`open_app_and_type`, params={app: "TextEdit", text: "textul exact"} — OBLIGATORIU această acțiune, NU run_task!
 - **Calculator** → `broker_run_task` cu connector=`desktop_generic`, action=`run_task`, params.instruction="deschide Calculator si calculeaza 2+2"
@@ -669,9 +669,13 @@ TOOLS = [
         "name": "broker_check_rca",
         "description": (
             "Verifică valabilitatea poliței RCA pentru un număr de înmatriculare, "
-            "accesând portalul ASF/CEDAM în timp real via browser headless pe server. "
-            "Nu necesită agent local — rulează direct pe Cloud Run. "
-            "Returnează: valid/expirat, dată expirare, asigurător, număr poliță, zile rămase."
+            "accesând portalul AIDA/BAAR în timp real via browser headless pe server. "
+            "Nu necesită agent local — rulează direct pe Cloud Run. Cache TTL 6h — "
+            "dacă plăcuța a fost verificată recent, răspuns instant fără request nou. "
+            "Returnează: rca_valid (bool), expiry_date, insurer, policy_number, "
+            "coverage_type (RCA/CASCO/CMR etc.), insured_sum, days_until_expiry, "
+            "captcha_blocked (bool — dacă True, folosește broker_run_task cu connector=cedam), "
+            "from_cache (bool), cached_at, screenshot_b64 (base64 PNG la eșec, pentru debugging)."
         ),
         "input_schema": {
             "type": "object",
