@@ -1,0 +1,10 @@
+# Alex Local Agent — Build Dependencies
+# Only needed for building the .exe / .app — not for running the agent
+# Install: pip install -r requirements_build.txt
+
+pyinstaller>=6.0.0         # builds .exe (Windows) and .app (Mac)
+pystray>=0.19.5            # system tray icon (Windows + Mac + Linux)
+pillow>=10.0.0             # icon generation + screenshots
+
+# Optional: create-dmg for Mac DMG packaging
+# Install separately: brew install create-dmg

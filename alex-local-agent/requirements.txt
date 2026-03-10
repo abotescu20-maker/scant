@@ -1,0 +1,32 @@
+# Alex Local Agent — Dependencies
+# Install: pip install -r requirements.txt
+# Then:    playwright install chromium
+
+# ── Core (required) ────────────────────────────────────────────────────────
+requests>=2.31.0            # HTTP client for polling Alex server
+
+# ── Browser automation (Playwright) ───────────────────────────────────────
+# Required for: GenericWebConnector, CEDAMConnector, any web portal
+playwright>=1.40.0
+# After install: playwright install chromium
+
+# ── Desktop automation (optional — only needed for Windows/Mac apps) ───────
+# Required for: GenericDesktopConnector
+pyautogui>=0.9.54
+pillow>=10.0.0              # PIL — screenshot capture
+
+# ── Gemini Vision (optional — for desktop automation AI) ──────────────────
+# Required for: GenericDesktopConnector (Gemini Vision mode)
+google-generativeai>=0.8.0
+
+# ── Anthropic Computer Use (Mode B) ──────────────────────────────────────────
+# Required for: AnthropicComputerUseConnector
+# Claude AI controls the computer directly — most intelligent mode
+anthropic>=0.36.0
+
+# ── GUI (System Tray App) ─────────────────────────────────────────────────
+pystray>=0.19.5             # system tray icon for GUI app (agent_app.py)
+# pillow already listed above — also needed for tray icon generation
+
+# ── Utilities ──────────────────────────────────────────────────────────────
+python-dotenv>=1.0.0        # optional .env file support
