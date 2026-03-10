@@ -21,7 +21,7 @@ Alex is not a generic AI assistant. It is a structured AI agent built specifical
 |---|---|---|
 | AI Base | Generic | Claude Sonnet — built for structured workflows |
 | Your Data | ❌ No access | ✅ Connected to your clients, policies, products |
-| Process Customization | ❌ None | ✅ 24 tools built on your specific workflows |
+| Process Customization | ❌ None | ✅ 30 tools built on your specific workflows |
 | Skills per Employee | ❌ No | ✅ Role-based configuration per employee |
 | Access Control | ❌ None | ✅ Granular, per role, per tool |
 | Desktop Automation | ❌ No | ✅ Controls local apps via local agent |
@@ -29,6 +29,7 @@ Alex is not a generic AI assistant. It is a structured AI agent built specifical
 | **Accident Photo Analysis** | ❌ No | ✅ Damage assessment in seconds |
 | **Handwritten Forms** | ❌ No | ✅ Constatare amiabilă, etc. |
 | **Regulatory Reports** | ❌ No | ✅ ASF + BaFin automated |
+| **Google Drive / SharePoint** | ❌ No | ✅ Save & share documents instantly |
 | **Multi-language** | Partial | ✅ EN / RO / DE natively |
 
 ---
@@ -42,10 +43,11 @@ We have built a fully functional agentic platform based on our research into ins
 What is built and available for the pilot:
 - Chainlit browser chat interface — no installation for employees
 - Claude Sonnet (Anthropic) as the AI engine
-- 24 broker tools covering the full brokerage workflow
+- 30 broker tools covering the full brokerage workflow
 - Provisional MCP server with synthetic demo data
 - Admin panel with per-employee role-based access control
 - Local agent for desktop and intranet automation
+- Google Drive and SharePoint integration for cloud document storage
 - Deployed on Google Cloud Run (Frankfurt, GDPR compliant)
 
 During the 30 days: each employee works with the system on daily tasks (synthetic data), weekly feedback sessions are held, and tools/workflows are adjusted. At the end, we have a validated picture of what to build in Phase 2. The MVP is the foundation — not the final product.
@@ -72,7 +74,7 @@ Browser / Employee Device
 GCP Cloud Run (Frankfurt, EU) — MVP Phase
     ├── Chainlit — Chat Interface
     ├── Claude Sonnet (Anthropic) — AI Engine
-    ├── 24 Broker Tools — connected to your data
+    ├── 30 Broker Tools — connected to your data
     ├── Admin Panel — user & permission management
     ├── REST API — n8n / external automation
     └── SQLite DB (demo) → PostgreSQL (production VM)
@@ -80,7 +82,12 @@ GCP Cloud Run (Frankfurt, EU) — MVP Phase
     Local Agent (employee computer)
     ├── Desktop automation (TextEdit, Word, Excel, etc.)
     ├── Intranet / VPN access
-    └── Browser automation (RCA portals, insurer sites)
+    ├── Browser automation (RCA portals, insurer sites)
+    └── Anthropic Computer Use (Claude Vision for any screen)
+         ↑
+    Cloud Storage (optional, employee-controlled)
+    ├── Google Drive (via Service Account)
+    └── SharePoint (via Microsoft Graph API)
 ```
 
 **After MVP validation:**
@@ -149,7 +156,7 @@ GCP Cloud Run (Frankfurt, EU) — MVP Phase
 
 ---
 
-## PART 4 — 24 AI TOOLS (WHAT ALEX CAN DO)
+## PART 4 — 30 AI TOOLS (WHAT ALEX CAN DO)
 
 ### 1. Client Management
 
@@ -233,17 +240,45 @@ GCP Cloud Run (Frankfurt, EU) — MVP Phase
 
 ### 6. Web & Desktop Automation
 
-**`broker_check_rca`** — Check RCA validity via browser automation
+**`broker_check_rca`** — Check RCA validity via browser automation (no local agent needed)
 *Demo:* `"Check RCA for plate B123ABC online"`
 
-**`broker_browse_web`** — Browse any website and extract information
+**`broker_browse_web`** — Browse any website and extract information (no local agent needed)
 *Demo:* `"Go to aida.info.ro and check plate B05CDE"`
 
 **`broker_computer_use_status`** — Check if local agent is online
 *Demo:* `"Is the local agent connected?"`
 
-**`broker_run_task`** — Run any desktop or automation task on local machine
+**`broker_run_task`** — Run any task on the local machine via the agent
+Available connectors:
+- `desktop_generic` — desktop apps (Word, Excel, local insurance software, intranet)
+- `cedam` — RCA verification via ASF/CEDAM portal (browser automation)
+- `web_generic` — any website via local browser
+- `anthropic_computer_use` — advanced computer use with Claude Vision (any screen)
+
 *Demo:* `"Open TextEdit and write the client summary"` (requires local agent running)
+
+---
+
+### 7. Cloud Storage
+
+**`broker_drive_upload`** — Upload generated file (offer PDF, report XLSX/DOCX) to Google Drive
+*Demo:* `"Save the offer to Google Drive and give me the link"`
+
+**`broker_drive_list`** — List files in the Google Drive broker folder
+*Demo:* `"What files do we have in Drive?"`
+
+**`broker_drive_get_link`** — Get shareable link for an existing Drive file
+*Demo:* `"Get the Drive link for Offer_CLI001_2026-03-10.pdf"`
+
+**`broker_sharepoint_upload`** — Upload file to SharePoint via Microsoft Graph
+*Demo:* `"Save the ASF report to SharePoint"`
+
+**`broker_sharepoint_list`** — List files in the SharePoint broker folder
+*Demo:* `"What's in our SharePoint folder?"`
+
+**`broker_sharepoint_get_link`** — Get SharePoint link for an existing file
+*Demo:* `"Get the SharePoint link for the BaFin report"`
 
 ---
 
@@ -278,6 +313,11 @@ Create an offer for CLI001 with the cheapest RCA option
 ```
 → Professional offer generated, downloadable file attached
 
+```
+Save the offer to Google Drive and share the link
+```
+→ File uploaded to Drive, shareable link returned
+
 ---
 
 ### Script 3: Claims Processing (1 min)
@@ -303,11 +343,16 @@ Generate BaFin report for January 2026
 
 ---
 
-### Script 5: Compliance Report (30 sec)
+### Script 5: Compliance Report + Cloud Save (1 min)
 ```
 Generate the ASF monthly summary for February 2026
 ```
 → Full ASF report: total active policies, premiums, ASF class breakdown
+
+```
+Save it to SharePoint
+```
+→ File uploaded to configured SharePoint folder, link returned
 
 ---
 
@@ -321,13 +366,21 @@ Create her profile and search RCA options.
 
 ---
 
+### Script 7: Cross-Sell Analysis (30 sec)
+```
+What coverage is CLI002 missing for a transport company?
+```
+→ Alex identifies gaps: no CASCO fleet, no liability — gives specific product recommendations
+
+---
+
 ## PART 6 — FAQ FOR PROSPECTS
 
 ### Q1: What is Alex exactly?
-Alex is an AI assistant built specifically for insurance brokerage operations. It connects directly to your client database, policy records, and insurer product catalog. It can search, compare, generate offers, log claims, and produce regulatory reports — all in a natural conversation, in English, Romanian, or German.
+Alex is an AI assistant built specifically for insurance brokerage operations. It connects directly to your client database, policy records, and insurer product catalog. It can search, compare, generate offers, log claims, and produce regulatory reports — all in a natural conversation, in English, Romanian, or German. It can also save documents directly to your Google Drive or SharePoint.
 
 ### Q2: Is this a finished product or a custom build?
-It is a custom build, not a generic SaaS product. We built a functional agentic platform based on our research into brokerage workflows — this is Phase 1. In Phase 2, we map your real processes with your team and rebuild the core around how your brokerage actually works. The platform ships with 24 tools covering the full workflow, and every tool is adjustable.
+It is a custom build, not a generic SaaS product. We built a functional agentic platform based on our research into brokerage workflows — this is Phase 1. In Phase 2, we map your real processes with your team and rebuild the core around how your brokerage actually works. The platform ships with 30 tools covering the full workflow, and every tool is adjustable.
 
 ### Q3: How does Alex protect our client data? (GDPR)
 **Phase 1 — MVP:**
@@ -420,17 +473,30 @@ From any offer or report Alex generates, you can download:
 - **XLSX** — for further analysis in Excel, portfolio management
 - **DOCX** — editable Word document for customization before sending
 
+And with one command, save directly to:
+- **Google Drive** — returns a shareable link
+- **SharePoint** — returns an organization-internal link
+
 ### Q14: What is the local agent and do we need it?
-The local agent is a small Python script that runs on an employee's computer. It enables Alex to:
+The local agent is a small Python application that runs on an employee's computer. It enables Alex to:
 - Open and control desktop applications (Word, Excel, local insurance software)
 - Access intranet systems and VPN-protected portals
 - Automate repetitive tasks on the local machine
+- Verify RCA via the CEDAM/ASF portal directly
+- Use Claude Vision (computer use) for any screen content
 
 It is optional — Alex works fully without it for all cloud-based tasks.
 
-### Q15: What is the current deployment status and what changes in Phase 2?
+### Q15: Does Alex work with Google Drive and SharePoint?
+Yes — Alex can save any generated document (offer PDF, compliance report, XLSX export) directly to:
+- **Google Drive** — via a Service Account (setup: 10 minutes). Returns a shareable link.
+- **SharePoint (Microsoft 365)** — via Microsoft Graph API (setup: 15 minutes). Returns an organization-internal link.
+
+Both integrations are optional, configured once per deployment, and activated per employee based on their admin permissions.
+
+### Q16: What is the current deployment status and what changes in Phase 2?
 **Phase 1 — MVP Pilot (30 days):**
-- Fully functional — all 24 tools operational
+- Fully functional — all 30 tools operational
 - Running on Google Cloud Run (Frankfurt)
 - Synthetic demo data only — no real client records
 - No personal data processed — GDPR fully protected
@@ -457,6 +523,8 @@ It is optional — Alex works fully without it for all cloud-based tasks.
 | Phase 2 Deployment | Dedicated VM on Google Cloud — Frankfurt (production) |
 | Container | Docker |
 | Local Agent | Python — macOS / Windows / Linux |
+| Google Drive Integration | google-api-python-client (Service Account auth) |
+| SharePoint Integration | Microsoft Graph API (Azure AD Client Credentials) |
 
 ---
 
@@ -475,4 +543,4 @@ Contact us directly — we provide full technical documentation and sign NDAs be
 ---
 
 *Alex — Insurance Broker AI | Powered by Claude Sonnet (Anthropic) | GCP Frankfurt (EU) | ASF & BaFin Compliant*
-*Document version: 2.1 | Date: March 2026*
+*Document version: 2.2 | Date: March 2026*

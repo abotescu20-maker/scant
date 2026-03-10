@@ -93,10 +93,12 @@ python scripts/create_superadmin.py
 | Prices | Demonstrative, do not reflect market | Offers have placeholder prices |
 | Policy numbers | Fictional | Cannot be verified externally |
 | Email | SMTP not configured | Offers are not actually sent |
-| RCA verification | Only in local DB | Does not check via CEDAM |
+| RCA verification | Only in local DB (cloud) or CEDAM via agent | Cloud check = DB only; CEDAM needs local agent |
 | ASF/BaFin reports | Based on synthetic data | Numbers are illustrative |
 | Volume | 6 clients, 8 policies | Does not test performance at scale |
 | HEALTH/LIFE | No products in catalog | Cross-sell suggests but cannot generate offer |
+| Google Drive | Needs GOOGLE_APPLICATION_CREDENTIALS_JSON in .env | Not active by default in demo |
+| SharePoint | Needs Azure App Registration credentials in .env | Not active by default in demo |
 
 ---
 
@@ -134,6 +136,7 @@ After MVP validation with the client's internal test team, the system migrates t
 - Email integration (SMTP) active
 - Custom branding (company name and logo in all documents)
 - Full audit log and RBAC active
+- Google Drive and/or SharePoint configured per deployment
 
 > **GDPR:** Phase 1 runs exclusively on synthetic data. No real client records are imported or processed before the Data Processing Agreement (DPA) is signed. Real data migration begins only in Phase 2, after both the service contract and DPA are in place.
 
@@ -322,7 +325,46 @@ FROM crm_clients;
 3. Use a dedicated subdomain: `oferte@notifications.broker.ro`
 4. Monitor bounce rate and spam complaints
 
-### 3.6 Authentication and Security
+### 3.6 Google Drive Integration Setup
+
+**Required:** Service Account JSON key + shared folder
+
+```bash
+# .env configuration
+GOOGLE_APPLICATION_CREDENTIALS_JSON={"type":"service_account","project_id":"...","private_key":"..."}
+GOOGLE_DRIVE_FOLDER_ID=1ABC123xyz_your_folder_id_here
+```
+
+**Setup steps:**
+1. Google Cloud Console → IAM → Service Accounts → Create → Download JSON key
+2. Paste full JSON as single line into `GOOGLE_APPLICATION_CREDENTIALS_JSON`
+3. Share target Drive folder with the service account email (Editor role)
+4. Copy folder ID from folder URL → `GOOGLE_DRIVE_FOLDER_ID`
+
+**Tools activated:** `broker_drive_upload`, `broker_drive_list`, `broker_drive_get_link`
+
+### 3.7 SharePoint Integration Setup
+
+**Required:** Azure App Registration with Microsoft Graph permissions
+
+```bash
+# .env configuration
+SHAREPOINT_TENANT_ID=your-azure-tenant-id
+SHAREPOINT_CLIENT_ID=your-app-client-id
+SHAREPOINT_CLIENT_SECRET=your-app-client-secret
+SHAREPOINT_SITE_URL=https://yourcompany.sharepoint.com/sites/Brokeraj
+SHAREPOINT_FOLDER_PATH=/Shared Documents/Oferte
+```
+
+**Setup steps:**
+1. Azure Portal → App registrations → New registration
+2. API permissions → Sites.ReadWrite.All (application) → Grant admin consent
+3. Certificates & secrets → New client secret
+4. Set all 5 environment variables above
+
+**Tools activated:** `broker_sharepoint_upload`, `broker_sharepoint_list`, `broker_sharepoint_get_link`
+
+### 3.8 Authentication and Security
 
 **Required environment variables:**
 ```
@@ -357,7 +399,7 @@ ADMIN_JWT_SECRET=<random 64-character string>
 ### Week 1–2 of Phase 2: Process Mapping + Contract
 - [ ] Individual sessions with each employee — map real workflows
 - [ ] Full documentation: client intake, renewals, claims, reporting
-- [ ] Identify required integrations (CRM, email, insurer portals)
+- [ ] Identify required integrations (CRM, email, insurer portals, Drive/SharePoint)
 - [ ] Sign service contract + Data Processing Agreement (DPA) ← **required before any data export**
 - [ ] Request sample data export from client (20–50 records, anonymised if possible) — for import validation only
 
@@ -371,6 +413,7 @@ ADMIN_JWT_SECRET=<random 64-character string>
 - [ ] Import real clients into PostgreSQL (post-DPA)
 - [ ] Configure products per partner insurer (real prices set by broker)
 - [ ] Set up email integration (SMTP)
+- [ ] Configure Google Drive and/or SharePoint if applicable
 - [ ] Create user accounts with appropriate permissions
 - [ ] Configure n8n workflows (renewal reminders, monthly reports)
 
@@ -381,6 +424,7 @@ ADMIN_JWT_SECRET=<random 64-character string>
 - [ ] Collect feedback and adjustments
 - [ ] Test emails (send real offers to test addresses)
 - [ ] Test ASF/BaFin reports with real data
+- [ ] Test Drive/SharePoint uploads with real documents
 
 ### Week 7: Go-Live on Production VM
 - [ ] Switch DNS to production VM
@@ -428,6 +472,17 @@ SMTP_FROM_NAME=<Broker Company Name>
 CHAINLIT_AUTH_SECRET=<random 64-character string>
 ADMIN_JWT_SECRET=<random 64-character string>
 
+# Google Drive (optional)
+GOOGLE_APPLICATION_CREDENTIALS_JSON=<service account JSON as single line>
+GOOGLE_DRIVE_FOLDER_ID=<folder ID from Drive URL>
+
+# SharePoint / Microsoft 365 (optional)
+SHAREPOINT_TENANT_ID=<Azure tenant ID>
+SHAREPOINT_CLIENT_ID=<App registration client ID>
+SHAREPOINT_CLIENT_SECRET=<App registration client secret>
+SHAREPOINT_SITE_URL=https://yourcompany.sharepoint.com/sites/Brokeraj
+SHAREPOINT_FOLDER_PATH=/Shared Documents/Oferte
+
 # App
 PORT=8080
 ```
@@ -437,6 +492,13 @@ PORT=8080
 Add to `requirements.txt`:
 ```
 psycopg2-binary>=2.9.0
+```
+
+Already included (active in Phase 1):
+```
+google-api-python-client>=2.100.0
+google-auth-oauthlib>=1.1.0
+google-auth-httplib2>=0.2.0
 ```
 
 ---
@@ -470,6 +532,12 @@ Only: the list of employees who will participate in the pilot (name, email, role
 **Q: What is different between Phase 1 and Phase 2?**
 Phase 1 (MVP) is built on our research into typical brokerage workflows — it is the starting point. Phase 2 is built on the client's actual processes, mapped together with their team. The MCP server in Phase 2 is purpose-built for how their brokerage actually works, not adapted from a generic template.
 
+**Q: Do we need Google Drive or SharePoint to use Alex?**
+No. Both are optional integrations. Alex works fully without them. When configured, they allow Alex to save generated documents directly to cloud storage with a single command and return a shareable link.
+
+**Q: What happens to uploaded Drive/SharePoint files if we cancel?**
+Files uploaded to Drive or SharePoint remain in your Google/Microsoft account permanently — they are not controlled by us and are not deleted when the service ends.
+
 ---
 
-*Document updated: March 2026 | Alex Insurance Broker AI v2.1*
+*Document updated: March 2026 | Alex Insurance Broker AI v2.2*

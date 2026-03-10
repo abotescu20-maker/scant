@@ -111,6 +111,7 @@ Alex checks the policy, confirms validity status, days remaining, and flags imme
 - **Audit trail:** Every action logged with timestamp and employee session — supports compliance documentation requirements
 - **Desktop automation:** Alex can control local desktop applications and intranet systems via the local agent
 - **Web automation:** Alex can browse websites, verify RCA online, extract data from insurer portals
+- **Cloud storage:** Alex can save generated offers, reports, and documents directly to Google Drive or SharePoint — and return a shareable link instantly
 
 ---
 
@@ -119,11 +120,13 @@ Alex checks the policy, confirms validity status, days remaining, and flags imme
 | Component | What It Does | Where It Runs |
 |---|---|---|
 | **Alex (Chainlit Web UI)** | Browser chat interface — no installation | Google Cloud (EU) |
-| **24 Broker Tools** | Client, policy, offer, claims, compliance, web, desktop | Google Cloud (EU) |
+| **30 Broker Tools** | Client, policy, offer, claims, compliance, web, desktop, cloud storage | Google Cloud (EU) |
 | **PostgreSQL Database** | Clients, policies, claims, offers — your data only | Google Cloud (EU) |
 | **Claude Sonnet (Anthropic)** | AI reasoning, language, decision-making | Anthropic API |
 | **Vision AI** | OCR: scanned docs, accident photos, handwritten forms | Google Cloud (EU) |
 | **Local Agent** | Desktop & intranet automation on employee machines | Employee computer |
+| **Google Drive** | Cloud storage for offers, reports, documents | Google Drive (EU) |
+| **SharePoint** | Cloud storage for Microsoft 365 organisations | Microsoft 365 (EU) |
 
 **Data sovereignty:** All client data stays on your GCP instance in the EU. The AI API receives only anonymised, structured tool calls — no client names, policy numbers, or personal identifiers ever leave your server.
 
@@ -138,10 +141,10 @@ We have built a fully functional agentic platform based on our research into ins
 **What is already built — available for the pilot:**
 - Chainlit browser chat interface — no installation for employees
 - Claude Sonnet (Anthropic) as the AI engine
-- 24 broker tools: client management, product search and comparison, offer generation, renewals dashboard, claims intake and tracking, ASF/BaFin compliance reports, Vision AI for document processing, web automation, desktop automation
+- 30 broker tools: client management, product search and comparison, offer generation, renewals dashboard, claims intake and tracking, ASF/BaFin compliance reports, Vision AI for document processing, web automation, desktop automation, Google Drive integration, SharePoint integration
 - Provisional MCP server with synthetic demo data (6 clients, 10 products, 8 policies)
 - Admin panel with role-based access control (RBAC) per employee
-- Local agent for desktop and intranet automation
+- Local agent for desktop and intranet automation (Windows / macOS / Linux)
 - Deployed on Google Cloud Run (Frankfurt, GDPR compliant)
 
 **What happens during the 30 days:**
@@ -184,18 +187,33 @@ After go-live, you pay a monthly fee for the system to keep running, improving, 
 - Compliance template updates when ASF or BaFin guidance changes
 - Employee support — questions answered within 1 business day
 - Monthly usage report: tokens used, tools called, most common workflows
-- New tool additions for simple requests (up to 2 hours/month included)
 - 99.5% uptime SLA
+
+### Monthly Maintenance & Development Allocation
+
+In addition to the base managed service, a **monthly development allocation** is included — a minimum of **12 hours per month** for ongoing work such as:
+
+- New tool development (new automations, integrations, connectors)
+- Workflow adjustments and prompt refinements based on employee feedback
+- UI customisations (branding, language, interface changes)
+- New insurer integrations or product catalogue updates
+- Training sessions for new employees
+- Performance reviews and system optimisations
+
+Hours beyond the 12-hour minimum are available at the agreed hourly rate. Unused hours from a given month are carried forward to the next.
+
+**Monthly fee for the maintenance and development allocation:** TBD
 
 ### Monthly Tiers
 
-| Tier | Employees | Monthly Fee |
+| Tier | Employees | Base Monthly Fee |
 |---|---|---|
 | **Starter** | 2–3 | TBD |
 | **Growth** | 4–6 | TBD |
 | **Scale** | 7–15 | TBD |
 
 **Additional employee beyond tier limit:** TBD.
+**Monthly development allocation (min. 12h):** TBD — same for all tiers.
 
 ---
 
@@ -234,6 +252,7 @@ Costs depend on usage volume and are billed directly by Anthropic. Estimates ava
 - **Vision AI:** document images processed in-memory, not stored beyond the API call
 - **Access control:** each employee has an individual login, sessions are isolated and logged
 - **Backups:** automated daily backups with 30-day retention
+- **Cloud storage:** Google Drive and SharePoint integration is optional — files are uploaded only when explicitly requested by the employee
 
 ### Regulatory Coverage
 
@@ -257,6 +276,9 @@ Compliance templates are updated at no extra charge when regulatory guidance cha
 | Phase 2 — Process mapping, dedicated build, VM migration | TBD |
 | | |
 | **Managed Service (monthly)** | **TBD** |
+| Base service (hosting, monitoring, support, updates) | TBD |
+| Monthly development allocation (minimum 12 hours) | TBD |
+| Additional hours beyond 12h minimum | TBD / hour |
 | **AI API costs (your account)** | **TBD** |
 
 ---
