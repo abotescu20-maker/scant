@@ -90,6 +90,7 @@ def init_admin_tables():
             id          TEXT    PRIMARY KEY,
             user_id     TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
             project_id  INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+            client_id   TEXT    REFERENCES clients(id) ON DELETE SET NULL,
             title       TEXT    NOT NULL DEFAULT 'Conversație nouă',
             created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
             updated_at  TEXT    NOT NULL DEFAULT (datetime('now'))
@@ -110,6 +111,21 @@ def init_admin_tables():
             ON projects(user_id);
     """)
     conn.commit()
+
+    # ── Migration: add client_id column if missing (safe to run on existing DB) ──
+    try:
+        conn.execute("ALTER TABLE conversations ADD COLUMN client_id TEXT REFERENCES clients(id) ON DELETE SET NULL")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # column already exists — that's fine
+
+    # ── Index on client_id (after migration so column is guaranteed to exist) ──
+    try:
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_conversations_user_client ON conversations(user_id, client_id)")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
+
     conn.close()
 
 
@@ -335,6 +351,111 @@ def load_conversation_history(conversation_id: str) -> list[dict]:
     if row is None:
         return []
     return json.loads(row["history_json"])
+
+
+def set_conversation_client(conversation_id: str, client_id: str) -> None:
+    """Associate a conversation with a client (can be called any time during chat)."""
+    conn = get_conn()
+    conn.execute(
+        "UPDATE conversations SET client_id = ?, updated_at = datetime('now') WHERE id = ?",
+        (client_id, conversation_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def list_clients_with_conversations(user_id: str) -> list[dict]:
+    """Return clients that have at least one saved conversation for this user.
+    Each entry: {client_id, client_name, conv_count, last_conv_at}
+    Ordered by most recent conversation first.
+    Also includes an '__unlinked__' entry if there are conversations without a client.
+    """
+    conn = get_conn()
+    # Clients with linked conversations
+    # Note: clients table uses 'name' column (not 'full_name')
+    rows = conn.execute(
+        """
+        SELECT
+            cl.id        AS client_id,
+            cl.name      AS client_name,
+            COUNT(c.id)  AS conv_count,
+            MAX(c.updated_at) AS last_conv_at
+        FROM conversations c
+        JOIN clients cl ON cl.id = c.client_id
+        WHERE c.user_id = ?
+        GROUP BY cl.id
+        ORDER BY last_conv_at DESC
+        LIMIT 40
+        """,
+        (user_id,),
+    ).fetchall()
+
+    result = [dict(r) for r in rows]
+
+    # Conversations without a client
+    unlinked = conn.execute(
+        """
+        SELECT COUNT(*) AS cnt, MAX(updated_at) AS last_at
+        FROM conversations
+        WHERE user_id = ? AND client_id IS NULL
+        """,
+        (user_id,),
+    ).fetchone()
+    conn.close()
+
+    if unlinked and unlinked["cnt"] > 0:
+        result.append({
+            "client_id": "__unlinked__",
+            "client_name": "💬 Temporary / not linked",
+            "conv_count": unlinked["cnt"],
+            "last_conv_at": unlinked["last_at"],
+        })
+
+    return result
+
+
+def list_conversations_for_client(user_id: str, client_id: str | None) -> list[dict]:
+    """Return conversations for a user linked to a specific client (or unlinked).
+    Pass client_id='__unlinked__' to get conversations with no client set.
+    """
+    conn = get_conn()
+    if client_id == "__unlinked__" or client_id is None:
+        rows = conn.execute(
+            """
+            SELECT c.id, c.title, c.created_at, c.updated_at,
+                   COALESCE(cm.message_count, 0) AS message_count
+            FROM conversations c
+            LEFT JOIN conversation_messages cm ON cm.conversation_id = c.id
+            WHERE c.user_id = ? AND c.client_id IS NULL
+            ORDER BY c.updated_at DESC LIMIT 30
+            """,
+            (user_id,),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT c.id, c.title, c.created_at, c.updated_at,
+                   COALESCE(cm.message_count, 0) AS message_count
+            FROM conversations c
+            LEFT JOIN conversation_messages cm ON cm.conversation_id = c.id
+            WHERE c.user_id = ? AND c.client_id = ?
+            ORDER BY c.updated_at DESC LIMIT 30
+            """,
+            (user_id, client_id),
+        ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_all_clients_for_picker() -> list[dict]:
+    """Return all clients — used when creating a new conversation
+    to let the broker pick which client it's about."""
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT id, name, client_type FROM clients ORDER BY name LIMIT 50",
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 # Initialize tables on import

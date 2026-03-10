@@ -29,6 +29,11 @@ try:
         create_conversation, list_conversations,
         update_conversation_title,
         save_conversation_history, load_conversation_history,
+        # Client-linked conversations
+        set_conversation_client,
+        list_clients_with_conversations,
+        list_conversations_for_client,
+        get_all_clients_for_picker,
     )
     from shared.auth import verify_password
     init_admin_tables()
@@ -40,6 +45,7 @@ except Exception:
 _SK_HISTORY    = "history"
 _SK_CONV_ID    = "conversation_id"
 _SK_PROJECT_ID = "project_id"
+_SK_CLIENT_ID  = "linked_client_id"   # client the conversation is about
 _SK_TITLE_SET  = "title_set"
 
 # ── Load .env ──────────────────────────────────────────────────────────────
@@ -1567,44 +1573,91 @@ async def _show_dashboard_welcome(user_id: str | None = None, full_name: str | N
 
 How can I help you today? *(upload a document, ask about clients, renewals, compliance...)*"""
 
-    # Show saved-conversations shortcut only if the user has projects already
+    # Show saved-conversations shortcut only if the user has conversations by client
     actions = []
     if ADMIN_ENABLED and user_id:
-        projects = list_projects(user_id)
-        if projects:
+        clients_with_convs = list_clients_with_conversations(user_id)
+        if clients_with_convs:
             actions.append(cl.Action(
                 name="open_history",
-                label="📁 My saved conversations",
+                label="📁 Conversation history by client",
                 payload={"user_id": user_id},
             ))
 
     await cl.Message(content=welcome, actions=actions, author="Alex 🤖").send()
 
 
-# ── Project / conversation picker helpers ─────────────────────────────────────
+# ── Conversation picker helpers (client-based) ────────────────────────────────
 
-async def _show_project_picker(user_id: str, full_name: str):
-    """Show project selection buttons."""
-    projects = list_projects(user_id) if ADMIN_ENABLED else []
+async def _show_client_history_picker(user_id: str):
+    """Show clients that have saved conversations — user picks a client to browse."""
+    clients = list_clients_with_conversations(user_id) if ADMIN_ENABLED else []
+
+    if not clients:
+        await cl.Message(
+            content="No saved conversations yet. Start chatting — Alex will save conversations automatically when you link them to a client.",
+            author="Alex 🤖",
+        ).send()
+        return
 
     actions = []
-    for p in projects[:20]:
+    for c in clients[:20]:
+        conv_word = "conversation" if c["conv_count"] == 1 else "conversations"
         actions.append(cl.Action(
-            name="select_project",
-            label=f"📁 {p['name']}",
-            payload={"project_id": p["id"], "project_name": p["name"]},
+            name="select_client_history",
+            label=f"👤 {c['client_name']} ({c['conv_count']} {conv_word})",
+            payload={"client_id": c["client_id"], "client_name": c["client_name"]},
         ))
-    actions.append(cl.Action(name="new_project",   label="➕ New project",        payload={}))
-    actions.append(cl.Action(name="no_project",    label="💬 Temporary chat",     payload={}))
 
-    greeting = f"👋 Welcome, **{full_name}**! Select a project or start a temporary chat:"
-    await cl.Message(content=greeting, actions=actions, author="Alex 🤖").send()
+    await cl.Message(
+        content="**Conversation history** — select a client to see past conversations:",
+        actions=actions,
+        author="Alex 🤖",
+    ).send()
+
+
+async def _show_conversation_picker_for_client(user_id: str, client_id: str, client_name: str):
+    """Show conversations for a specific client."""
+    conversations = list_conversations_for_client(user_id, client_id) if ADMIN_ENABLED else []
+
+    actions = []
+    for c in conversations[:20]:
+        msgs = c.get("message_count", 0)
+        msg_word = "message" if msgs == 1 else "messages"
+        updated = c.get("updated_at", "")[:10]  # just the date part
+        label = f"🗨️ {c['title']}"
+        if msgs:
+            label += f"  ({msgs} {msg_word}, {updated})"
+        actions.append(cl.Action(
+            name="resume_conversation",
+            label=label,
+            payload={"conversation_id": c["id"], "title": c["title"]},
+        ))
+
+    actions.append(cl.Action(
+        name="new_conversation_for_client",
+        label=f"➕ New conversation about {client_name}",
+        payload={"client_id": client_id, "client_name": client_name},
+    ))
+
+    name_display = client_name if client_id != "__unlinked__" else "unlinked conversations"
+    await cl.Message(
+        content=f"**{name_display}** — pick a conversation or start a new one:",
+        actions=actions,
+        author="Alex 🤖",
+    ).send()
+
+
+# ── Legacy project picker (still works for backwards compat) ──────────────────
+
+async def _show_project_picker(user_id: str, full_name: str):
+    """Redirect to client-based history picker."""
+    await _show_client_history_picker(user_id)
 
 
 async def _show_conversation_picker(user_id: str, project_id: int, project_name: str):
-    """Show conversation selection buttons for a project."""
+    """Legacy shim — kept for backwards compat."""
     conversations = list_conversations(user_id, project_id) if ADMIN_ENABLED else []
-
     actions = []
     for c in conversations[:20]:
         actions.append(cl.Action(
@@ -1617,9 +1670,8 @@ async def _show_conversation_picker(user_id: str, project_id: int, project_name:
         label="➕ New conversation",
         payload={"project_id": project_id, "project_name": project_name},
     ))
-
     await cl.Message(
-        content=f"**Project: {project_name}** — pick a conversation or start a new one:",
+        content=f"**{project_name}** — pick a conversation or start a new one:",
         actions=actions,
         author="Alex 🤖",
     ).send()
@@ -1655,6 +1707,7 @@ async def on_chat_start():
     cl.user_session.set(_SK_HISTORY,    [])
     cl.user_session.set(_SK_CONV_ID,    None)
     cl.user_session.set(_SK_PROJECT_ID, None)
+    cl.user_session.set(_SK_CLIENT_ID,  None)
     cl.user_session.set(_SK_TITLE_SET,  False)
 
     meta = await _init_session_tools()
@@ -1729,12 +1782,63 @@ async def on_no_project(action: cl.Action):
 
 @cl.action_callback("open_history")
 async def on_open_history(action: cl.Action):
-    """Show project picker — triggered by the '📁 My saved conversations' button."""
+    """Show client-based conversation history."""
     await action.remove()
-    meta      = cl.user_session.get("user_meta", {})
-    user_id   = meta.get("user_id")
-    full_name = meta.get("full_name") or "Broker"
-    await _show_project_picker(user_id, full_name)
+    meta    = cl.user_session.get("user_meta", {})
+    user_id = meta.get("user_id")
+    await _show_client_history_picker(user_id)
+
+
+@cl.action_callback("select_client_history")
+async def on_select_client_history(action: cl.Action):
+    """User picked a client — show their saved conversations."""
+    await action.remove()
+    meta        = cl.user_session.get("user_meta", {})
+    user_id     = meta.get("user_id")
+    client_id   = action.payload["client_id"]
+    client_name = action.payload["client_name"]
+    await _show_conversation_picker_for_client(user_id, client_id, client_name)
+
+
+@cl.action_callback("new_conversation_for_client")
+async def on_new_conversation_for_client(action: cl.Action):
+    """Start a new saved conversation linked to a specific client."""
+    await action.remove()
+    meta       = cl.user_session.get("user_meta", {})
+    user_id    = meta.get("user_id")
+    company_id = meta.get("company_id")
+    client_id  = action.payload["client_id"]
+    client_name = action.payload["client_name"]
+
+    # Create a project for the client if it doesn't exist yet (one project per client)
+    project_id = None
+    if ADMIN_ENABLED and user_id and company_id:
+        # Try to find or create a project named after the client
+        projects = list_projects(user_id)
+        existing = next((p for p in projects if p["name"] == client_name), None)
+        if existing:
+            project_id = existing["id"]
+        else:
+            try:
+                proj = create_project(user_id, company_id, client_name,
+                                      description=f"Conversations about client {client_name}")
+                project_id = proj["id"]
+            except Exception:
+                project_id = None
+
+        conv = create_conversation(user_id, project_id, title=f"New conversation — {client_name}")
+        cl.user_session.set(_SK_CONV_ID,    conv["id"])
+        cl.user_session.set(_SK_PROJECT_ID, project_id)
+        cl.user_session.set(_SK_CLIENT_ID,  client_id)
+        # Link conversation to client immediately
+        set_conversation_client(conv["id"], client_id)
+
+    cl.user_session.set(_SK_HISTORY,   [])
+    cl.user_session.set(_SK_TITLE_SET, False)
+    await cl.Message(
+        content=f"💬 New conversation about **{client_name}**. This will be saved automatically.",
+        author="Alex 🤖",
+    ).send()
 
 
 @cl.action_callback("new_conversation")
@@ -1782,7 +1886,21 @@ async def on_message(message: cl.Message):
     # ── Project / conversation persistence ────────────────────────────────
     conv_id    = cl.user_session.get(_SK_CONV_ID)
     project_id = cl.user_session.get(_SK_PROJECT_ID)
+    client_id  = cl.user_session.get(_SK_CLIENT_ID)
     title_set  = cl.user_session.get(_SK_TITLE_SET, False)
+
+    # Auto-create a conversation on the first message (so nothing is lost)
+    if ADMIN_ENABLED and not conv_id and message.content:
+        meta       = cl.user_session.get("user_meta", {})
+        _user_id   = meta.get("user_id")
+        _company_id = meta.get("company_id")
+        if _user_id and _company_id:
+            try:
+                conv = create_conversation(_user_id, project_id)
+                conv_id = conv["id"]
+                cl.user_session.set(_SK_CONV_ID, conv_id)
+            except Exception:
+                pass  # non-fatal — conversation won't be saved but chat works
 
     # Auto-title from the first user message in this conversation
     if conv_id and not title_set and message.content:
@@ -2173,9 +2291,12 @@ async def on_message(message: cl.Message):
     # ── Send final response ────────────────────────────────────────────────
     cl.user_session.set("history", history)
 
-    # Persist conversation history to DB (only when inside a named project)
-    if conv_id and project_id:
-        save_conversation_history(conv_id, history)
+    # Persist conversation history to DB (every conversation with an ID)
+    if conv_id and ADMIN_ENABLED:
+        try:
+            save_conversation_history(conv_id, history)
+        except Exception:
+            pass  # non-fatal
 
     if final_text and final_text.strip():
         await cl.Message(content=final_text.strip(), author="Alex 🤖").send()
