@@ -55,6 +55,10 @@ from insurance_broker_mcp.tools.analytics_tools import cross_sell_fn
 from insurance_broker_mcp.tools.calculator_tools import calculate_premium_fn
 from insurance_broker_mcp.tools.compliance_check_tools import compliance_check_fn
 from insurance_broker_mcp.tools.web_tools import check_rca_fn as _playwright_check_rca_fn, browse_web_fn as _playwright_browse_web_fn
+from insurance_broker_mcp.tools.drive_tools import (
+    upload_to_drive_fn, list_drive_files_fn, get_drive_link_fn,
+    sp_upload_fn, sp_list_fn, sp_get_link_fn,
+)
 
 # ── REST API endpoints for n8n / external automation ─────────────────────────
 # Added on chainlit.server.app — only /api/* and /health paths, no Chainlit conflicts
@@ -333,7 +337,13 @@ You talk naturally with brokers in whatever language they use (Romanian, English
 - broker_check_rca — verifică RCA în timp real pe portalul ASF/CEDAM via browser headless pe server (NU necesită agent local — funcționează direct din chat)
 - broker_browse_web — accesează orice URL public și extrage text sau tabele (NU necesită agent local)
 - broker_computer_use_status — verifică dacă agentul local e conectat (necesar doar pentru desktop apps sau intranet)
-- broker_run_task — execută task pe calculatorul angajatului (NUMAI pentru desktop apps, aplicații fără internet, rețea internă). Singurul connector valid: `desktop_generic`.
+- broker_run_task — execută task pe calculatorul angajatului. Connectors disponibili: `desktop_generic` (desktop apps, rețea internă), `cedam` (verificare RCA via portal ASF/CEDAM), `web_generic` (orice site web via browser local), `anthropic_computer_use` (computer use avansat cu Claude Vision).
+- broker_drive_upload — încarcă un fișier generat (ofertă PDF, raport XLSX/DOCX) în Google Drive; returnează link partajabil
+- broker_drive_list — listează fișierele din folderul Google Drive al brokerului
+- broker_drive_get_link — obține linkul unui fișier deja încărcat în Google Drive
+- broker_sharepoint_upload — încarcă un fișier în SharePoint (Microsoft 365) via Microsoft Graph; returnează link intern
+- broker_sharepoint_list — listează fișierele din folderul SharePoint configurat
+- broker_sharepoint_get_link — obține linkul unui fișier deja încărcat în SharePoint
 
 ## Când să folosești ce tool:
 - **RCA verificare** → `broker_check_rca` (instant, fără agent)
@@ -341,9 +351,13 @@ You talk naturally with brokers in whatever language they use (Romanian, English
 - **Deschide aplicație + scrie text** (TextEdit, Notes, Word, Excel) → `broker_run_task` cu connector=`desktop_generic`, action=`open_app_and_type`, params={app: "TextEdit", text: "textul exact"} — OBLIGATORIU această acțiune, NU run_task!
 - **Calculator** → `broker_run_task` cu connector=`desktop_generic`, action=`run_task`, params.instruction="deschide Calculator si calculeaza 2+2"
 - **Rețea internă** (intranet, VPN) → `broker_run_task` cu connector=`desktop_generic`, action=`run_task`
-- INTERZIS: connector `anthropic_computer_use` — nu funcționează fără API key separat. ÎNTOTDEAUNA folosește `desktop_generic`.
-- INTERZIS: connector `cedam` sau `web_generic` în broker_run_task.
-- INTERZIS: action `fill_form` pentru sarcini desktop simple.
+- **Verificare RCA via agent local** (dacă `broker_check_rca` nu merge) → `broker_run_task` cu connector=`cedam`, action=`check_rca`, params={plate: "B123ABC"}
+- **Automatizare site web via browser local** → `broker_run_task` cu connector=`web_generic`, action=`run_task`
+- **Computer use avansat cu AI Vision** → `broker_run_task` cu connector=`anthropic_computer_use`, action=`run_task`
+- **Salvează ofertă/raport în Google Drive** → `broker_drive_upload` cu filename=numele fișierului din output/; apoi dă linkul clientului
+- **Salvează în SharePoint (Microsoft 365)** → `broker_sharepoint_upload` — pentru firme pe M365
+- **Listează fișierele salvate** → `broker_drive_list` sau `broker_sharepoint_list`
+- INTERZIS: action `fill_form` pentru sarcini desktop simple — folosește `run_task` cu instrucțiune naturală.
 - INTERZIS: action `run_task` când utilizatorul cere să deschizi o aplicație și să scrii text — folosește `open_app_and_type`.
 
 ## CRITICAL: Always use tools — NEVER answer from memory
@@ -726,6 +740,76 @@ TOOLS = [
             "required": ["connector", "action"],
         },
     },
+    # ── Google Drive tools ──────────────────────────────────────────────────
+    {
+        "name": "broker_drive_upload",
+        "description": "Upload a generated file (offer PDF, report XLSX/DOCX) to the broker Google Drive folder. Returns a shareable link. Use after broker_create_offer or broker_asf_summary to save the result to Drive.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "filename": {"type": "string", "description": "Local filename from output/ directory (e.g. Offer_CLI001_2026-03-10.pdf)"},
+                "drive_filename": {"type": "string", "description": "Optional: name to use in Google Drive (default: same as local)"}
+            },
+            "required": ["filename"]
+        }
+    },
+    {
+        "name": "broker_drive_list",
+        "description": "List files in the broker Google Drive folder. Returns names, sizes, modification dates, and shareable links.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "description": "Max files to return (default 20)"},
+                "name_filter": {"type": "string", "description": "Optional filter by partial filename (e.g. Offer, ASF)"}
+            }
+        }
+    },
+    {
+        "name": "broker_drive_get_link",
+        "description": "Get a shareable Google Drive link for an already-uploaded file by its exact filename.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "filename": {"type": "string", "description": "Exact filename in Google Drive"}
+            },
+            "required": ["filename"]
+        }
+    },
+    # ── SharePoint tools ─────────────────────────────────────────────────────
+    {
+        "name": "broker_sharepoint_upload",
+        "description": "Upload a generated file to the broker SharePoint folder via Microsoft Graph API. Returns a SharePoint link. Use for companies on Microsoft 365.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "filename": {"type": "string", "description": "Local filename from output/ directory"},
+                "sp_filename": {"type": "string", "description": "Optional: name to use in SharePoint"}
+            },
+            "required": ["filename"]
+        }
+    },
+    {
+        "name": "broker_sharepoint_list",
+        "description": "List files in the broker SharePoint folder. Returns names, sizes, modification dates, and SharePoint links.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "description": "Max files to return (default 20)"},
+                "name_filter": {"type": "string", "description": "Optional filter by partial filename"}
+            }
+        }
+    },
+    {
+        "name": "broker_sharepoint_get_link",
+        "description": "Get a SharePoint link for an already-uploaded file by its exact filename.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "filename": {"type": "string", "description": "Exact filename in SharePoint"}
+            },
+            "required": ["filename"]
+        }
+    },
 ]
 
 # ── Tool executor ─────────────────────────────────────────────────────────────
@@ -756,6 +840,14 @@ TOOL_DISPATCH = {
     # Computer use tools — status is sync, run_task is async (handled in agentic loop)
     "broker_computer_use_status": None,  # set after function definition below
     "broker_run_task":            None,  # async — handled in agentic loop
+    # Google Drive tools
+    "broker_drive_upload":        upload_to_drive_fn,
+    "broker_drive_list":          list_drive_files_fn,
+    "broker_drive_get_link":      get_drive_link_fn,
+    # SharePoint tools
+    "broker_sharepoint_upload":   sp_upload_fn,
+    "broker_sharepoint_list":     sp_list_fn,
+    "broker_sharepoint_get_link": sp_get_link_fn,
 }
 
 def execute_tool(tool_name: str, tool_input: dict) -> str:
