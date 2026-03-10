@@ -105,14 +105,32 @@ Google Cloud Run (Frankfurt, EU) — Faza MVP
 | Stocare documente | Acces read la polite scanate | Echipa IT a clientului | Faza 2 |
 | CEDAM (verificare RCA) | Cheie API | Inregistrare ASF | Faza 2 / Faza viitoare |
 
-### Ce Trebuie Furnizat de Client (pentru Faza 2)
+### Ce Trebuie Furnizat de Client
 
-1. **Export CSV/Excel** al bazei de date curente de clienti (nume, telefon, email, adresa, tip client)
-2. **Lista asiguratori parteneri** cu coduri broker si date contact
-3. **Credentiale server email** (SMTP host, port, user, parola)
-4. **Lista angajatilor** care vor folosi Alex (nume, email, rol)
-5. **Logo-ul companiei** pentru oferte branded (PNG/SVG)
-6. **Cerinte specifice** de personalizare sau workflow-uri custom
+**Faza 1 — MVP (inainte de semnarea contractului)**
+
+In Faza 1 lucram exclusiv cu date sintetice. Nu avem nevoie de date reale ale clientilor.
+
+Cerem doar:
+1. **Lista angajatilor** care vor participa la pilot (nume, email, rol) — pentru a crea conturi de test
+2. **Logo-ul companiei** pentru a personaliza interfata demo (PNG/SVG) — optional
+3. **Lista asiguratori parteneri** (nume, tari) — pentru a configura produsele demo relevante
+
+> **GDPR:** In Faza 1 nu procesam date cu caracter personal ale clientilor brokerului. Toate datele sunt sintetice.
+
+---
+
+**Faza 2 — Productie (dupa semnarea contractului si a DPA)**
+
+Dupa ce este semnat contractul de prestari servicii si Data Processing Agreement (DPA):
+
+1. **Export CSV/Excel** cu un esantion reprezentativ de clienti (minim 20-50 inregistrari) pentru validarea importului — **anonim sau pseudoanonimizat** daca este posibil in aceasta etapa
+2. **Export complet** al bazei de clienti dupa validarea procesului de import
+3. **Lista asiguratori parteneri** cu coduri broker si date contact
+4. **Credentiale server email** (SMTP host, port, user, parola)
+5. **Cerinte specifice** de personalizare sau workflow-uri custom
+
+> **GDPR:** Importul datelor reale se face exclusiv dupa semnarea DPA. Noi actionam ca **data processor** — clientul ramane **data controller**. Toate datele sunt stocate pe infrastructura clientului (VM Google Cloud Frankfurt, UE).
 
 ---
 

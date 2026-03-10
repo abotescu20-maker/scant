@@ -158,9 +158,11 @@ After validating the MVP with your internal test team, we build the production s
 - **Process mapping with your team** — structured sessions with each employee, documenting every workflow: client intake, renewals, claims, reporting, communication
 - **Dedicated MCP server** built on the real process map — connected to your actual systems: CRM, policy databases, email, insurer portals
 - **Custom skills per role** — each employee's Alex is configured around their specific tasks and responsibilities
-- **Real data migration** — all your clients, policies, products, and prices imported and configured by your team
+- **Real data migration** — your clients, policies, products, and prices imported and configured by your team, after contract and DPA are signed
 - **Individual training** — each employee trained on their own workflows with real data
 - **Migration to a dedicated VM on Google Cloud** — from Cloud Run (prototyping) to a dedicated, secured VM with persistent database, constant performance, and predictable cost
+
+> **GDPR note:** Phase 1 uses only synthetic demo data — no real client records. Real data migration happens exclusively in Phase 2, after the service contract and Data Processing Agreement (DPA) are signed. We act as data processor; you remain data controller throughout.
 
 **The result:** An AI system that matches your actual operation — not a generic tool adapted to fit.
 

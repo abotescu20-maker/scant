@@ -125,11 +125,13 @@ After MVP validation with the client's internal test team, the system migrates t
 
 **What changes in Phase 2:**
 - MCP server rebuilt on the client's real workflows — not on our assumptions
-- All demo data replaced with real client data (clients, policies, products, real prices)
+- All demo data replaced with real client data (clients, policies, products, real prices) — only after contract and DPA are signed
 - Per-employee skills and permissions configured on their actual roles
 - Email integration (SMTP) active
 - Custom branding (company name and logo in all documents)
 - Full audit log and RBAC active
+
+> **GDPR:** Phase 1 runs exclusively on synthetic data. No real client records are imported or processed before the Data Processing Agreement (DPA) is signed. Real data migration begins only in Phase 2, after both the service contract and DPA are in place.
 
 ---
 
@@ -229,6 +231,12 @@ def release_db(conn):
 ```
 
 ### 3.2 Real Data Migration — Clients
+
+> **GDPR prerequisite:** Real client data is imported only after the Data Processing Agreement (DPA) is signed. During Phase 1 (MVP), all testing is done with synthetic data only.
+
+**Step 0: Validation with sample data (before full import)**
+
+Before importing the full client database, we validate the import process with a small representative sample — 20–50 records, anonymised or pseudonymised where possible. This confirms the data format is correct and the import pipeline works, without exposing the full client database before it is necessary.
 
 **Option A: CSV Import (recommended to start)**
 
@@ -334,18 +342,23 @@ ADMIN_JWT_SECRET=<random 64-character string>
 
 ## 4. Migration Plan: Cloud Run MVP → Production VM
 
-### Week 1–2: Process Mapping (Phase 2 start)
+> **GDPR prerequisite before Phase 2 data import:** Service contract signed + Data Processing Agreement (DPA) signed. Real client data is never imported before these are in place.
+
+### Week 1–2: Process Mapping + Contract (Phase 2 start)
 - [ ] Individual sessions with each employee — map real workflows
 - [ ] Full documentation: client intake, renewals, claims, reporting
 - [ ] Identify required integrations (CRM, email, insurer portals)
-- [ ] Export client data from current system (CRM/Excel/CSV)
+- [ ] Sign service contract + Data Processing Agreement (DPA) ← **required before any data export**
+- [ ] Request sample data export from client (20–50 records, anonymised if possible) — for import validation only
 
 ### Week 3–4: Build Dedicated MCP Server + VM Setup
 - [ ] Provision VM on Google Cloud (europe-west3 Frankfurt)
 - [ ] Install Docker + PostgreSQL on VM
 - [ ] Configure custom domain + SSL certificate (Let's Encrypt)
 - [ ] Build dedicated MCP server based on real process mapping
-- [ ] Import real clients into PostgreSQL
+- [ ] Validate import pipeline with sample data (anonymised)
+- [ ] Full client data export from broker's current system
+- [ ] Import real clients into PostgreSQL (post-DPA)
 - [ ] Configure products per partner insurer (real prices set by broker)
 - [ ] Set up email integration (SMTP)
 - [ ] Create user accounts with appropriate permissions
@@ -437,6 +450,12 @@ Yes. Added to the `products` and `insurers` tables — either manually via SQL o
 
 **Q: Are demo prices real?**
 No. Demo prices are illustrative. In production, the broker configures real prices per partner insurer.
+
+**Q: When do you need our client data?**
+Only in Phase 2, and only after both the service contract and Data Processing Agreement (DPA) are signed. In Phase 1 (MVP), all testing runs on synthetic data — no real client records are needed or requested.
+
+**Q: What data do you need in Phase 1 before signing?**
+Only: the list of employees who will participate in the pilot (name, email, role) and optionally your company logo. No client records, no policy data, no pricing data.
 
 **Q: What is different between Phase 1 and Phase 2?**
 Phase 1 (MVP) is built on our research into typical brokerage workflows — it is the starting point. Phase 2 is built on the client's actual processes, mapped together with their team. The MCP server in Phase 2 is purpose-built for how their brokerage actually works, not adapted from a generic template.

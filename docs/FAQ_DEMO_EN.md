@@ -330,13 +330,19 @@ Alex is an AI assistant built specifically for insurance brokerage operations. I
 It is a custom build, not a generic SaaS product. We built a functional agentic platform based on our research into brokerage workflows — this is Phase 1. In Phase 2, we map your real processes with your team and rebuild the core around how your brokerage actually works. The platform ships with 24 tools covering the full workflow, and every tool is adjustable.
 
 ### Q3: How does Alex protect our client data? (GDPR)
-- Your data is stored exclusively on Google Cloud servers in the EU
+**Phase 1 — MVP:**
+- No real client data is used or required. The MVP runs entirely on synthetic demo data.
+- We do not process any personal data belonging to the brokerage's clients during Phase 1.
+
+**Phase 2 — Production (after contract and DPA are signed):**
+- Your data is stored exclusively on Google Cloud servers in the EU (Frankfurt)
 - Data never leaves the EU
 - GDPR Article 6 compliant — lawful basis for processing documented
-- We sign a Data Processing Agreement (DPA) as data processor
-- You remain the data controller
+- We sign a Data Processing Agreement (DPA) as data processor before any real data is imported
+- You remain the data controller at all times
 - Personal data (CNP, ID numbers) are never displayed in chat responses
 - Full audit log of who accessed what, when
+- Real data migration begins only after DPA signature — never before
 
 ### Q4: Can Alex make mistakes?
 Yes, like any AI. That's why:
@@ -426,14 +432,15 @@ It is optional — Alex works fully without it for all cloud-based tasks.
 **Phase 1 — MVP (now):**
 - Fully functional — all 24 tools operational
 - Running on Google Cloud Run (Frankfurt)
-- Synthetic demo data — realistic but not your real data
-- Goal: test together, validate, adjust
+- Synthetic demo data only — no real client records
+- No personal data processed — GDPR fully protected
+- Goal: test together with your employees, validate, adjust
 
-**Phase 2 — Production (after MVP validation):**
+**Phase 2 — Production (after MVP validation + contract + DPA signed):**
 - Your real processes mapped and built into the system
-- Real data (your clients, products, policies)
+- Real data imported (clients, products, policies) — only after DPA is signed
 - Migrated to a dedicated VM on Google Cloud — persistent, backed up, consistent performance
-- Trained and configured per employee
+- Trained and configured per employee on their real workflows
 
 ---
 
