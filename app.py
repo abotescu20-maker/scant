@@ -59,6 +59,13 @@ from insurance_broker_mcp.tools.drive_tools import (
     upload_to_drive_fn, list_drive_files_fn, get_drive_link_fn,
     sp_upload_fn, sp_list_fn, sp_get_link_fn,
 )
+from insurance_broker_mcp.tools.rag_tools import (
+    broker_search_knowledge_fn,
+    broker_upload_document_fn,
+    broker_analyze_document_fn,
+    broker_kb_status_fn,
+    broker_kb_reindex_fn,
+)
 
 # ── REST API endpoints for n8n / external automation ─────────────────────────
 # Added on chainlit.server.app — only /api/* and /health paths, no Chainlit conflicts
@@ -344,6 +351,11 @@ You talk naturally with brokers in whatever language they use (Romanian, English
 - broker_sharepoint_upload — încarcă un fișier în SharePoint (Microsoft 365) via Microsoft Graph; returnează link intern
 - broker_sharepoint_list — listează fișierele din folderul SharePoint configurat
 - broker_sharepoint_get_link — obține linkul unui fișier deja încărcat în SharePoint
+- broker_search_knowledge — căutare semantică în knowledge base (RAG): produse, ghiduri daune, conformitate, FAQ. Folosește pentru întrebări vagi/naturale despre acoperiri, excluderi, proceduri.
+- broker_upload_document — încarcă PDF/imagine în Files API Anthropic pentru analiză persistentă. Returnează file_id reutilizabil.
+- broker_analyze_document — analizează document cu Claude Vision: polițe scanate, poze daune, facturi, constatare amiabilă, buletin. Acceptă path local SAU file_id.
+- broker_kb_status — starea knowledge base (număr chunks indexate, categorii)
+- broker_kb_reindex — re-indexează knowledge base (după adăugare produse noi sau actualizare docs/)
 
 ## Când să folosești ce tool:
 - **RCA verificare** → `broker_check_rca` (instant, fără agent). Dacă răspunsul conține `captcha_blocked: true` → folosește automat `broker_run_task` cu connector=`cedam` (agent local, browser vizibil, ocolește CAPTCHA).
@@ -357,6 +369,11 @@ You talk naturally with brokers in whatever language they use (Romanian, English
 - **Salvează ofertă/raport în Google Drive** → `broker_drive_upload` cu filename=numele fișierului din output/; apoi dă linkul clientului
 - **Salvează în SharePoint (Microsoft 365)** → `broker_sharepoint_upload` — pentru firme pe M365
 - **Listează fișierele salvate** → `broker_drive_list` sau `broker_sharepoint_list`
+- **Întrebare vagă despre acoperiri/excluderi/proceduri** (ex: "ce acoperă CASCO?", "ce documente trebuie la daune Allianz?") → `broker_search_knowledge` ÎNAINTE de `broker_search_products`
+- **Broker uploadează un PDF/imagine** → `broker_upload_document` → obții file_id → `broker_analyze_document(file_id)` pentru extragere date
+- **Analizează poliță scanată** → `broker_analyze_document(doc_type="policy")` → extrage automat număr poliță, date, primă, acoperire
+- **Analizează poze daune** → `broker_analyze_document(doc_type="claim_photo")` → estimare daune + recomandare log_claim
+- **Procesează constatare amiabilă** → `broker_analyze_document(doc_type="constatare")` → extrage ambii șoferi + descrie dauna
 - INTERZIS: action `fill_form` pentru sarcini desktop simple — folosește `run_task` cu instrucțiune naturală.
 - INTERZIS: action `run_task` când utilizatorul cere să deschizi o aplicație și să scrii text — folosește `open_app_and_type`.
 
@@ -813,7 +830,95 @@ TOOLS = [
             },
             "required": ["filename"]
         },
-        "cache_control": {"type": "ephemeral"},  # Cache system prompt + full tools list
+    },
+    # ── RAG / Knowledge Base tools ─────────────────────────────────────────────
+    {
+        "name": "broker_search_knowledge",
+        "description": (
+            "Semantic search in the broker knowledge base (ChromaDB RAG). "
+            "Use when broker asks vague/natural-language questions about: "
+            "- What does a product cover? What are the exclusions? "
+            "- Which insurer handles CMR claims? "
+            "- What documents are needed for a claim at Allianz? "
+            "- What ASF/BaFin class is this product? "
+            "Returns top matching chunks with relevance scores. "
+            "Categories: 'product', 'claims_guidance', 'compliance', 'faq_doc'."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Natural language question or keyword"},
+                "category": {
+                    "type": "string",
+                    "description": "Optional filter: 'product', 'claims_guidance', 'compliance', 'faq_doc'",
+                },
+                "top_k": {"type": "integer", "description": "Number of results (default 5, max 10)"},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "broker_upload_document",
+        "description": (
+            "Upload a PDF or image to Anthropic Files API for persistent document analysis. "
+            "Returns a file_id that can be reused in broker_analyze_document without re-uploading. "
+            "Use for: scanned policies, damage photos, invoices, constatare amiabilă. "
+            "Supported formats: PDF, PNG, JPG, WEBP, GIF."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "file_path": {"type": "string", "description": "Absolute path to the file"},
+                "doc_type": {
+                    "type": "string",
+                    "description": "Document type: 'policy', 'claim_photo', 'invoice', 'constatare', 'id_card', 'other'",
+                },
+                "description": {"type": "string", "description": "Short description for audit trail"},
+            },
+            "required": ["file_path"],
+        },
+    },
+    {
+        "name": "broker_analyze_document",
+        "description": (
+            "Analyze a document using Claude Vision. Accepts local file path OR file_id from broker_upload_document. "
+            "Auto-extracts by doc_type: "
+            "'policy' → policy number, dates, premium, coverage, exclusions; "
+            "'claim_photo' → damage zones, severity, repair estimate; "
+            "'invoice' → vendor, items, totals; "
+            "'constatare' → both drivers, damage, signatures (handles handwriting in RO/DE/EN); "
+            "'id_card' → name, CNP/ID, address. "
+            "Returns structured markdown extraction."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "file_path_or_file_id": {
+                    "type": "string",
+                    "description": "Local path (e.g. /path/to/policy.pdf) OR file_id starting with 'file_'",
+                },
+                "question": {
+                    "type": "string",
+                    "description": "Specific question (optional — auto-prompt used if empty)",
+                },
+                "doc_type": {
+                    "type": "string",
+                    "description": "'policy', 'claim_photo', 'invoice', 'constatare', 'id_card', 'other'",
+                },
+            },
+            "required": ["file_path_or_file_id"],
+        },
+    },
+    {
+        "name": "broker_kb_status",
+        "description": "Show knowledge base status: total indexed chunks, breakdown by category. Admin/debug use.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "broker_kb_reindex",
+        "description": "Force re-index all knowledge sources (products, compliance maps, docs). Use after adding new products to DB or updating docs/ files.",
+        "input_schema": {"type": "object", "properties": {}},
+        "cache_control": {"type": "ephemeral"},  # Cache system prompt + full tools list (last tool)
     },
 ]
 
@@ -853,6 +958,12 @@ TOOL_DISPATCH = {
     "broker_sharepoint_upload":   sp_upload_fn,
     "broker_sharepoint_list":     sp_list_fn,
     "broker_sharepoint_get_link": sp_get_link_fn,
+    # RAG / Knowledge base tools
+    "broker_search_knowledge":    broker_search_knowledge_fn,
+    "broker_upload_document":     broker_upload_document_fn,
+    "broker_analyze_document":    broker_analyze_document_fn,
+    "broker_kb_status":           broker_kb_status_fn,
+    "broker_kb_reindex":          broker_kb_reindex_fn,
 }
 
 def execute_tool(tool_name: str, tool_input: dict) -> str:
