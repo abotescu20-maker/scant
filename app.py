@@ -1543,15 +1543,17 @@ async def _init_session_tools():
     return {}
 
 
-async def _show_dashboard_welcome():
-    """Send the portfolio dashboard welcome message."""
+async def _show_dashboard_welcome(user_id: str | None = None, full_name: str | None = None):
+    """Send the portfolio dashboard welcome message with optional history shortcut."""
     stats = get_dashboard_stats()
     alerts = ""
     if stats.get("expiring_7", 0) > 0:
         n = stats['expiring_7']
         alerts = f"\n> ⚠️ **{n} {'policy' if n == 1 else 'policies'} expiring within 7 days!** Try: *'Show urgent renewals'*"
 
-    welcome = f"""## 📊 Portfolio Dashboard — {date.today().strftime('%d %B %Y')}
+    greeting_line = f"👋 Hello, **{full_name}**!\n\n" if full_name else ""
+
+    welcome = f"""{greeting_line}## 📊 Portfolio Dashboard — {date.today().strftime('%d %B %Y')}
 
 | Metric | Value |
 |---|---|
@@ -1564,7 +1566,19 @@ async def _show_dashboard_welcome():
 {alerts}
 
 How can I help you today? *(upload a document, ask about clients, renewals, compliance...)*"""
-    await cl.Message(content=welcome, author="Alex 🤖").send()
+
+    # Show saved-conversations shortcut only if the user has projects already
+    actions = []
+    if ADMIN_ENABLED and user_id:
+        projects = list_projects(user_id)
+        if projects:
+            actions.append(cl.Action(
+                name="open_history",
+                label="📁 My saved conversations",
+                payload={"user_id": user_id},
+            ))
+
+    await cl.Message(content=welcome, actions=actions, author="Alex 🤖").send()
 
 
 # ── Project / conversation picker helpers ─────────────────────────────────────
@@ -1647,12 +1661,10 @@ async def on_chat_start():
     user_id   = meta.get("user_id")
     full_name = meta.get("full_name") or "Broker"
 
-    if ADMIN_ENABLED and user_id:
-        # Show project picker
-        await _show_project_picker(user_id, full_name)
-    else:
-        # No auth — straight to chat
-        await _show_dashboard_welcome()
+    # Varianta A — always go straight to chat.
+    # If the user has saved projects, the welcome message shows a
+    # "📁 My saved conversations" button. No blocking picker on startup.
+    await _show_dashboard_welcome(user_id=user_id, full_name=full_name)
 
 
 # ── Action callbacks ──────────────────────────────────────────────────────────
@@ -1704,14 +1716,25 @@ async def on_new_project(action: cl.Action):
 
 @cl.action_callback("no_project")
 async def on_no_project(action: cl.Action):
+    """Legacy — kept for backwards compat with any in-flight sessions."""
     await action.remove()
     cl.user_session.set(_SK_PROJECT_ID, None)
     cl.user_session.set(_SK_CONV_ID, None)
-    await cl.Message(
-        content="💬 Starting a **temporary chat** — messages will not be saved.",
-        author="Alex 🤖",
-    ).send()
-    await _show_dashboard_welcome()
+    meta = cl.user_session.get("user_meta", {})
+    await _show_dashboard_welcome(
+        user_id=meta.get("user_id"),
+        full_name=meta.get("full_name"),
+    )
+
+
+@cl.action_callback("open_history")
+async def on_open_history(action: cl.Action):
+    """Show project picker — triggered by the '📁 My saved conversations' button."""
+    await action.remove()
+    meta      = cl.user_session.get("user_meta", {})
+    user_id   = meta.get("user_id")
+    full_name = meta.get("full_name") or "Broker"
+    await _show_project_picker(user_id, full_name)
 
 
 @cl.action_callback("new_conversation")
@@ -1727,7 +1750,7 @@ async def on_new_conversation(action: cl.Action):
 
     cl.user_session.set(_SK_HISTORY,   [])
     cl.user_session.set(_SK_TITLE_SET, False)
-    await _show_dashboard_welcome()
+    await _show_dashboard_welcome(user_id=user_id, full_name=meta.get("full_name"))
 
 
 @cl.action_callback("resume_conversation")
