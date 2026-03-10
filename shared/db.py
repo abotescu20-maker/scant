@@ -2,8 +2,11 @@
 Shared database layer — SQLite for dev, upgrade to PostgreSQL for prod.
 Handles both admin tables and broker tables in the same DB.
 """
+import json
 import sqlite3
 import os
+import uuid
+from datetime import datetime
 from pathlib import Path
 
 BASE_DIR = Path(__file__).parent.parent
@@ -70,6 +73,41 @@ def init_admin_tables():
             tokens_used INTEGER DEFAULT 0,
             UNIQUE(company_id, user_id, month)
         );
+
+        -- ── Projects & persistent conversations ──────────────────────────────
+        CREATE TABLE IF NOT EXISTS projects (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            company_id  TEXT    NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+            name        TEXT    NOT NULL,
+            description TEXT,
+            created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+            updated_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(user_id, name)
+        );
+
+        CREATE TABLE IF NOT EXISTS conversations (
+            id          TEXT    PRIMARY KEY,
+            user_id     TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            project_id  INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+            title       TEXT    NOT NULL DEFAULT 'Conversație nouă',
+            created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+            updated_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS conversation_messages (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id TEXT    NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+            history_json    TEXT    NOT NULL,
+            message_count   INTEGER NOT NULL DEFAULT 0,
+            updated_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(conversation_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_conversations_user_project
+            ON conversations(user_id, project_id);
+        CREATE INDEX IF NOT EXISTS idx_projects_user
+            ON projects(user_id);
     """)
     conn.commit()
     conn.close()
@@ -178,6 +216,125 @@ def get_dashboard_data() -> dict:
         "audit_today": audit_today,
         "top_tools": [dict(r) for r in top_tools] if top_tools else [],
     }
+
+
+# ── Projects & persistent conversations ──────────────────────────────────────
+
+class _SafeEncoder(json.JSONEncoder):
+    """JSON encoder that handles non-serialisable types gracefully."""
+    def default(self, obj):
+        if isinstance(obj, (datetime,)):
+            return obj.isoformat()
+        return str(obj)
+
+
+def create_project(user_id: str, company_id: str, name: str,
+                   description: str | None = None) -> dict:
+    """Create a new project. Raises sqlite3.IntegrityError on duplicate name."""
+    conn = get_conn()
+    now = datetime.utcnow().isoformat()
+    cur = conn.execute(
+        "INSERT INTO projects (user_id, company_id, name, description, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (user_id, company_id, name.strip()[:100], description, now, now),
+    )
+    conn.commit()
+    project_id = cur.lastrowid
+    conn.close()
+    return {"id": project_id, "user_id": user_id, "company_id": company_id,
+            "name": name, "description": description, "created_at": now}
+
+
+def list_projects(user_id: str) -> list[dict]:
+    """Return all projects for a user, newest first."""
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT id, name, description, created_at, updated_at "
+        "FROM projects WHERE user_id = ? ORDER BY updated_at DESC LIMIT 50",
+        (user_id,),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def create_conversation(user_id: str, project_id: int | None,
+                        conversation_id: str | None = None,
+                        title: str = "Conversație nouă") -> dict:
+    """Create a conversation row. Returns dict with the conversation id."""
+    conn = get_conn()
+    cid = conversation_id or str(uuid.uuid4())
+    now = datetime.utcnow().isoformat()
+    conn.execute(
+        "INSERT INTO conversations (id, user_id, project_id, title, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (cid, user_id, project_id, title, now, now),
+    )
+    conn.commit()
+    conn.close()
+    return {"id": cid, "user_id": user_id, "project_id": project_id, "title": title}
+
+
+def list_conversations(user_id: str, project_id: int | None) -> list[dict]:
+    """Return conversations for a user in a given project, newest first."""
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT id, title, created_at, updated_at "
+        "FROM conversations WHERE user_id = ? AND project_id IS ? "
+        "ORDER BY updated_at DESC LIMIT 50",
+        (user_id, project_id),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def update_conversation_title(conversation_id: str, title: str) -> None:
+    """Update conversation title (called after first user message)."""
+    conn = get_conn()
+    conn.execute(
+        "UPDATE conversations SET title = ?, updated_at = datetime('now') WHERE id = ?",
+        (title[:80], conversation_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def save_conversation_history(conversation_id: str, history: list[dict]) -> None:
+    """Upsert the full Anthropic message history for a conversation.
+
+    history is the list stored in cl.user_session["history"]:
+        [{"role": "user"|"assistant", "content": str | list[dict]}, ...]
+    """
+    conn = get_conn()
+    history_json = json.dumps(history, cls=_SafeEncoder, ensure_ascii=False)
+    conn.execute(
+        """INSERT INTO conversation_messages (conversation_id, history_json, message_count, updated_at)
+           VALUES (?, ?, ?, datetime('now'))
+           ON CONFLICT(conversation_id) DO UPDATE SET
+               history_json  = excluded.history_json,
+               message_count = excluded.message_count,
+               updated_at    = excluded.updated_at""",
+        (conversation_id, history_json, len(history)),
+    )
+    conn.execute(
+        "UPDATE conversations SET updated_at = datetime('now') WHERE id = ?",
+        (conversation_id,),
+    )
+    conn.commit()
+    conn.close()
+
+
+def load_conversation_history(conversation_id: str) -> list[dict]:
+    """Load and deserialize the full Anthropic message history.
+    Returns an empty list if no history has been saved yet."""
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT history_json FROM conversation_messages WHERE conversation_id = ?",
+        (conversation_id,),
+    ).fetchone()
+    conn.close()
+    if row is None:
+        return []
+    return json.loads(row["history_json"])
 
 
 # Initialize tables on import

@@ -23,13 +23,24 @@ import base64
 try:
     from shared.db import (
         get_user_by_email, get_user_tools, log_audit, record_token_usage,
-        init_admin_tables
+        init_admin_tables,
+        # Projects & persistent conversations
+        create_project, list_projects,
+        create_conversation, list_conversations,
+        update_conversation_title,
+        save_conversation_history, load_conversation_history,
     )
     from shared.auth import verify_password
     init_admin_tables()
     ADMIN_ENABLED = True
 except Exception:
     ADMIN_ENABLED = False
+
+# ── Session key constants ──────────────────────────────────────────────────────
+_SK_HISTORY    = "history"
+_SK_CONV_ID    = "conversation_id"
+_SK_PROJECT_ID = "project_id"
+_SK_TITLE_SET  = "title_set"
 
 # ── Load .env ──────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).parent
@@ -1514,12 +1525,10 @@ if os.environ.get("CHAINLIT_AUTH_SECRET") and ADMIN_ENABLED:
         )
 
 
-# ── Chainlit lifecycle ────────────────────────────────────────────────────────
-@cl.on_chat_start
-async def on_chat_start():
-    cl.user_session.set("history", [])
+# ── Helper: load tools + show dashboard welcome ───────────────────────────────
 
-    # Load tool permissions for this user
+async def _init_session_tools():
+    """Load allowed_tools and user_meta into session. Returns user metadata dict."""
     if ADMIN_ENABLED:
         app_user = cl.user_session.get("user")
         if app_user:
@@ -1527,20 +1536,22 @@ async def on_chat_start():
             allowed = get_user_tools(meta.get("user_id"), meta.get("role"))
             cl.user_session.set("allowed_tools", allowed)
             cl.user_session.set("user_meta", meta)
+            return meta
         else:
-            # No auth configured — all tools allowed
             cl.user_session.set("allowed_tools", None)
             cl.user_session.set("user_meta", {})
-    stats = get_dashboard_stats()
+    return {}
 
+
+async def _show_dashboard_welcome():
+    """Send the portfolio dashboard welcome message."""
+    stats = get_dashboard_stats()
     alerts = ""
     if stats.get("expiring_7", 0) > 0:
         n = stats['expiring_7']
         alerts = f"\n> ⚠️ **{n} {'policy' if n == 1 else 'policies'} expiring within 7 days!** Try: *'Show urgent renewals'*"
 
-    welcome = f"""# 👋 Hello! I'm **Alex**, your Insurance Broker AI.
-
-## 📊 Portfolio Dashboard — {date.today().strftime('%d %B %Y')}
+    welcome = f"""## 📊 Portfolio Dashboard — {date.today().strftime('%d %B %Y')}
 
 | Metric | Value |
 |---|---|
@@ -1552,37 +1563,210 @@ async def on_chat_start():
 | 📄 Offers Generated | **{stats.get('offers_sent', 0)}** |
 {alerts}
 
----
-
-## 💬 What can I help you with?
-
-**📎 Upload Documents** *(NEW!)*
-- Drop a PDF policy scan, accident photo, or ID card — I'll extract the data automatically
-
-**Clients & Policies**
-- *"Find client Andrei Ionescu"* · *"Show all active policies"*
-
-**Offers & Comparison**
-- *"Search RCA products and generate an offer for CLI001"*
-- After offer: *"Send it to the client by email"*
-
-**Renewals**
-- *"Show policies expiring in the next 30 days"*
-
-**Claims**
-- *"Log a claim for Maria Popescu — parking accident today"*
-
-**Compliance Reports** *(export as PDF/XLSX/DOCX)*
-- *"Generate ASF report for February 2026"*
-- *"Generate BaFin report for February 2026"*
-"""
+How can I help you today? *(upload a document, ask about clients, renewals, compliance...)*"""
     await cl.Message(content=welcome, author="Alex 🤖").send()
+
+
+# ── Project / conversation picker helpers ─────────────────────────────────────
+
+async def _show_project_picker(user_id: str, full_name: str):
+    """Show project selection buttons."""
+    projects = list_projects(user_id) if ADMIN_ENABLED else []
+
+    actions = []
+    for p in projects[:20]:
+        actions.append(cl.Action(
+            name="select_project",
+            label=f"📁 {p['name']}",
+            payload={"project_id": p["id"], "project_name": p["name"]},
+        ))
+    actions.append(cl.Action(name="new_project",   label="➕ New project",        payload={}))
+    actions.append(cl.Action(name="no_project",    label="💬 Temporary chat",     payload={}))
+
+    greeting = f"👋 Welcome, **{full_name}**! Select a project or start a temporary chat:"
+    await cl.Message(content=greeting, actions=actions, author="Alex 🤖").send()
+
+
+async def _show_conversation_picker(user_id: str, project_id: int, project_name: str):
+    """Show conversation selection buttons for a project."""
+    conversations = list_conversations(user_id, project_id) if ADMIN_ENABLED else []
+
+    actions = []
+    for c in conversations[:20]:
+        actions.append(cl.Action(
+            name="resume_conversation",
+            label=f"🗨️ {c['title']}",
+            payload={"conversation_id": c["id"], "title": c["title"]},
+        ))
+    actions.append(cl.Action(
+        name="new_conversation",
+        label="➕ New conversation",
+        payload={"project_id": project_id, "project_name": project_name},
+    ))
+
+    await cl.Message(
+        content=f"**Project: {project_name}** — pick a conversation or start a new one:",
+        actions=actions,
+        author="Alex 🤖",
+    ).send()
+
+
+async def _render_history_to_ui(history: list[dict]):
+    """Re-display stored messages in the UI. Only text blocks shown (no raw tool JSON)."""
+    for msg in history:
+        role    = msg.get("role", "user")
+        content = msg.get("content", "")
+
+        if isinstance(content, list):
+            # Multi-block assistant message — show only text parts
+            text = "\n".join(
+                block["text"]
+                for block in content
+                if isinstance(block, dict) and block.get("type") == "text" and block.get("text")
+            )
+        else:
+            text = str(content)
+
+        if not text.strip():
+            continue
+
+        author = "You" if role == "user" else "Alex 🤖"
+        await cl.Message(content=text, author=author).send()
+
+
+# ── Chainlit lifecycle ────────────────────────────────────────────────────────
+@cl.on_chat_start
+async def on_chat_start():
+    # Initialise session state
+    cl.user_session.set(_SK_HISTORY,    [])
+    cl.user_session.set(_SK_CONV_ID,    None)
+    cl.user_session.set(_SK_PROJECT_ID, None)
+    cl.user_session.set(_SK_TITLE_SET,  False)
+
+    meta = await _init_session_tools()
+    user_id   = meta.get("user_id")
+    full_name = meta.get("full_name") or "Broker"
+
+    if ADMIN_ENABLED and user_id:
+        # Show project picker
+        await _show_project_picker(user_id, full_name)
+    else:
+        # No auth — straight to chat
+        await _show_dashboard_welcome()
+
+
+# ── Action callbacks ──────────────────────────────────────────────────────────
+
+@cl.action_callback("select_project")
+async def on_select_project(action: cl.Action):
+    await action.remove()
+    meta       = cl.user_session.get("user_meta", {})
+    user_id    = meta.get("user_id")
+    project_id   = action.payload["project_id"]
+    project_name = action.payload["project_name"]
+
+    cl.user_session.set(_SK_PROJECT_ID, project_id)
+    await _show_conversation_picker(user_id, project_id, project_name)
+
+
+@cl.action_callback("new_project")
+async def on_new_project(action: cl.Action):
+    await action.remove()
+    meta       = cl.user_session.get("user_meta", {})
+    user_id    = meta.get("user_id")
+    company_id = meta.get("company_id")
+
+    res = await cl.AskUserMessage(
+        content="Enter a name for your new project:",
+        timeout=120,
+    ).send()
+    if not res:
+        await cl.Message(content="Project creation cancelled.", author="Alex 🤖").send()
+        return
+
+    name = res.get("output", "").strip()[:100]
+    if not name:
+        await cl.Message(content="Project name cannot be empty.", author="Alex 🤖").send()
+        return
+
+    try:
+        project = create_project(user_id, company_id, name)
+    except Exception:
+        await cl.Message(
+            content=f'A project named **"{name}"** already exists. Please choose a different name.',
+            author="Alex 🤖",
+        ).send()
+        return
+
+    cl.user_session.set(_SK_PROJECT_ID, project["id"])
+    await _show_conversation_picker(user_id, project["id"], name)
+
+
+@cl.action_callback("no_project")
+async def on_no_project(action: cl.Action):
+    await action.remove()
+    cl.user_session.set(_SK_PROJECT_ID, None)
+    cl.user_session.set(_SK_CONV_ID, None)
+    await cl.Message(
+        content="💬 Starting a **temporary chat** — messages will not be saved.",
+        author="Alex 🤖",
+    ).send()
+    await _show_dashboard_welcome()
+
+
+@cl.action_callback("new_conversation")
+async def on_new_conversation(action: cl.Action):
+    await action.remove()
+    meta       = cl.user_session.get("user_meta", {})
+    user_id    = meta.get("user_id")
+    project_id = cl.user_session.get(_SK_PROJECT_ID)
+
+    if ADMIN_ENABLED and user_id and project_id:
+        conv = create_conversation(user_id, project_id)
+        cl.user_session.set(_SK_CONV_ID, conv["id"])
+
+    cl.user_session.set(_SK_HISTORY,   [])
+    cl.user_session.set(_SK_TITLE_SET, False)
+    await _show_dashboard_welcome()
+
+
+@cl.action_callback("resume_conversation")
+async def on_resume_conversation(action: cl.Action):
+    await action.remove()
+    conv_id = action.payload["conversation_id"]
+    title   = action.payload["title"]
+
+    history = load_conversation_history(conv_id) if ADMIN_ENABLED else []
+
+    cl.user_session.set(_SK_CONV_ID,   conv_id)
+    cl.user_session.set(_SK_HISTORY,   history)
+    cl.user_session.set(_SK_TITLE_SET, True)
+
+    if history:
+        await _render_history_to_ui(history)
+
+    await cl.Message(
+        content=f'📂 Resumed **"{title}"** — {len(history)//2} message(s). Continue below.',
+        author="Alex 🤖",
+    ).send()
 
 
 @cl.on_message
 async def on_message(message: cl.Message):
     """Handle incoming broker message — full agentic loop with Claude."""
     history = cl.user_session.get("history", [])
+
+    # ── Project / conversation persistence ────────────────────────────────
+    conv_id    = cl.user_session.get(_SK_CONV_ID)
+    project_id = cl.user_session.get(_SK_PROJECT_ID)
+    title_set  = cl.user_session.get(_SK_TITLE_SET, False)
+
+    # Auto-title from the first user message in this conversation
+    if conv_id and not title_set and message.content:
+        _title = message.content[:50].strip().replace("\n", " ") or "Conversație"
+        update_conversation_title(conv_id, _title)
+        cl.user_session.set(_SK_TITLE_SET, True)
+    # ─────────────────────────────────────────────────────────────────────
 
     # Build user message content (text + any uploaded files)
     user_content = []
@@ -1965,6 +2149,10 @@ async def on_message(message: cl.Message):
 
     # ── Send final response ────────────────────────────────────────────────
     cl.user_session.set("history", history)
+
+    # Persist conversation history to DB (only when inside a named project)
+    if conv_id and project_id:
+        save_conversation_history(conv_id, history)
 
     if final_text and final_text.strip():
         await cl.Message(content=final_text.strip(), author="Alex 🤖").send()
