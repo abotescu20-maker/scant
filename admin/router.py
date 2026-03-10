@@ -25,6 +25,7 @@ ALL_TOOLS = [
     "broker_get_renewals_due", "broker_list_policies",
     "broker_log_claim", "broker_get_claim_status",
     "broker_asf_summary", "broker_bafin_summary", "broker_check_rca_validity",
+    "broker_cross_sell", "broker_calculate_premium", "broker_compliance_check",
 ]
 
 

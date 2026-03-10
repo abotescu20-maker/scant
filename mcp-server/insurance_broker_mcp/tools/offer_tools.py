@@ -18,77 +18,96 @@ def get_db():
 
 
 def generate_text_offer(client: dict, products: list, offer_id: str, valid_until: str, notes: str, language: str) -> str:
-    """Generate a formatted text offer (fallback when weasyprint not available)."""
+    """Generate a clean markdown offer for display in chat."""
     lang = language.lower()
 
     if lang == "de":
-        header = "VERSICHERUNGSANGEBOT"
+        header = "Versicherungsangebot"
         dear = f"Sehr geehrte/r {client['name']},"
-        intro = "Hiermit unterbreiten wir Ihnen folgendes Versicherungsangebot:"
+        intro = "Wir unterbreiten Ihnen folgende Versicherungsoptionen:"
         footer = "Dieses Angebot ist unverbindlich und vorbehaltlich der Risikoprüfung."
         valid_label = "Gültig bis"
         offer_label = "Angebots-Nr."
+        premium_label = "Jahresprämie"
+        deduct_label = "Selbstbehalt"
+        cover_label = "Deckung"
+        rec_label = "Empfehlung"
     elif lang == "ro":
-        header = "OFERTĂ DE ASIGURARE"
+        header = "Ofertă de Asigurare"
         dear = f"Stimate/ă {client['name']},"
         intro = "Vă prezentăm următoarele opțiuni de asigurare:"
         footer = "Oferta este orientativă și supusă analizei de risc finale."
         valid_label = "Valabilă până la"
         offer_label = "Nr. Ofertă"
+        premium_label = "Primă anuală"
+        deduct_label = "Franciză"
+        cover_label = "Acoperire"
+        rec_label = "Recomandare"
     else:
-        header = "INSURANCE OFFER"
+        header = "Insurance Offer"
         dear = f"Dear {client['name']},"
-        intro = "We are pleased to present you with the following insurance options:"
+        intro = "We are pleased to present the following insurance options:"
         footer = "This offer is indicative and subject to final risk assessment."
         valid_label = "Valid until"
         offer_label = "Offer No."
+        premium_label = "Annual Premium"
+        deduct_label = "Deductible"
+        cover_label = "Coverage"
+        rec_label = "Best Value"
 
     lines = [
-        "=" * 65,
-        f"  {header}",
-        "=" * 65,
-        f"  {offer_label}: {offer_id}",
-        f"  {valid_label}: {valid_until}",
-        f"  Date: {date.today().isoformat()}",
-        "=" * 65,
+        f"# {header}",
         "",
-        f"  {dear}",
-        f"  {intro}",
+        f"**{offer_label}:** {offer_id} &nbsp;&nbsp; **{valid_label}:** {valid_until} &nbsp;&nbsp; **Data:** {date.today().strftime('%d %b %Y')}",
+        "",
+        f"---",
+        "",
+        f"{dear}",
+        f"{intro}",
         "",
     ]
 
+    # Product comparison table
+    lines += [
+        f"| # | Asigurător | Tip | {premium_label} | {deduct_label} | Rating |",
+        "|---|---|---|---|---|---|",
+    ]
+    for i, p in enumerate(products, 1):
+        premium_str = f"**{p['annual_premium']:,.0f} {p['currency']}**"
+        deduct_str = str(p['deductible']) if p['deductible'] else "—"
+        lines.append(f"| {i} | {p['insurer_name']} | {p['product_type']} | {premium_str} | {deduct_str} | {p['rating']} ⭐ |")
+
+    lines.append("")
+
+    # Individual product details
     for i, p in enumerate(products, 1):
         lines += [
-            f"  {'─'*60}",
-            f"  OPTION {i}: {p['insurer_name']} — {p['product_type']}",
-            f"  {'─'*60}",
-            f"  Annual Premium:  {p['annual_premium']:>10,.2f} {p['currency']}",
-            f"  Deductible:      {p['deductible'] or 'N/A':>10}",
-            f"  Rating:          {p['rating']:>10}",
-            "  Insured Sum:     " + (f"{p['insured_sum']:,.0f} {p['currency']}" if p['insured_sum'] else "N/A"),
-            "",
-            f"  Coverage: {p['coverage_summary']}",
-            "",
+            f"### Opțiunea {i}: {p['insurer_name']} — {p['product_type']}",
+            f"- **{premium_label}:** {p['annual_premium']:,.2f} {p['currency']}",
+            f"- **{cover_label}:** {p['coverage_summary']}",
         ]
+        if p.get('insured_sum'):
+            lines.append(f"- **Sumă asigurată:** {p['insured_sum']:,.0f} {p['currency']}")
+        if p.get('deductible'):
+            lines.append(f"- **{deduct_label}:** {p['deductible']}")
+        lines.append("")
 
+    # Best value highlight
     if len(products) > 1:
         best = min(products, key=lambda x: x['annual_premium'])
         lines += [
-            "  " + "=" * 60,
-            f"  BEST VALUE: {best['insurer_name']} at {best['annual_premium']:,.2f} {best['currency']}/year",
-            "  " + "=" * 60,
+            f"> 💡 **{rec_label}:** {best['insurer_name']} — {best['annual_premium']:,.2f} {best['currency']}/an",
             "",
         ]
 
     if notes:
-        lines += [f"  Note: {notes}", ""]
+        lines += [f"> 📝 **Notă:** {notes}", ""]
 
     lines += [
-        f"  {footer}",
+        "---",
+        f"*{footer}*",
         "",
-        "  Demo Broker SRL | License: RBK-DEMO-001 | ASF Regulated",
-        "  Contact: demo@broker.com | +40 21 000 0000",
-        "=" * 65,
+        "*Demo Broker SRL · Licență ASF: RBK-DEMO-001 · demo@broker.com · +40 21 000 0000*",
     ]
 
     return "\n".join(lines)

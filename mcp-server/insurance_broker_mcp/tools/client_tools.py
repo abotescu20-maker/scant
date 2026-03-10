@@ -105,6 +105,82 @@ def get_client_fn(client_id: str) -> str:
         conn.close()
 
 
+def update_client_fn(
+    client_id: str,
+    name: Optional[str] = None,
+    phone: Optional[str] = None,
+    email: Optional[str] = None,
+    address: Optional[str] = None,
+    id_number: Optional[str] = None,
+    country: Optional[str] = None,
+    client_type: Optional[str] = None,
+    source: Optional[str] = None,
+    notes: Optional[str] = None
+) -> str:
+    conn = get_db()
+    try:
+        client = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
+        if not client:
+            return f"❌ Client '{client_id}' not found."
+
+        fields = []
+        values = []
+        for col, val in [
+            ("name", name), ("phone", phone), ("email", email),
+            ("address", address), ("id_number", id_number),
+            ("country", country), ("client_type", client_type),
+            ("source", source), ("notes", notes),
+        ]:
+            if val is not None:
+                fields.append(f"{col} = ?")
+                values.append(val)
+
+        if not fields:
+            return "⚠️ No fields to update provided."
+
+        values.append(client_id)
+        conn.execute(f"UPDATE clients SET {', '.join(fields)} WHERE id = ?", values)
+        conn.commit()
+        return (
+            f"✅ **Client updated successfully**\n"
+            f"- **ID:** {client_id}\n"
+            + (f"- **Name:** {name}\n" if name else "")
+            + (f"- **Phone:** {phone}\n" if phone else "")
+            + (f"- **Email:** {email}\n" if email else "")
+        )
+    finally:
+        conn.close()
+
+
+def delete_client_fn(client_id: str) -> str:
+    conn = get_db()
+    try:
+        client = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
+        if not client:
+            return f"❌ Client '{client_id}' not found."
+
+        # Check for active policies — don't delete if they exist
+        active = conn.execute(
+            "SELECT COUNT(*) as cnt FROM policies WHERE client_id = ? AND status = 'active'",
+            (client_id,)
+        ).fetchone()["cnt"]
+        if active > 0:
+            return (
+                f"⚠️ Cannot delete client **{client['name']}** — they have **{active} active "
+                f"{'policy' if active == 1 else 'policies'}**. "
+                f"Cancel or expire the policies first, then delete the client."
+            )
+
+        # Delete related records first (cascade)
+        conn.execute("DELETE FROM claims WHERE client_id = ?", (client_id,))
+        conn.execute("DELETE FROM policies WHERE client_id = ?", (client_id,))
+        conn.execute("DELETE FROM clients WHERE id = ?", (client_id,))
+        conn.commit()
+        return f"🗑️ Client **{client['name']}** (ID: {client_id}) deleted successfully."
+    finally:
+        conn.close()
+
+
 def create_client_fn(
     name: str,
     phone: str,
@@ -164,3 +240,20 @@ def register_client_tools(mcp: FastMCP):
     ) -> str:
         return create_client_fn(name, phone, email, address, id_number,
                                 country, client_type, source, notes)
+
+    @mcp.tool(name="broker_update_client",
+              description="Update an existing client's details. Only the fields provided will be changed. Use client_id from broker_search_clients.")
+    def broker_update_client(
+        client_id: str, name: Optional[str] = None, phone: Optional[str] = None,
+        email: Optional[str] = None, address: Optional[str] = None,
+        id_number: Optional[str] = None, country: Optional[str] = None,
+        client_type: Optional[str] = None, source: Optional[str] = None,
+        notes: Optional[str] = None
+    ) -> str:
+        return update_client_fn(client_id, name, phone, email, address,
+                                id_number, country, client_type, source, notes)
+
+    @mcp.tool(name="broker_delete_client",
+              description="Delete a client and their history. Will refuse if the client has active policies. Use broker_search_clients to get client_id first.")
+    def broker_delete_client(client_id: str) -> str:
+        return delete_client_fn(client_id)

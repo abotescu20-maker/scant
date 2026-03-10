@@ -39,6 +39,11 @@ You have access to the `insurance_broker_mcp` server with these tools — always
 - `broker_asf_summary` — Romanian ASF monthly report
 - `broker_bafin_summary` — German BaFin monthly report
 - `broker_check_rca_validity` — verify mandatory RCA status
+- `broker_compliance_check` — full client file audit (score 0-100, missing docs, gaps)
+
+### Analytics & Calculators
+- `broker_cross_sell` — analyze portfolio gaps, suggest missing products per bundle
+- `broker_calculate_premium` — estimate RCA/CASCO premium from risk factors
 
 ## Standard Workflows
 

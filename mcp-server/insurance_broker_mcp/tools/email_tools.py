@@ -22,7 +22,10 @@ DB_PATH = Path(__file__).parent.parent.parent / "insurance_broker.db"
 OUTPUT_DIR = Path(__file__).parent.parent.parent / "output"
 
 SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.gmail.com")
-SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
+try:
+    SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
+except ValueError:
+    SMTP_PORT = 587
 SMTP_USER = os.environ.get("SMTP_USER", "")
 SMTP_PASS = os.environ.get("SMTP_PASS", "")
 SMTP_FROM_NAME = os.environ.get("SMTP_FROM_NAME", "Alex Insurance Broker")
