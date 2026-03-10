@@ -14,7 +14,7 @@ We propose deploying **Alex**, a fully custom AI agent system built specifically
 
 Alex is already built and running. A live demo is available today.
 
-This proposal covers everything: the initial build and cloud setup, employee training, and ongoing managed operation. You pay once to get started, then a predictable monthly fee for the system to keep running and improving.
+This is not an off-the-shelf product. We built a functional agentic platform based on our research into insurance brokerage workflows, and we deploy it as a starting point — then shape it together with your team into the exact tool your employees need.
 
 | | |
 |---|---|
@@ -123,60 +123,46 @@ Alex checks the policy, confirms validity status, days remaining, and flags imme
 | **PostgreSQL Database** | Clients, policies, claims, offers — your data only | Google Cloud (EU) |
 | **Claude Sonnet (Anthropic)** | AI reasoning, language, decision-making | Anthropic API |
 | **Vision AI** | OCR: scanned docs, accident photos, handwritten forms | Google Cloud (EU) |
-| **Google Cloud Run** | Serverless hosting — scales automatically | europe-west3 (Frankfurt) |
 | **Local Agent** | Desktop & intranet automation on employee machines | Employee computer |
 
-**Data sovereignty:** All client data stays on your GCP instance in Frankfurt. The AI API receives only anonymised, structured tool calls — no client names, policy numbers, or personal identifiers ever leave your server.
+**Data sovereignty:** All client data stays on your GCP instance in the EU. The AI API receives only anonymised, structured tool calls — no client names, policy numbers, or personal identifiers ever leave your server.
 
 ---
 
-## Implementation: What You Are Paying For
+## How We Work Together — Two Phases
 
-### Phase 1 — Process Mapping and Discovery (Weeks 1–2) · TBD
+### Phase 1 — MVP: Agentic Platform Already Running
 
-- One-on-one structured interviews with each team member
-- Full documentation of current workflows: client intake, renewals, claims, reporting
-- Gap analysis: where time is being lost, where compliance risk exists
-- Delivery: workflow map document + integration specification
-- Output used to customise every tool, prompt, and automation in Phase 2
+We have built a fully functional agentic platform based on our research into insurance brokerage workflows. This is the starting point — not the final product.
 
-### Phase 2 — Cloud Infrastructure and Build (Weeks 2–4) · TBD
+**What is already built and running today:**
+- Chainlit browser chat interface — no installation for employees
+- Claude Sonnet (Anthropic) as the AI engine
+- 24 broker tools: client management, product search and comparison, offer generation, renewals dashboard, claims intake and tracking, ASF/BaFin compliance reports, Vision AI for document processing, web automation, desktop automation
+- Provisional MCP server with synthetic demo data (6 clients, 10 products, 8 policies)
+- Admin panel with role-based access control (RBAC) per employee
+- Local agent for desktop and intranet automation
+- Deployed on Google Cloud Run (Frankfurt, GDPR compliant)
 
-- GCP project setup: Cloud Run, Cloud SQL (PostgreSQL), Secret Manager, IAM
-- Custom domain configuration + SSL certificate
-- Full deployment with all 24 broker tools:
-  - Client management (search, create, update, delete, full profile)
-  - Product search and comparison (all partner insurers)
-  - Offer generation (EN/DE/RO, your branding)
-  - Renewals dashboard (urgency-sorted, draft letters)
-  - Claims intake and status tracking (insurer-specific guidance)
-  - Vision AI OCR pipeline (scanned policies, accident photos, handwritten forms)
-  - ASF monthly report generator (Law 236/2018)
-  - BaFin monthly report generator (VVG + IDD)
-  - RCA validity checker
-  - Web automation (browser-based tasks)
-  - Desktop automation (local apps, intranet)
-- Data migration: import your existing client and policy data
-- Integration testing with your real documents and workflows
+**The purpose of Phase 1:**
+We test and build together with your employees. They validate what is useful, what is missing, and what needs to be adjusted. The MVP is the foundation — not the ceiling.
 
-### Phase 3 — Customisation, Branding, and Employee Training (Weeks 5–6) · TBD
+---
 
-- Alex customised with your brokerage name, partner insurers, commission structures
-- Role-specific configuration per employee (claims handler, client broker, compliance)
-- Live training sessions — each employee, in their preferred language (EN/DE/RO)
-- Usage guides delivered in English and German
-- Feedback round: adjustments based on real employee use
+### Phase 2 — Full Implementation: Built Around Your Real Workflows
 
-### Phase 4 — Go-Live, Handover, and First Month Support (Week 7) · TBD
+After validating the MVP with your internal test team, we build the production system from the ground up — on your real processes, not on our assumptions.
 
-- Production go-live on GCP
-- Monitoring setup: uptime alerts, error notifications, usage dashboard
-- 30-day intensive support period: priority response, immediate fixes
-- Runbook delivered: how to restart, update, add a new employee
+**What Phase 2 includes:**
 
-**Total one-time implementation fee: TBD**
+- **Process mapping with your team** — structured sessions with each employee, documenting every workflow: client intake, renewals, claims, reporting, communication
+- **Dedicated MCP server** built on the real process map — connected to your actual systems: CRM, policy databases, email, insurer portals
+- **Custom skills per role** — each employee's Alex is configured around their specific tasks and responsibilities
+- **Real data migration** — all your clients, policies, products, and prices imported and configured by your team
+- **Individual training** — each employee trained on their own workflows with real data
+- **Migration to a dedicated VM on Google Cloud** — from Cloud Run (prototyping) to a dedicated, secured VM with persistent database, constant performance, and predictable cost
 
-*Payments: 50% on contract signing, 50% on go-live.*
+**The result:** An AI system that matches your actual operation — not a generic tool adapted to fit.
 
 ---
 
@@ -186,7 +172,7 @@ After go-live, you pay a monthly fee for the system to keep running, improving, 
 
 ### What Is Included Every Month
 
-- GCP hosting management (Cloud Run, Cloud SQL, monitoring, backups)
+- Cloud hosting management (VM, database, monitoring, backups)
 - All software updates — new features, bug fixes, dependency patches
 - Compliance template updates when ASF or BaFin guidance changes
 - Employee support — questions answered within 1 business day
@@ -208,7 +194,7 @@ After go-live, you pay a monthly fee for the system to keep running, improving, 
 
 ## AI API Costs — Your Account, Your Control
 
-The AI models are billed directly to your API accounts. This keeps costs transparent, under your control, and independent of our service fee.
+The AI model is billed directly to your Anthropic API account. This keeps costs transparent, under your control, and independent of our service fee.
 
 You need one account (free to create):
 - **Anthropic Console** — [console.anthropic.com](https://console.anthropic.com) — for Claude Sonnet (the core AI)
@@ -226,7 +212,7 @@ You do not need a Claude Team subscription. The Chainlit interface we built repl
 | **Usage visibility** | None | Full dashboard — tokens, costs, tools |
 | **Works with our system** | No (separate product) | Yes — this is what we built |
 
-### Estimated Monthly AI API Costs
+### AI API Costs
 
 Costs depend on usage volume and are billed directly by Anthropic. Estimates available on request.
 
@@ -236,11 +222,11 @@ Costs depend on usage volume and are billed directly by Anthropic. Estimates ava
 
 ### Data Architecture
 
-- **Your data:** stored exclusively on your GCP Cloud SQL instance in Frankfurt (europe-west3)
+- **Your data:** stored exclusively on your GCP instance in the EU
 - **API calls:** Claude receives anonymised, structured instructions only — e.g. "compare RCA products for vehicle category X" — never raw client records
 - **Vision AI:** document images processed in-memory, not stored beyond the API call
 - **Access control:** each employee has an individual login, sessions are isolated and logged
-- **Backups:** automated daily backups with 30-day retention on GCP
+- **Backups:** automated daily backups with 30-day retention
 
 ### Regulatory Coverage
 
@@ -260,28 +246,26 @@ Compliance templates are updated at no extra charge when regulatory guidance cha
 | Item | Cost |
 |---|---|
 | **Implementation (one-time)** | **TBD** |
-| Phase 1 — Process Mapping | TBD |
-| Phase 2 — Cloud Build | TBD |
-| Phase 3 — Customisation + Training | TBD |
-| Phase 4 — Go-Live + First Month Support | TBD |
+| Phase 1 — MVP deployment and onboarding | TBD |
+| Phase 2 — Process mapping, dedicated build, VM migration | TBD |
 | | |
 | **Managed Service (monthly)** | **TBD** |
-| **AI API costs (your accounts)** | **TBD** |
+| **AI API costs (your account)** | **TBD** |
 
 ---
 
 ## Next Steps
 
-1. **Review this proposal** — We are available for a call in English, German, or Romanian to answer any questions.
-2. **Schedule a live demo** — See Alex running with real insurance scenarios. No commitment required. The demo environment is live today.
-3. **Discovery call (1 hour)** — We map your current workflows and confirm which tools to prioritise in Phase 2.
-4. **Sign and start** — 50% of the implementation fee on contract signing. Phase 1 begins immediately.
+1. **Schedule a live demo** — See Alex running with real insurance scenarios. No commitment required. The demo environment is live today.
+2. **Discovery call (1 hour)** — We walk through your current workflows and identify where Phase 2 customisation will have the most impact.
+3. **MVP pilot** — Your employees use Alex on demo data, give feedback, validate which tools matter most.
+4. **Phase 2 kick-off** — Process mapping begins. We build the production system around your real workflows.
 
 ---
 
 *This document is confidential and prepared exclusively for the named recipient.*
-*All pricing is valid for 30 days from the document date. Prices exclude applicable VAT.*
-*AI API cost estimates are based on typical usage and may vary. Actual costs billed directly by Anthropic.*
+*Pricing is indicative and subject to final scope confirmation. Prices exclude applicable VAT.*
+*AI API costs vary by usage and are billed directly by Anthropic.*
 
 ---
 

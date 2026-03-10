@@ -9,6 +9,8 @@
 
 Alex este un asistent AI construit special pentru operatiunile de brokeraj de asigurari. Se conecteaza direct la baza de date cu clienti, catalogul de produse si registrul de polite. Angajatii interactioneaza cu el in limbaj natural — in romana, engleza sau germana.
 
+Alex nu este un produs generic. Este o platforma agentiva pe care am construit-o bazat pe prospectia noastra despre nevoile unui birou de brokeraj — si pe care o personalizam impreuna cu echipa clientului.
+
 ### Ce poate face Alex astazi
 
 | Domeniu | Ce Face | Exemplu |
@@ -31,17 +33,53 @@ Alex este un asistent AI construit special pentru operatiunile de brokeraj de as
 - 10 produse de asigurare de la 7 asiguratori (RO + DE)
 - 8 polite active cu diverse date de expirare
 - Toate functiile complet operationale cu date sintetice
+- Preturile din demo sunt demonstrative si nu reflecta piata reala
 
 ---
 
-## 2. Cum se Integreaza Alex cu Sistemele Existente
+## 2. Cum Lucram Impreuna — Cele Doua Faze
+
+### Faza 1 — MVP: Platforma Agentiva Functionala (disponibila azi)
+
+Am construit o platforma agentiva functionala bazata pe prospectia noastra despre nevoile unui birou de brokeraj de asigurari. Aceasta este punctul de start — nu produsul final.
+
+**Ce este construit si ruleaza azi:**
+- Interfata chat Chainlit in browser — fara instalare pentru angajati
+- Claude Sonnet (Anthropic) ca motor AI
+- 24 tool-uri broker: gestionare clienti, cautare si comparare produse, generare oferte, dashboard reinnoiri, inregistrare si urmarire daune, rapoarte ASF/BaFin, procesare documente cu Vision AI, automatizare web, automatizare desktop
+- MCP server provizoriu cu date demo sintetice
+- Admin panel cu control granular per angajat (RBAC)
+- Agent local pentru automatizare desktop si intranet
+- Deployment pe Google Cloud Run (Frankfurt, conform GDPR)
+
+**Scopul Fazei 1:**
+Testam si construim impreuna cu angajatii clientului. Ei folosesc sistemul, dau feedback si valideaza ce este util, ce lipseste si ce trebuie ajustat. MVP-ul este fundatia — nu plafonul.
+
+---
+
+### Faza 2 — Implementare Completa: Construita pe Procesele Reale
+
+Dupa validarea MVP cu echipa interna de test, construim sistemul de productie de la zero — pe procesele reale ale clientului, nu pe prospectia noastra.
+
+**Ce include Faza 2:**
+- **Mapare procese completa** cu echipa interna — sesiuni cu fiecare angajat, fiecare flux documentat
+- **MCP server dedicat** construit pe baza maparii reale — conectat la sistemele lor reale (CRM, baze de date, email, portale asiguratori)
+- **Skills custom per rol** — Alex-ul fiecarui angajat configurat pe taskurile si responsabilitatile lui specifice
+- **Migrare date reale** — toti clientii, produsele, politele si preturile importate si configurate de broker
+- **Training individualizat** — fiecare angajat instruit pe fluxurile lor reale cu date reale
+- **Migrare pe VM dedicat pe Google Cloud** — din Cloud Run (prototipare) pe un VM securizat cu baza de date persistenta, performanta constanta si cost predictibil
+
+---
+
+## 3. Cum se Integreaza Alex cu Sistemele Existente
 
 ### Arhitectura de Integrare
 
 ```
 Browser Angajat
     ↓ HTTPS
-Google Cloud Run (Frankfurt, EU)
+Google Cloud Run (Frankfurt, EU) — Faza MVP
+→ VM dedicat Google Cloud (Frankfurt) — Faza Productie
     ├── Alex Chat (Chainlit) — interfata web
     ├── Claude Sonnet (Anthropic) — motorul AI
     ├── 24 Tool-uri Broker — conectate la date
@@ -49,7 +87,7 @@ Google Cloud Run (Frankfurt, EU)
     ├── Agent Local — automatizare desktop/intranet
     └── REST API — pentru automatizari n8n
          ↓
-    PostgreSQL (Cloud SQL EU)
+    SQLite (demo) → PostgreSQL (VM productie)
     ├── Clienti (importati din CRM)
     ├── Polite (importate/sincronizate)
     ├── Produse (cataloage asiguratori)
@@ -57,17 +95,17 @@ Google Cloud Run (Frankfurt, EU)
     └── Daune (inregistrate de brokeri)
 ```
 
-### Ce API-uri sunt Necesare
+### Ce API-uri sunt Necesare (Faza 2)
 
 | Sistem | Ce Trebuie | Cine Furnizeaza | Cand |
 |--------|-----------|-----------------|------|
-| Baza de date clienti (CRM) | Acces read la inregistrari clienti | Echipa IT a clientului | Faza 2 (Saptamana 2) |
-| Cataloage produse asiguratori | Liste preturi sau acces API | Manageri relatie asiguratori | Faza 2 (Saptamana 2) |
-| Server email | Credentiale SMTP | Echipa IT a clientului | Faza 3 (Saptamana 3) |
-| Stocare documente | Acces read la polite scanate | Echipa IT a clientului | Faza 3 |
-| CEDAM (verificare RCA) | Cheie API | Inregistrare ASF | Faza viitoare |
+| Baza de date clienti (CRM) | Acces read la inregistrari clienti | Echipa IT a clientului | Faza 2 |
+| Cataloage produse asiguratori | Liste preturi sau acces API | Manageri relatie asiguratori | Faza 2 |
+| Server email | Credentiale SMTP | Echipa IT a clientului | Faza 2 |
+| Stocare documente | Acces read la polite scanate | Echipa IT a clientului | Faza 2 |
+| CEDAM (verificare RCA) | Cheie API | Inregistrare ASF | Faza 2 / Faza viitoare |
 
-### Ce Trebuie Furnizat de Client
+### Ce Trebuie Furnizat de Client (pentru Faza 2)
 
 1. **Export CSV/Excel** al bazei de date curente de clienti (nume, telefon, email, adresa, tip client)
 2. **Lista asiguratori parteneri** cu coduri broker si date contact
@@ -78,54 +116,55 @@ Google Cloud Run (Frankfurt, EU)
 
 ---
 
-## 3. Diferente Demo vs Productie
+## 4. Diferente Demo vs Productie
 
-| Aspect | Demo Mode | Productie |
-|--------|-----------|-----------|
+| Aspect | Demo (Faza 1 MVP) | Productie (Faza 2) |
+|--------|-------------------|--------------------|
 | **Date** | 6 clienti sintetici | Toti clientii reali din CRM |
 | **Produse** | 10 produse demonstrative | Cataloage reale per asigurator partener |
-| **Baza de date** | SQLite (fisier local) | PostgreSQL (Cloud SQL EU, Frankfurt) |
+| **Baza de date** | SQLite (fisier local) | PostgreSQL (VM GCP dedicat, Frankfurt) |
 | **Email** | Nu trimite (SMTP neconfigurat) | Trimite efectiv pe email-ul clientului |
 | **Verificare RCA** | Doar in baza locala | API CEDAM (cand disponibil) |
 | **Autentificare** | Fara login obligatoriu | Login per angajat + control acces (RBAC) |
-| **Hosting** | Local sau server demo partajat | Cloud Run dedicat (Frankfurt, GDPR) |
+| **Hosting** | Cloud Run (prototipare) | VM dedicat Google Cloud (Frankfurt, GDPR) |
 | **Branding** | Generic "Demo Broker" | Numele si logo-ul companiei |
 | **Backup** | Nu | Backup zilnic automat (30 zile retentie) |
 | **Audit** | Minimal | Log complet: cine a facut ce, cand |
 | **SLA** | Fara | 99.5% uptime garantat |
+| **MCP server** | Provizoriu (date demo) | Dedicat (construit pe procesele reale) |
 
 ---
 
-## 4. Timeline Migrare Demo → Productie
+## 5. Timeline: MVP → Productie
 
-### Saptamana 1-2: Discovery si Setup
-- Mapare workflow-uri curente cu fiecare angajat
-- Provisionare infrastructura cloud (GCP Frankfurt)
-- Export date clienti din CRM-ul curent
-- Provisionare baza de date PostgreSQL
+### Saptamana 1-2: Mapare Procese (Faza 2 incepe)
+- Sesiuni individuale cu fiecare angajat — mapare workflow-uri reale
+- Documentare completa: intake clienti, reinnoiri, daune, raportare
+- Identificare integrari necesare (CRM, email, portale asiguratori)
+- Export date clienti din sistemul actual
 
-### Saptamana 3-4: Constructie si Configurare
-- Import date reale clienti in Alex
-- Configurare produse per asigurator partener
+### Saptamana 3-4: Constructie MCP Server Dedicat
+- Constructie MCP server pe baza maparii reale
+- Import clienti reali in sistem
+- Configurare produse per asigurator partener (preturi reale)
 - Setup integrare email (SMTP)
-- Creare conturi angajati cu permisiuni corespunzatoare
-- Configurare n8n workflows (reminder-e reinnoiri, rapoarte lunare)
+- Configurare VM dedicat Google Cloud
 
 ### Saptamana 5-6: Training si Testare
-- Sesiuni training individuale per angajat (1-2 ore)
+- Sesiuni training individualizate per angajat (1-2 ore)
 - Operare paralela: Alex + tool-urile existente timp de 1 saptamana
 - Colectare feedback si ajustari
 - Testare completa pe date reale
 
-### Saptamana 7: Go-Live
-- Switch la productie
+### Saptamana 7: Go-Live pe VM Productie
+- Migrare din Cloud Run pe VM securizat Google Cloud
 - Monitorizare intensiva prima saptamana
 - Suport prioritar 30 de zile
 - Apeluri review saptamanale
 
 ---
 
-## 5. Automatizari n8n — Endpointuri API
+## 6. Automatizari n8n — Endpointuri API
 
 Alex expune endpointuri REST pentru automatizarea workflow-urilor externe via n8n:
 
@@ -141,11 +180,11 @@ Alex expune endpointuri REST pentru automatizarea workflow-urilor externe via n8
 
 ---
 
-## 6. Intrebari Frecvente ale Clientului
+## 7. Intrebari Frecvente ale Clientului
 
 ### "Datele noastre sunt in siguranta?"
 
-- Toate datele stau pe servere Google Cloud in Frankfurt (europe-west3)
+- Toate datele stau pe servere Google Cloud in Frankfurt (UE)
 - Datele nu parasesc Uniunea Europeana
 - Conform GDPR Articolul 6 — baza legala pentru procesare documentata
 - Semnam Data Processing Agreement (DPA) ca procesator de date
@@ -183,7 +222,7 @@ Preturile sunt disponibile la cerere. Contactati-ne pentru o oferta personalizat
 
 ### "Putem personaliza rapoartele?"
 
-Da — template-urile de oferte si rapoarte se personalizeaza in Faza 3:
+Da — template-urile de oferte si rapoarte se personalizeaza in Faza 2:
 - Logo-ul companiei in PDF-uri
 - Text custom in header/footer
 - Campuri aditionale specifice fluxului companiei
@@ -191,20 +230,26 @@ Da — template-urile de oferte si rapoarte se personalizeaza in Faza 3:
 
 ### "Se poate conecta la CRM-ul nostru?"
 
-Da — in Faza 2 construim conectori custom:
+Da — in Faza 2 construim MCP server-ul dedicat cu conectori custom:
 - REST API (orice CRM cu acces API)
 - Import CSV/Excel periodic
 - Conectare directa la baza de date (PostgreSQL, MySQL, MSSQL)
 - Integrari standard: Salesforce, HubSpot, Zoho CRM
 
+### "Este un produs gata sau il construiti de la zero?"
+
+Nici una, nici alta. Am construit deja o platforma agentiva functionala bazata pe prospectia noastra (Faza 1 — MVP). In Faza 2, mapam procesele reale ale companiei impreuna cu echipa interna si construim MCP server-ul dedicat pe baza acestei mapari — nu pe ipoteze. Rezultatul este un sistem care reflecta modul real in care lucreaza compania, nu un tool generic adaptat.
+
 ---
 
-## 7. Rezumat — Ce ii Spui Clientului
+## 8. Rezumat — Ce ii Spui Clientului
 
 > **Propozitia de valoare in 30 de secunde:**
 >
-> "Alex este un asistent AI care inlocuieste munca manuala din brokeraj. Angajatii tai vorbesc cu el ca si cum ar vorbi cu un coleg — in romana, engleza sau germana. Alex cauta clienti, compara produse, genereaza oferte profesionale, urmareste reinnoiri, inregistreaza daune si face rapoartele ASF si BaFin — totul din conversatie. Datele raman pe serverul tau in Frankfurt. E gata de folosit azi cu date demo, si in 6 saptamani e pe datele voastre reale."
+> "Alex este un asistent AI care inlocuieste munca manuala din brokeraj. Angajatii tai vorbesc cu el ca si cum ar vorbi cu un coleg — in romana, engleza sau germana. Alex cauta clienti, compara produse, genereaza oferte profesionale, urmareste reinnoiri, inregistreaza daune si face rapoartele ASF si BaFin — totul din conversatie.
+>
+> Nu este un produs off-the-shelf. Am construit deja o platforma functionala si o aducem ca MVP — angajatii o testeaza si ne spun ce functioneaza. Dupa asta, construim versiunea finala pe procesele lor reale. Datele raman pe serverul vostru in Frankfurt, in UE."
 
 ---
 
-*Document actualizat: Martie 2026 | Alex Insurance Broker AI v2.0*
+*Document actualizat: Martie 2026 | Alex Insurance Broker AI v2.1*

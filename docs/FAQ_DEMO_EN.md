@@ -6,8 +6,8 @@
 
 > **Platform:** Custom AI Agent built on Anthropic Claude Sonnet
 > **Current phase:** MVP — running on GCP Cloud Run (Frankfurt) — GDPR compliant
-> **Final deployment:** VM (Hetzner Frankfurt or equivalent) — planned post-MVP
-> **Live Demo URL:** https://insurance-broker-alex-elo6xae6nq-ey.a.run.app
+> **Production deployment:** Dedicated VM on Google Cloud — planned after MVP validation
+> **Live Demo URL:** https://insurance-broker-alex-603810013022.europe-west3.run.app
 
 ---
 
@@ -33,22 +33,32 @@ Alex is not a generic AI assistant. It is a structured AI agent built specifical
 
 ---
 
-### Our Delivery Phases
+### How We Work Together — Two Phases
 
-**Phase 1 — Mapping & Discovery (Weeks 1–2)**
-We map your processes: policy issuance, renewal, claims management, regulatory reporting, client communication. We identify where AI delivers immediate value.
+**Phase 1 — MVP: Agentic Platform Built and Running**
 
-**Phase 2 — Cloud Infrastructure & Build (Weeks 2–4)**
-We deploy Alex on GCP Cloud Run with all 24 broker tools connected to your data. Full integration testing on your real workflows.
+We have built a fully functional agentic platform based on our research into insurance brokerage workflows. This is available today for demo and piloting.
 
-**Phase 3 — Customisation & Training (Weeks 5–6)**
-Alex configured with your brokerage name, your partner insurers, your commission structures. Individual training per employee in their language.
+What is running now:
+- Chainlit browser chat interface — no installation for employees
+- Claude Sonnet (Anthropic) as the AI engine
+- 24 broker tools covering the full brokerage workflow
+- Provisional MCP server with synthetic demo data
+- Admin panel with per-employee role-based access control
+- Local agent for desktop and intranet automation
+- Deployed on Google Cloud Run (Frankfurt, GDPR compliant)
 
-**Phase 4 — Go-Live & Handover (Week 7)**
-Production go-live. 30-day priority support. Monitoring setup. Runbook delivered.
+The purpose of Phase 1 is to test and build together with your employees. They use it, give feedback, and validate what matters. The MVP is the foundation — not the final product.
 
-**Post go-live — VM Migration**
-After MVP validation on Cloud Run, the system migrates to a dedicated VM (Hetzner Frankfurt or equivalent) for better cost control and performance at scale.
+**Phase 2 — Full Implementation: Built Around Your Real Workflows**
+
+After MVP validation with your internal test team:
+- Complete process mapping with each employee — every workflow documented
+- Dedicated MCP server built on the real process map — connected to your CRM, databases, email, insurer portals
+- Custom skills per role and per internal workflow
+- Real data migration — all your clients, products, policies, and prices
+- Individual training per employee on their real workflows
+- Migration from Cloud Run to a dedicated, secured VM on Google Cloud — persistent database, constant performance, predictable cost
 
 ---
 
@@ -59,14 +69,13 @@ After MVP validation on Cloud Run, the system migrates to a dedicated VM (Hetzne
 ```
 Browser / Employee Device
         ↓  HTTPS
-GCP Cloud Run (europe-west3 Frankfurt) [MVP]
-→ VM Hetzner Frankfurt [Production]
+GCP Cloud Run (Frankfurt, EU) — MVP Phase
     ├── Chainlit — Chat Interface
     ├── Claude Sonnet (Anthropic) — AI Engine
     ├── 24 Broker Tools — connected to your data
     ├── Admin Panel — user & permission management
     ├── REST API — n8n / external automation
-    └── SQLite DB (dev) → PostgreSQL (prod)
+    └── SQLite DB (demo) → PostgreSQL (production VM)
          ↑
     Local Agent (employee computer)
     ├── Desktop automation (TextEdit, Word, Excel, etc.)
@@ -74,8 +83,13 @@ GCP Cloud Run (europe-west3 Frankfurt) [MVP]
     └── Browser automation (RCA portals, insurer sites)
 ```
 
+**After MVP validation:**
+- Cloud Run → Dedicated VM on Google Cloud (Frankfurt, GDPR)
+- SQLite → PostgreSQL (persistent, backed up)
+- Demo data → Your real clients, products, policies
+
 **Data flow security:**
-- All data stays on GCP europe-west3 (Frankfurt) — GDPR Article 6 compliant
+- All data stays in the EU — GDPR Article 6 compliant
 - No client personal data sent outside the EU
 - API calls encrypted TLS 1.3
 - Claude API receives only anonymised, structured tool calls — never raw client records
@@ -125,7 +139,7 @@ GCP Cloud Run (europe-west3 Frankfurt) [MVP]
 | PROD_KFZ_ALZ_DE | Allianz Deutschland | KFZ 🇩🇪 | AA |
 | PROD_KFZ_AXA_DE | AXA Versicherung | KFZ 🇩🇪 | AA |
 
-> **Note:** Product prices shown in demo are for demonstration only and do not reflect real market rates. Actual pricing is configured per client deployment.
+> **Note:** Product prices shown in demo are for demonstration only and do not reflect real market rates. Actual pricing is configured per client in Phase 2.
 
 ### 1 Active Claim
 
@@ -312,16 +326,19 @@ Create her profile and search RCA options.
 ### Q1: What is Alex exactly?
 Alex is an AI assistant built specifically for insurance brokerage operations. It connects directly to your client database, policy records, and insurer product catalog. It can search, compare, generate offers, log claims, and produce regulatory reports — all in a natural conversation, in English, Romanian, or German.
 
-### Q2: How does Alex protect our client data? (GDPR)
-- Your data is stored exclusively on GCP servers in Frankfurt (europe-west3) during MVP, then moves to a dedicated VM in Frankfurt post go-live
+### Q2: Is this a finished product or a custom build?
+It is a custom build, not a generic SaaS product. We built a functional agentic platform based on our research into brokerage workflows — this is Phase 1. In Phase 2, we map your real processes with your team and rebuild the core around how your brokerage actually works. The platform ships with 24 tools covering the full workflow, and every tool is adjustable.
+
+### Q3: How does Alex protect our client data? (GDPR)
+- Your data is stored exclusively on Google Cloud servers in the EU
 - Data never leaves the EU
-- GDPR Article 6 compliant — lawful basis for processing
+- GDPR Article 6 compliant — lawful basis for processing documented
 - We sign a Data Processing Agreement (DPA) as data processor
 - You remain the data controller
 - Personal data (CNP, ID numbers) are never displayed in chat responses
 - Full audit log of who accessed what, when
 
-### Q3: Can Alex make mistakes?
+### Q4: Can Alex make mistakes?
 Yes, like any AI. That's why:
 - All offers and reports require human review before sending to clients
 - Claims are logged but a broker must verify before submitting to insurer
@@ -329,36 +346,35 @@ Yes, like any AI. That's why:
 - Alex explicitly marks its outputs as AI-generated and recommends verification
 - The system is a decision support tool, not an autonomous decision maker
 
-### Q4: How does PDF/photo processing work?
+### Q5: How does PDF/photo processing work?
 When a broker uploads a file (scan, photo, PDF):
-1. Vision AI reads the document natively — no OCR library needed
+1. Vision AI reads the document natively
 2. Extracts structured data: names, dates, amounts, policy numbers
 3. Presents extracted data to the broker for verification
 4. Offers to pre-fill the corresponding form (new client, new claim, etc.)
 
 Supported: JPG, PNG, PDF (including scanned/handwritten), WEBP
 
-### Q5: What languages does Alex support?
+### Q6: What languages does Alex support?
 - **English** — default for all operations
 - **Romanian** — for RO clients, ASF reports, local documents
 - **German** — for DE clients (BaFin), KFZ products, German forms
 
 Switch languages mid-conversation: *"Generează oferta în română pentru CLI001"*
 
-### Q6: What are the pricing tiers?
+### Q7: What are the pricing tiers?
 Pricing is available on request and tailored to the number of employees and specific requirements. Contact us for a custom proposal.
 
-### Q7: Can it connect to our existing CRM or AMS?
-In Phase 2, we build custom connectors. We have built integrations with:
+### Q8: Can it connect to our existing CRM or AMS?
+In Phase 2, we build custom connectors as part of the dedicated MCP server. We have built integrations with:
 - REST APIs (any CRM with API access)
 - Excel/CSV imports
 - Email (IMAP/SMTP)
-- SharePoint / Google Drive document access
 - Direct database connections (PostgreSQL, MySQL, MSSQL)
 
 Standard CRM integrations available: Salesforce, HubSpot, Zoho CRM
 
-### Q8: What insurers are supported?
+### Q9: What insurers are supported?
 **Romania (RO):**
 - Allianz-Tiriac Asigurări
 - Generali Romania
@@ -371,20 +387,20 @@ Standard CRM integrations available: Salesforce, HubSpot, Zoho CRM
 
 More insurers added in your specific deployment based on your partner agreements.
 
-### Q9: How are ASF/BaFin reports generated?
+### Q10: How are ASF/BaFin reports generated?
 - **ASF (Romania):** Automated mapping per Law 236/2018. Policy types mapped to ASF class codes (A10=RCA, A3=CASCO/KASKO, A8=PAD, A15=CMR). Monthly totals, premium aggregates, regulatory format.
 - **BaFin (Germany):** Per VVG (Versicherungsvertragsgesetz) + IDD (Insurance Distribution Directive). German class mapping (Kraftfahrzeughaftpflicht, Kaskoversicherung, etc.). Outputs in IDD-compliant format.
 
 Reports are drafts — your compliance officer reviews and submits officially.
 
-### Q10: What happens if the AI API goes down?
+### Q11: What happens if the AI API goes down?
 - Alex displays a clear error message in the chat
 - The Chainlit interface remains accessible
 - All previously generated documents remain available
 - No data is lost
 - Our monitoring alerts within 5 minutes of any outage
 
-### Q11: Can different employees have different access levels?
+### Q12: Can different employees have different access levels?
 Yes — the Admin Panel provides:
 - **Superadmin (MSP):** full access, creates companies and users
 - **Company Admin:** manages their company's users and permissions
@@ -392,25 +408,32 @@ Yes — the Admin Panel provides:
 
 Example: Trainee brokers can search clients and view policies, but cannot create offers or log claims until approved.
 
-### Q12: What does the export feature produce?
+### Q13: What does the export feature produce?
 From any offer or report Alex generates, you can download:
 - **PDF** — professional format with broker logo, ready to send to clients
 - **XLSX** — for further analysis in Excel, portfolio management
 - **DOCX** — editable Word document for customization before sending
 
-### Q13: What is the local agent and do we need it?
+### Q14: What is the local agent and do we need it?
 The local agent is a small Python script that runs on an employee's computer. It enables Alex to:
 - Open and control desktop applications (Word, Excel, local insurance software)
 - Access intranet systems and VPN-protected portals
-- Automate tasks on the local machine
+- Automate repetitive tasks on the local machine
 
 It is optional — Alex works fully without it for all cloud-based tasks.
 
-### Q14: What is the current deployment status?
-Alex is currently in **MVP phase**, running on Google Cloud Run (Frankfurt). This means:
+### Q15: What is the current deployment status and what changes in Phase 2?
+**Phase 1 — MVP (now):**
 - Fully functional — all 24 tools operational
-- Used for demos, testing, and initial client pilots
-- After MVP validation, the system migrates to a dedicated VM (Hetzner Frankfurt) for production use
+- Running on Google Cloud Run (Frankfurt)
+- Synthetic demo data — realistic but not your real data
+- Goal: test together, validate, adjust
+
+**Phase 2 — Production (after MVP validation):**
+- Your real processes mapped and built into the system
+- Real data (your clients, products, policies)
+- Migrated to a dedicated VM on Google Cloud — persistent, backed up, consistent performance
+- Trained and configured per employee
 
 ---
 
@@ -421,9 +444,9 @@ Alex is currently in **MVP phase**, running on Google Cloud Run (Frankfurt). Thi
 | Chat Interface | Chainlit 2.x |
 | AI Engine | Claude Sonnet (Anthropic) |
 | Backend | Python 3.12 |
-| Database | SQLite (dev) → PostgreSQL (prod) |
-| Current Deployment | GCP Cloud Run — europe-west3 |
-| Final Deployment | VM — Hetzner Frankfurt (post-MVP) |
+| Database | SQLite (demo) → PostgreSQL (production VM) |
+| Phase 1 Deployment | GCP Cloud Run — Frankfurt (prototyping) |
+| Phase 2 Deployment | Dedicated VM on Google Cloud — Frankfurt (production) |
 | Container | Docker |
 | Local Agent | Python — macOS / Windows / Linux |
 
@@ -433,7 +456,7 @@ Alex is currently in **MVP phase**, running on Google Cloud Run (Frankfurt). Thi
 
 **Interested in a live demo?**
 
-1. Visit the demo: https://insurance-broker-alex-elo6xae6nq-ey.a.run.app
+1. Visit the demo: https://insurance-broker-alex-603810013022.europe-west3.run.app
 2. Try the demo scripts from Part 5
 3. Schedule a 1:1 session: we walk through your specific workflows
 4. We prepare a custom offer within 48 hours
@@ -443,5 +466,5 @@ Contact us directly — we provide full technical documentation and sign NDAs be
 
 ---
 
-*Alex — Insurance Broker AI | Powered by Claude Sonnet (Anthropic) | GCP Frankfurt (EU) → VM Frankfurt (prod) | ASF & BaFin Compliant*
-*Document version: 2.0 | Date: March 2026*
+*Alex — Insurance Broker AI | Powered by Claude Sonnet (Anthropic) | GCP Frankfurt (EU) | ASF & BaFin Compliant*
+*Document version: 2.1 | Date: March 2026*

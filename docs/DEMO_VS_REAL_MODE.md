@@ -1,37 +1,37 @@
 # Alex — Insurance Broker AI
-## Demo Mode vs Real Mode — Ghid Tehnic
+## Demo Mode vs Production — Technical Guide
 
 ---
 
-## 1. Demo Mode — Arhitectura Curenta
+## 1. Demo Data — Inventar Date Sintetice
 
-### 1.1 Inventar Date Sintetice
+### 1.1 What Is in the Demo
 
-| Tip Date | Fisier Sursa | Inregistrari | Detalii |
-|----------|-------------|--------------|---------|
-| Clienti | `mock_clients.json` | 6 | 3 individuali RO, 1 companie RO, 1 individual DE, 1 companie DE |
-| Produse | `mock_products.json` | 10 | RCA(3), CASCO(3), PAD(1), CMR(1), KFZ(2) |
-| Polite | `mock_policies.json` | 8 | Diverse tipuri, date expirare aproape de prezent |
-| Asiguratori | `mock_insurers.json` | 7 | 5 RO (ALZ, GEN, OMA, ASI, GRA), 2 DE (ALZ_DE, AXA_DE) |
-| Daune | Seeded in DB | 1 | CLME7C01D — SC Logistic Trans, open |
+| Data Type | Source File | Records | Details |
+|-----------|-------------|---------|---------|
+| Clients | `mock_clients.json` | 6 | 3 individual RO, 1 company RO, 1 individual DE, 1 company DE |
+| Products | `mock_products.json` | 10 | RCA(3), CASCO(3), PAD(1), CMR(1), KFZ(2) |
+| Policies | `mock_policies.json` | 8 | Various types, expiry dates near present |
+| Insurers | `mock_insurers.json` | 7 | 5 RO (ALZ, GEN, OMA, ASI, GRA), 2 DE (ALZ_DE, AXA_DE) |
+| Claims | Seeded in DB | 1 | CLME7C01D — SC Logistic Trans, open |
 
-> **Nota:** Preturile din datele demo sunt demonstrative si nu reflecta piata reala. Preturile reale se configureaza per client in productie.
+> **Note:** Prices in demo data are for demonstration only and do not reflect real market rates. Real pricing is configured per client in Phase 2.
 
-### 1.2 Clienti Demo
+### 1.2 Demo Clients
 
-| ID | Nume | Tip | Tara | Email | Polite |
-|----|------|-----|------|-------|--------|
+| ID | Name | Type | Country | Email | Policies |
+|----|------|------|---------|-------|----------|
 | CLI001 | Andrei Ionescu | Individual | RO | andrei.ionescu@gmail.com | RCA + CASCO |
-| CLI002 | SC Logistic Trans SRL | Companie | RO | office@logistictrans.ro | RCA Fleet + CMR |
+| CLI002 | SC Logistic Trans SRL | Company | RO | office@logistictrans.ro | RCA Fleet + CMR |
 | CLI003 | Maria Popescu | Individual | RO | maria.popescu@yahoo.com | CASCO + PAD |
 | CLI004 | Johann Schmidt | Individual | DE | j.schmidt@firma-schmidt.de | KFZ |
 | CLI005 | Ion Gheorghe | Individual | RO | ion.gheorghe@hotmail.com | CASCO |
-| CLI006 | Immobilien GmbH Muller | Companie | DE | info@mueller-immobilien.de | (fara polite) |
+| CLI006 | Immobilien GmbH Muller | Company | DE | info@mueller-immobilien.de | (no policies) |
 
-### 1.3 Produse Demo
+### 1.3 Demo Products
 
-| ID Produs | Asigurator | Tip | Rating |
-|-----------|-----------|-----|--------|
+| Product ID | Insurer | Type | Rating |
+|------------|---------|------|--------|
 | PROD_RCA_ALZ | Allianz-Tiriac | RCA | AA |
 | PROD_RCA_GEN | Generali Romania | RCA | AA |
 | PROD_RCA_OMA | Omniasig VIG | RCA | A+ |
@@ -43,9 +43,9 @@
 | PROD_KFZ_ALZ_DE | Allianz Deutschland | KFZ | AA |
 | PROD_KFZ_AXA_DE | AXA Versicherung | KFZ | AA |
 
-### 1.4 Schema Bazei de Date
+### 1.4 Database Schema
 
-**Tabele Broker:**
+**Broker Tables:**
 
 ```sql
 clients (id, name, id_number, phone, email, address, client_type, country, source, notes, created_at)
@@ -56,7 +56,7 @@ offers (id, client_id, created_at, valid_until, status, file_path, products_coun
 claims (id, client_id, policy_id, incident_date, reported_date, description, status, damage_estimate, insurer_claim_number, notes)
 ```
 
-**Tabele Admin:**
+**Admin Tables:**
 
 ```sql
 companies (id, name, slug, country, is_active, monthly_token_limit, plan_tier, created_at)
@@ -66,76 +66,90 @@ audit_log (id, user_id, company_id, tool_name, input_summary, success, tokens_us
 token_usage (id, company_id, user_id, month, tokens_used)
 ```
 
-### 1.5 Cum se Reseteaza Demo-ul
+### 1.5 How to Reset the Demo
 
 ```bash
-# Sterge baza de date existenta
+# Delete existing database
 rm mcp-server/insurance_broker.db
 
-# Recreeaza si populeaza cu date demo
+# Recreate and populate with demo data
 cd mcp-server && python -m insurance_broker_mcp.data.seed_db
 
-# Recreeaza tabelele admin
+# Recreate admin tables
 python scripts/create_superadmin.py
 ```
 
-### 1.6 Cum se Adauga Date Demo Noi
+### 1.6 How to Add New Demo Data
 
-1. Editeaza fisierul JSON corespunzator din `mcp-server/insurance_broker_mcp/data/`
-2. Adauga inregistrari noi respectand formatul existent
-3. Ruleaza `python -m insurance_broker_mcp.data.seed_db` (foloseste `INSERT OR REPLACE`)
-4. Verifica cu `python scripts/test_all_tools.py`
+1. Edit the corresponding JSON file in `mcp-server/insurance_broker_mcp/data/`
+2. Add new records following the existing format
+3. Run `python -m insurance_broker_mcp.data.seed_db` (uses `INSERT OR REPLACE`)
+4. Verify with `python scripts/test_all_tools.py`
 
-### 1.7 Limitari Demo
+### 1.7 Demo Limitations
 
-| Aspect | Limitare | Impact |
-|--------|---------|--------|
-| Preturi | Demonstrative, nu reflecta piata | Ofertele au preturi placeholder |
-| Numere polite | Fictive | Nu pot fi verificate extern |
-| Email | SMTP neconfigurat | Ofertele nu se trimit efectiv |
-| Verificare RCA | Doar local in DB | Nu verifica prin CEDAM |
-| Rapoarte ASF/BaFin | Bazate pe date sintetice | Cifrele sunt estimative |
-| Volum | 6 clienti, 8 polite | Nu testeaza performanta la scara |
-| HEALTH/LIFE | Fara produse in catalog | Cross-sell sugereaza dar nu poate oferta |
-
----
-
-## 2. Deployment — MVP vs Productie
-
-### 2.1 Faza MVP (Curenta) — Cloud Run
-
-Sistemul ruleaza pe Google Cloud Run (europe-west3, Frankfurt):
-- **URL:** https://insurance-broker-alex-elo6xae6nq-ey.a.run.app
-- **Baza de date:** SQLite (fisier local in container)
-- **Avantaje:** deploy rapid, zero administrare infrastructura, scalare automata
-- **Limitari:** stateless (datele se pierd la restart), cost per request la volum mare
-
-### 2.2 Faza Productie — VM Dedicata
-
-Dupa validarea MVP, sistemul migreaza pe VM dedicata (Hetzner Frankfurt sau echivalent):
-- Baza de date persistenta (PostgreSQL)
-- Performanta constanta, fara cold starts
-- Control complet al infrastructurii
-- Cost predictibil
+| Aspect | Limitation | Impact |
+|--------|------------|--------|
+| Prices | Demonstrative, do not reflect market | Offers have placeholder prices |
+| Policy numbers | Fictional | Cannot be verified externally |
+| Email | SMTP not configured | Offers are not actually sent |
+| RCA verification | Only in local DB | Does not check via CEDAM |
+| ASF/BaFin reports | Based on synthetic data | Numbers are illustrative |
+| Volume | 6 clients, 8 policies | Does not test performance at scale |
+| HEALTH/LIFE | No products in catalog | Cross-sell suggests but cannot generate offer |
 
 ---
 
-## 3. Real Mode — Arhitectura Productie
+## 2. Phase 1 vs Phase 2 — MVP and Production
 
-### 3.1 Migrare SQLite → PostgreSQL
+### 2.1 Phase 1 — MVP (Current): Cloud Run
 
-**Pas 1: Provisionare VM**
+The system runs on Google Cloud Run (Frankfurt):
+- **URL:** https://insurance-broker-alex-603810013022.europe-west3.run.app
+- **Database:** SQLite (file in container)
+- **Advantages:** rapid deployment, zero infrastructure management, automatic scaling
+- **Limitations:** stateless (data lost on restart), per-request cost at high volume
+
+**Purpose:** Test the platform with employees. Validate which tools are useful. Identify what needs to be built differently in Phase 2. The MVP is built on our research into brokerage workflows — not yet on the client's real processes.
+
+---
+
+### 2.2 Phase 2 — Production: Dedicated VM on Google Cloud
+
+After MVP validation with the client's internal test team, the system migrates to a dedicated VM on Google Cloud (Frankfurt):
+- Persistent PostgreSQL database (backed up daily, 30-day retention)
+- Dedicated MCP server built on real process mapping
+- Constant performance, no cold starts
+- Full control of infrastructure
+- Predictable cost
+
+**What changes in Phase 2:**
+- MCP server rebuilt on the client's real workflows — not on our assumptions
+- All demo data replaced with real client data (clients, policies, products, real prices)
+- Per-employee skills and permissions configured on their actual roles
+- Email integration (SMTP) active
+- Custom branding (company name and logo in all documents)
+- Full audit log and RBAC active
+
+---
+
+## 3. Production Architecture — Technical Details
+
+### 3.1 SQLite → PostgreSQL Migration
+
+**Step 1: Provision VM on Google Cloud**
 
 ```bash
-# Hetzner Cloud CLI (exemplu)
-hcloud server create \
-  --name alex-broker-prod \
-  --type cx32 \
-  --image ubuntu-24.04 \
-  --location fsn1
+# Create VM in europe-west3 (Frankfurt — GDPR)
+gcloud compute instances create alex-broker-prod \
+  --machine-type=e2-standard-4 \
+  --zone=europe-west3-a \
+  --image-family=ubuntu-2404-lts-amd64 \
+  --image-project=ubuntu-os-cloud \
+  --boot-disk-size=100GB
 ```
 
-**Pas 2: Instalare PostgreSQL**
+**Step 2: Install PostgreSQL**
 
 ```bash
 apt install postgresql-16
@@ -143,9 +157,9 @@ sudo -u postgres createdb insurance_broker
 sudo -u postgres createuser broker_app
 ```
 
-**Pas 3: Schema PostgreSQL**
+**Step 3: PostgreSQL Schema**
 
-Schema ramane identica cu SQLite, cu mici diferente:
+Schema is identical to SQLite with minor differences:
 
 ```sql
 CREATE TABLE clients (
@@ -161,33 +175,33 @@ CREATE TABLE clients (
     notes TEXT,
     created_at TIMESTAMP DEFAULT NOW()
 );
--- Restul tabelelor: acelasi pattern
+-- All other tables: same pattern
 ```
 
-**Pas 4: Actualizare Connection String**
+**Step 4: Update Connection String**
 
-Adauga in `.env`:
+Add to `.env`:
 ```
 DB_HOST=localhost
 DB_NAME=insurance_broker
 DB_USER=broker_app
-DB_PASS=<parola>
+DB_PASS=<password>
 ```
 
-**Pas 5: Actualizare Cod**
+**Step 5: Update Code**
 
-Fiecare fisier tool din `mcp-server/insurance_broker_mcp/tools/` trece de la:
+Each tool file in `mcp-server/insurance_broker_mcp/tools/` switches from:
 
 ```python
-# Curent (SQLite):
+# Current (SQLite):
 conn = sqlite3.connect(DB_PATH)
 conn.row_factory = sqlite3.Row
 ```
 
-La:
+To:
 
 ```python
-# Productie (PostgreSQL):
+# Production (PostgreSQL):
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
@@ -200,7 +214,7 @@ conn = psycopg2.connect(
 )
 ```
 
-**Recomandare:** Creeaza un modul `shared/database.py` cu connection pool:
+**Recommended:** Create a `shared/database.py` module with connection pool:
 
 ```python
 from psycopg2 import pool
@@ -214,19 +228,19 @@ def release_db(conn):
     _pool.putconn(conn)
 ```
 
-### 3.2 Integrare Date Reale — Clienti
+### 3.2 Real Data Migration — Clients
 
-**Optiunea A: Import CSV (recomandat pentru start)**
+**Option A: CSV Import (recommended to start)**
 
-Format CSV asteptat:
+Expected CSV format:
 ```csv
 name,phone,email,address,client_type,country,id_number,source,notes
-"Popescu Ion","+40722123456","ion@email.com","Str. Libertatii 5, Bucuresti","individual","RO","1830415251234","referral","Client vechi"
+"Popescu Ion","+40722123456","ion@email.com","Str. Libertatii 5, Bucuresti","individual","RO","1830415251234","referral","Old client"
 ```
 
-Script import: adapteaza `seed_db.py` sa citeasca CSV in loc de JSON.
+Import script: adapt `seed_db.py` to read CSV instead of JSON.
 
-**Optiunea B: Conectare CRM via API**
+**Option B: CRM API Connection**
 
 ```python
 def sync_clients_from_crm():
@@ -240,7 +254,7 @@ def sync_clients_from_crm():
         )
 ```
 
-**Optiunea C: Conectare directa la baza de date existenta**
+**Option C: Direct Database Connection**
 
 ```sql
 CREATE MATERIALIZED VIEW alex_clients AS
@@ -252,192 +266,181 @@ SELECT
 FROM crm_clients;
 ```
 
-### 3.3 Integrare Date Reale — Produse
+### 3.3 Real Data Migration — Products
 
-**Starea curenta:** Produsele sunt statice in `mock_products.json`. Preturile sunt demonstrative.
+**Current state:** Products are static in `mock_products.json`. Prices are demonstrative.
 
-**Optiuni pentru productie:**
+**Options for production:**
 
-| Metoda | Descriere | Efort | Frecventa Update |
-|--------|----------|-------|------------------|
-| CSV manual | Brokerul incarca lista de preturi reale periodic | Mic | Lunar/trimestrial |
-| Admin panel CRUD | Interfata admin pentru produse | Mediu | Oricand |
-| API asigurator | Conectare la API-ul fiecarui asigurator | Mare | Real-time |
+| Method | Description | Effort | Update Frequency |
+|--------|-------------|--------|-----------------|
+| Manual CSV | Broker uploads real price list periodically | Low | Monthly/quarterly |
+| Admin panel CRUD | Admin interface for products | Medium | Any time |
+| Insurer API | Connect to each insurer's API | High | Real-time |
 
-**Campuri necesare de la fiecare asigurator:**
-- Tip produs (RCA, CASCO, etc.)
-- Nume produs
-- Prima anuala (sau formula de calcul) — configurata de broker
-- Fransiza (deductible)
-- Acoperire (coverage summary)
-- Excluderi
-- Comision broker (%)
+**Required fields from each insurer:**
+- Product type (RCA, CASCO, etc.)
+- Product name
+- Annual premium (or calculation formula) — configured by broker
+- Deductible
+- Coverage summary
+- Exclusions
+- Broker commission (%)
 
-### 3.4 Integrare API Asiguratori
+### 3.4 Insurer API Integrations
 
-| Asigurator | API Disponibil? | Tip Integrare | Faza |
-|-----------|----------------|---------------|------|
-| Allianz-Tiriac RO | Portal broker API | REST | Faza 2 |
-| Generali Romania | API comparare preturi | SOAP/REST | Faza 2 |
-| Omniasig VIG | Upload manual | CSV | Faza 2 |
-| Asirom VIG | Portal broker | Web scrape | Faza 3 |
-| Groupama | API parteneri | REST | Faza 3 |
-| CEDAM (verificare RCA) | API public | REST | Faza 3 |
-| PAID Pool (PAD) | Portal delegat | Web | Faza 3 |
-| Allianz Deutschland | Makler API | REST | Faza 2 |
-| AXA Versicherung | AXA Portal | REST | Faza 2 |
+| Insurer | API Available? | Integration Type | Phase |
+|---------|---------------|-----------------|-------|
+| Allianz-Tiriac RO | Broker portal API | REST | Phase 2 |
+| Generali Romania | Price comparison API | SOAP/REST | Phase 2 |
+| Omniasig VIG | Manual upload | CSV | Phase 2 |
+| Asirom VIG | Broker portal | Web scrape | Phase 3 |
+| Groupama | Partner API | REST | Phase 3 |
+| CEDAM (RCA verification) | Public API | REST | Phase 3 |
+| PAID Pool (PAD) | Delegate portal | Web | Phase 3 |
+| Allianz Deutschland | Makler API | REST | Phase 2 |
+| AXA Versicherung | AXA Portal | REST | Phase 2 |
 
-### 3.5 Configurare Email Productie
+### 3.5 Email Production Configuration
 
-**Recomandari pentru productie:**
+**Production recommendations:**
 
-1. **SendGrid** (recomandat) — tracking, analytics, deliverability
-2. Configureaza **SPF**, **DKIM**, **DMARC** pe domeniul companiei
-3. Foloseste un subdomain dedicat: `oferte@notifications.broker.ro`
-4. Monitorizeaza bounce rate si spam complaints
+1. **SendGrid** (recommended) — tracking, analytics, deliverability
+2. Configure **SPF**, **DKIM**, **DMARC** on the company's domain
+3. Use a dedicated subdomain: `oferte@notifications.broker.ro`
+4. Monitor bounce rate and spam complaints
 
-### 3.6 Autentificare si Securitate
+### 3.6 Authentication and Security
 
-**Variabile de mediu necesare:**
+**Required environment variables:**
 ```
-CHAINLIT_AUTH_SECRET=<string random 64 caractere>
-ADMIN_JWT_SECRET=<string random 64 caractere>
+CHAINLIT_AUTH_SECRET=<random 64-character string>
+ADMIN_JWT_SECRET=<random 64-character string>
 ```
 
-**Setup utilizatori:**
-1. Creeaza superadmin: `python scripts/create_superadmin.py`
-2. Acceseaza `/admin` → Login
-3. Creeaza compania clientului
-4. Creeaza conturi pentru fiecare angajat
-5. Configureaza permisiuni per utilizator (RBAC)
+**User setup:**
+1. Create superadmin: `python scripts/create_superadmin.py`
+2. Access `/admin` → Login
+3. Create the client's company
+4. Create accounts for each employee
+5. Configure permissions per user (RBAC)
 
-**Roluri:**
-- **superadmin** — acces complet, gestioneaza toate companiile
-- **company_admin** — gestioneaza utilizatorii si permisiunile companiei
-- **broker** — acces doar la tool-urile aprobate de admin
+**Roles:**
+- **superadmin** — full access, manages all companies
+- **company_admin** — manages company users and permissions
+- **broker** — access only to tools approved by admin
 
 ---
 
-## 4. Plan de Tranzitie: Cloud Run MVP → VM Productie
+## 4. Migration Plan: Cloud Run MVP → Production VM
 
-### Faza 1: Infrastructura VM (Saptamana 1)
+### Week 1–2: Process Mapping (Phase 2 start)
+- [ ] Individual sessions with each employee — map real workflows
+- [ ] Full documentation: client intake, renewals, claims, reporting
+- [ ] Identify required integrations (CRM, email, insurer portals)
+- [ ] Export client data from current system (CRM/Excel/CSV)
 
-- [ ] Provisionare VM (Hetzner fsn1 sau echivalent Frankfurt)
-- [ ] Instalare Docker + PostgreSQL
-- [ ] Configurare domeniu custom + certificat SSL (Let's Encrypt)
-- [ ] Setup backup automat (pg_dump zilnic)
-- [ ] Deploy container Docker pe VM
-- [ ] Verificare health check si accesibilitate
+### Week 3–4: Build Dedicated MCP Server + VM Setup
+- [ ] Provision VM on Google Cloud (europe-west3 Frankfurt)
+- [ ] Install Docker + PostgreSQL on VM
+- [ ] Configure custom domain + SSL certificate (Let's Encrypt)
+- [ ] Build dedicated MCP server based on real process mapping
+- [ ] Import real clients into PostgreSQL
+- [ ] Configure products per partner insurer (real prices set by broker)
+- [ ] Set up email integration (SMTP)
+- [ ] Create user accounts with appropriate permissions
+- [ ] Configure n8n workflows (renewal reminders, monthly reports)
 
-### Faza 2: Migrare Date (Saptamana 2)
+### Week 5–6: Training and Testing
+- [ ] Run full test suite on production data
+- [ ] Individual training sessions per employee (1–2 hours each)
+- [ ] Parallel operation: Alex + existing tools for 1 week
+- [ ] Collect feedback and adjustments
+- [ ] Test emails (send real offers to test addresses)
+- [ ] Test ASF/BaFin reports with real data
 
-- [ ] Export date clienti din sistemul actual al brokerului (CRM/Excel/CSV)
-- [ ] Transformare in schema Alex (script Python)
-- [ ] Import clienti in PostgreSQL
-- [ ] Import polite active
-- [ ] Import lista asiguratori parteneri cu date contact
-- [ ] Import catalog produse real de la asiguratori (preturi configurate de broker)
-- [ ] Verificare integritate date
-
-### Faza 3: Configurare (Saptamana 3)
-
-- [ ] Configurare SMTP pentru trimitere email-uri
-- [ ] Creare companie in Admin Panel (`/admin`)
-- [ ] Creare conturi utilizator pentru fiecare angajat
-- [ ] Setare permisiuni tool-uri per rol (RBAC)
-- [ ] Personalizare cu numele real al brokerului si licenta
-- [ ] Actualizare branding in template-urile de oferte
-- [ ] Configurare n8n workflows (renewals, rapoarte lunare)
-
-### Faza 4: Testare si Training (Saptamanile 4-5)
-
-- [ ] Rulare suita completa de teste pe datele de productie
-- [ ] Sesiuni training individualizate per angajat (1-2 ore fiecare)
-- [ ] Rulare paralela: Alex + tool-urile existente timp de 1 saptamana
-- [ ] Colectare feedback si ajustari
-- [ ] Testare email-uri (trimitere oferte reale pe adrese test)
-- [ ] Testare rapoarte ASF/BaFin cu date reale
-
-### Faza 5: Go-Live (Saptamana 6)
-
-- [ ] Switch la DNS productie
-- [ ] Monitorizare intensiva prima saptamana
-- [ ] Suport prioritar 30 de zile
-- [ ] Review saptamanal cu echipa brokerului
+### Week 7: Go-Live on Production VM
+- [ ] Switch DNS to production VM
+- [ ] Intensive monitoring first week
+- [ ] Priority support for 30 days
+- [ ] Weekly review calls with broker team
 
 ---
 
-## 5. Ce se Schimba in Cod pentru Productie
+## 5. Code Changes for Production
 
-### 5.1 Fisiere de Modificat
+### 5.1 Files to Modify
 
-| Fisier | Ce se Schimba | De Ce |
-|--------|--------------|-------|
-| Toate `tools/*.py` | `get_db()` → PostgreSQL connection pool | Baza de date productie |
-| `shared/db.py` | Conexiune PostgreSQL pentru tabele admin | Tabele admin in productie |
-| `seed_db.py` | Adaptat pentru PostgreSQL + import CSV | Date reale |
-| `.env` | Toate credentialele de productie | Servicii reale |
-| `CLAUDE.md` | Nume real broker, licenta, produse | Personalizare |
-| `Dockerfile` | Adauga psycopg2 dependency | Driver PostgreSQL |
-| `requirements.txt` | Adauga `psycopg2-binary>=2.9.0` | Driver PostgreSQL |
+| File | What Changes | Why |
+|------|-------------|-----|
+| All `tools/*.py` | `get_db()` → PostgreSQL connection pool | Production database |
+| `shared/db.py` | PostgreSQL connection for admin tables | Admin tables in production |
+| `seed_db.py` | Adapted for PostgreSQL + CSV import | Real data |
+| `.env` | All production credentials | Real services |
+| `CLAUDE.md` | Real broker name, license, products | Customization |
+| `Dockerfile` | Add psycopg2 dependency | PostgreSQL driver |
+| `requirements.txt` | Add `psycopg2-binary>=2.9.0` | PostgreSQL driver |
 
-### 5.2 Variabile de Mediu Productie
+### 5.2 Production Environment Variables
 
 ```env
-# Baza de date
+# Database
 DB_HOST=localhost
 DB_NAME=insurance_broker
 DB_USER=broker_app
-DB_PASS=<parola>
+DB_PASS=<password>
 
 # AI
-ANTHROPIC_API_KEY=<cheie productie>
+ANTHROPIC_API_KEY=<production key>
 CLAUDE_MODEL=claude-sonnet-4-6
 
 # Email
 SMTP_HOST=smtp.sendgrid.net
 SMTP_PORT=587
 SMTP_USER=apikey
-SMTP_PASS=<cheie API SendGrid>
-SMTP_FROM_NAME=<Numele Companiei Broker>
+SMTP_PASS=<SendGrid API key>
+SMTP_FROM_NAME=<Broker Company Name>
 
-# Autentificare
-CHAINLIT_AUTH_SECRET=<string random 64 caractere>
-ADMIN_JWT_SECRET=<string random 64 caractere>
+# Authentication
+CHAINLIT_AUTH_SECRET=<random 64-character string>
+ADMIN_JWT_SECRET=<random 64-character string>
 
 # App
 PORT=8080
 ```
 
-### 5.3 Dependente Noi
+### 5.3 New Dependencies
 
-Adauga in `requirements.txt`:
+Add to `requirements.txt`:
 ```
 psycopg2-binary>=2.9.0
 ```
 
 ---
 
-## 6. Intrebari Frecvente Tranzitie
+## 6. Migration FAQ
 
-**Q: Pierdem datele demo cand trecem pe real?**
-Nu. Demo-ul ramane disponibil cu baza de date SQLite locala. Productia foloseste PostgreSQL separat.
+**Q: Do we lose demo data when switching to production?**
+No. The demo remains available with the local SQLite database. Production uses a separate PostgreSQL database on the VM.
 
-**Q: Cat dureaza migrarea?**
-Estimat 4-6 saptamani, depinde de complexitatea datelor existente.
+**Q: How long does migration take?**
+Estimated 5–7 weeks, depending on process complexity and data volume.
 
-**Q: Putem rula demo si productie in paralel?**
-Da. Demo-ul ruleaza local cu SQLite sau pe Cloud Run, productia pe VM cu PostgreSQL.
+**Q: Can we run demo and production in parallel?**
+Yes. The demo runs locally with SQLite or on Cloud Run, production runs on the VM with PostgreSQL.
 
-**Q: Ce se intampla daca API-ul AI e indisponibil?**
-Interfata chat ramane accesibila. Documentele generate anterior raman disponibile. Anthropic SLA: 99.9%.
+**Q: What happens if the AI API is unavailable?**
+The chat interface remains accessible. Previously generated documents remain available. Anthropic SLA: 99.9%.
 
-**Q: Putem adauga asiguratori noi dupa go-live?**
-Da. Se adauga in tabelul `products` si `insurers` — fie manual prin SQL, fie prin viitorul CRUD in admin panel.
+**Q: Can we add new insurers after go-live?**
+Yes. Added to the `products` and `insurers` tables — either manually via SQL or through the admin panel CRUD.
 
-**Q: Preturile din demo sunt reale?**
-Nu. Preturile din demo sunt demonstrative. In productie, brokerul configureaza preturile reale per asigurator partener.
+**Q: Are demo prices real?**
+No. Demo prices are illustrative. In production, the broker configures real prices per partner insurer.
+
+**Q: What is different between Phase 1 and Phase 2?**
+Phase 1 (MVP) is built on our research into typical brokerage workflows — it is the starting point. Phase 2 is built on the client's actual processes, mapped together with their team. The MCP server in Phase 2 is purpose-built for how their brokerage actually works, not adapted from a generic template.
 
 ---
 
-*Document actualizat: Martie 2026 | Alex Insurance Broker AI v2.0*
+*Document updated: March 2026 | Alex Insurance Broker AI v2.1*
