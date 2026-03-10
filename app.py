@@ -44,7 +44,7 @@ _SK_TITLE_SET  = "title_set"
 
 # ── Load .env ──────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).parent
-load_dotenv(BASE_DIR / ".env")
+load_dotenv(BASE_DIR / ".env", override=True)
 
 # ── Paths ──────────────────────────────────────────────────────────────────
 MCP_SERVER_DIR = BASE_DIR / "mcp-server"

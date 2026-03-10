@@ -16,7 +16,7 @@ MCP_SERVER_DIR = BASE_DIR / "mcp-server"
 sys.path.insert(0, str(MCP_SERVER_DIR))
 
 from dotenv import load_dotenv
-load_dotenv(BASE_DIR / ".env")
+load_dotenv(BASE_DIR / ".env", override=True)
 
 # ── CRITICAL: set before ANY chainlit import ────────────────────────────────
 # Without this, chainlit sends rootPath=null to the frontend → startsWith crash
