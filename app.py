@@ -808,7 +808,8 @@ TOOLS = [
                 "filename": {"type": "string", "description": "Exact filename in SharePoint"}
             },
             "required": ["filename"]
-        }
+        },
+        "cache_control": {"type": "ephemeral"},  # Cache system prompt + full tools list
     },
 ]
 
@@ -1576,13 +1577,18 @@ async def on_message(message: cl.Message):
                     lambda: client.messages.create(
                         model=MODEL,
                         max_tokens=4096,
-                        system=SYSTEM_PROMPT,
+                        system=[{
+                            "type": "text",
+                            "text": SYSTEM_PROMPT,
+                            "cache_control": {"type": "ephemeral"},
+                        }],
                         tools=TOOLS,
                         temperature=0.1,
                         messages=history,
+                        extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
                     )
                 )
-                # Track token usage
+                # Track token usage (includes cache_creation_input_tokens + cache_read_input_tokens)
                 if ADMIN_ENABLED and response.usage:
                     _meta = cl.user_session.get("user_meta", {})
                     if _meta.get("user_id"):
