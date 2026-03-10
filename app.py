@@ -2,8 +2,8 @@
 Insurance Broker AI Assistant — Chainlit UI
 ============================================
 Chat interface for non-technical insurance broker employees.
-Uses Google Gemini API (google-genai SDK).
-Features: PDF/image upload (Gemini Vision), email offers, export PDF/XLSX/DOCX
+Uses Anthropic Claude API (anthropic SDK).
+Features: PDF/image upload (Claude Vision), email offers, export PDF/XLSX/DOCX
 """
 import sys
 import os
@@ -16,8 +16,8 @@ from datetime import date, timedelta
 from dotenv import load_dotenv
 
 import chainlit as cl
-from google import genai
-from google.genai import types
+import anthropic
+import base64
 
 # ── Admin DB helpers (imported only if tables exist) ──────────────────────────
 try:
@@ -44,262 +44,688 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 sys.path.insert(0, str(MCP_SERVER_DIR))
 
 # ── Import broker tools directly ────────────────────────────────────────────
-from insurance_broker_mcp.tools.client_tools import search_clients_fn, get_client_fn, create_client_fn
+from insurance_broker_mcp.tools.client_tools import search_clients_fn, get_client_fn, create_client_fn, update_client_fn, delete_client_fn
 from insurance_broker_mcp.tools.policy_tools import get_renewals_due_fn, list_policies_fn
 from insurance_broker_mcp.tools.product_tools import search_products_fn, compare_products_fn
 from insurance_broker_mcp.tools.offer_tools import create_offer_fn, list_offers_fn
 from insurance_broker_mcp.tools.claims_tools import log_claim_fn, get_claim_status_fn
 from insurance_broker_mcp.tools.compliance_tools import asf_summary_fn, bafin_summary_fn, check_rca_validity_fn
 from insurance_broker_mcp.tools.email_tools import send_offer_email_fn
+from insurance_broker_mcp.tools.analytics_tools import cross_sell_fn
+from insurance_broker_mcp.tools.calculator_tools import calculate_premium_fn
+from insurance_broker_mcp.tools.compliance_check_tools import compliance_check_fn
+from insurance_broker_mcp.tools.web_tools import check_rca_fn as _playwright_check_rca_fn, browse_web_fn as _playwright_browse_web_fn
 
-# ── Gemini client (new SDK) ──────────────────────────────────────────────────
-api_key = os.environ.get("GEMINI_API_KEY")
-if not api_key:
-    raise RuntimeError("GEMINI_API_KEY not set. Add it to .env file in the project root.")
+# ── REST API endpoints for n8n / external automation ─────────────────────────
+# Added on chainlit.server.app — only /api/* and /health paths, no Chainlit conflicts
+try:
+    from chainlit.server import app as _cl_app
+    from fastapi import Query as _Query
+    from fastapi.responses import JSONResponse as _JSONResponse
 
-client = genai.Client(api_key=api_key)
-MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-pro")
+    @_cl_app.get("/health")
+    async def _health():
+        return _JSONResponse({"status": "ok"})
+
+    @_cl_app.get("/api/renewals")
+    async def _api_renewals(days: int = _Query(default=45, ge=1, le=365)):
+        result = get_renewals_due_fn(days_ahead=days)
+        return _JSONResponse({"renewals": result})
+
+    @_cl_app.get("/api/reports/asf")
+    async def _api_asf(month: int = _Query(..., ge=1, le=12), year: int = _Query(..., ge=2020, le=2030)):
+        result = asf_summary_fn(month=month, year=year)
+        return _JSONResponse({"report": result})
+
+    @_cl_app.get("/api/reports/bafin")
+    async def _api_bafin(month: int = _Query(..., ge=1, le=12), year: int = _Query(..., ge=2020, le=2030)):
+        result = bafin_summary_fn(month=month, year=year)
+        return _JSONResponse({"report": result})
+
+    @_cl_app.get("/api/claims/overdue")
+    async def _api_overdue(days: int = _Query(default=14, ge=1, le=180)):
+        result = list_policies_fn(status="active")
+        return _JSONResponse({"overdue_threshold_days": days, "data": result})
+
+    @_cl_app.get("/api/clients/search")
+    async def _api_clients(q: str = _Query(..., min_length=1), limit: int = _Query(default=20, ge=1, le=100)):
+        result = search_clients_fn(query=q, limit=limit)
+        return _JSONResponse({"clients": result})
+
+    @_cl_app.get("/api/debug-from-app")
+    async def _debug_from_app():
+        """Test if app.py subprocess can reach main.py via localhost."""
+        import requests as _rr, asyncio as _aa, os as _os
+        port = _os.environ.get("PORT", "8080")
+        results = {}
+        loop = _aa.get_event_loop()
+        def _chk(path):
+            try:
+                r = _rr.get(f"http://localhost:{port}{path}", timeout=3)
+                return {"status": r.status_code, "body": r.text[:100]}
+            except Exception as e:
+                return {"error": str(e)}
+        for path in ["/health", "/cu/status"]:
+            results[path] = await loop.run_in_executor(None, lambda p=path: _chk(p))
+        return _JSONResponse({"port": port, "pid": __import__("os").getpid(), "results": results})
+
+    print("[INFO] /api/* endpoints mounted on chainlit.server.app")
+except Exception as _e:
+    print(f"[WARN] API endpoints not mounted: {_e}")
+
+# ── Computer Use shared state ─────────────────────────────────────────────────
+# When running via `uvicorn main:app`, the state lives in main.py.
+# When running standalone via `chainlit run app.py`, we own the state here.
+import asyncio as _asyncio
+import uuid as _uuid
+from datetime import datetime as _datetime
+from collections import defaultdict as _defaultdict
+
+# State for computer-use tasks — shared with main.py via cu_state module
+# DO NOT import main here — circular import deadlock (main→chainlit→app→main)
+# cu_state is a neutral module with no imports from main/chainlit
+from cu_state import _cu_tasks, _cu_results, _cu_agents, _cu_pending
+
+try:
+    from chainlit.server import app as _cl_app2
+    from fastapi import Request as _Request, Header as _Header
+    from fastapi.responses import JSONResponse as _JSONResponse2
+    from typing import Optional as _Optional
+
+    @_cl_app2.get("/api/computer-use/tasks")
+    async def _cu_get_tasks(
+        request: _Request,
+        x_agent_id: _Optional[str] = _Header(None),
+    ):
+        """Local agent polls this to get pending tasks."""
+        agent_id = x_agent_id or request.headers.get("X-Agent-ID", "unknown")
+
+        # Return tasks queued for this agent
+        pending_ids = _cu_pending.get(agent_id, [])
+        tasks = []
+        remaining_ids = []
+        for tid in pending_ids:
+            task = _cu_tasks.get(tid)
+            if task and task.get("status") == "pending":
+                task["status"] = "dispatched"
+                tasks.append(task)
+            else:
+                remaining_ids.append(tid)
+        _cu_pending[agent_id] = remaining_ids
+
+        # Update agent last-seen
+        if agent_id in _cu_agents:
+            _cu_agents[agent_id]["last_seen"] = _datetime.utcnow().isoformat()
+
+        return _JSONResponse2({"tasks": tasks, "agent_id": agent_id})
+
+    @_cl_app2.post("/api/computer-use/results")
+    async def _cu_post_result(request: _Request):
+        """Local agent posts task results here."""
+        try:
+            body = await request.json()
+            task_id = body.get("task_id")
+            if not task_id:
+                return _JSONResponse2({"error": "task_id required"}, status_code=400)
+            _cu_results[task_id] = {
+                "result": body.get("result", {}),
+                "agent_id": body.get("agent_id"),
+                "completed_at": body.get("completed_at", _datetime.utcnow().isoformat()),
+            }
+            if task_id in _cu_tasks:
+                _cu_tasks[task_id]["status"] = "completed"
+            return _JSONResponse2({"ok": True, "task_id": task_id})
+        except Exception as e:
+            return _JSONResponse2({"error": str(e)}, status_code=500)
+
+    @_cl_app2.post("/api/computer-use/heartbeat")
+    async def _cu_heartbeat(request: _Request):
+        """Local agent sends heartbeat to show it's online."""
+        try:
+            body = await request.json()
+            agent_id = body.get("agent_id", "unknown")
+            _cu_agents[agent_id] = {
+                "agent_id": agent_id,
+                "platform": body.get("platform", ""),
+                "connectors": body.get("connectors", []),
+                "last_seen": _datetime.utcnow().isoformat(),
+                "python": body.get("python", ""),
+            }
+            return _JSONResponse2({"ok": True, "agent_id": agent_id})
+        except Exception as e:
+            return _JSONResponse2({"error": str(e)}, status_code=500)
+
+    @_cl_app2.get("/api/computer-use/status")
+    async def _cu_status():
+        """Returns all online agents and their capabilities."""
+        from datetime import datetime, timezone, timedelta
+        online = []
+        for agent_id, info in _cu_agents.items():
+            try:
+                last = _datetime.fromisoformat(info["last_seen"])
+                delta = (_datetime.utcnow() - last).total_seconds()
+                if delta < 120:  # online if heartbeat within 2 min
+                    online.append({**info, "online": True, "seconds_ago": round(delta)})
+            except Exception:
+                pass
+        return _JSONResponse2({
+            "agents_online": len(online),
+            "agents": online,
+            "total_tasks": len(_cu_tasks),
+            "pending_results": sum(1 for t in _cu_tasks.values() if t.get("status") == "pending"),
+        })
+
+    print("[INFO] /api/computer-use/* endpoints mounted")
+except Exception as _e2:
+    print(f"[WARN] Computer Use API endpoints not mounted: {_e2}")
+
+
+def _cu_get_base_url() -> str:
+    """Get the base URL for inter-process HTTP calls.
+
+    app.py and main.py run in the SAME uvicorn process (mount_chainlit is in-process).
+    We can use localhost directly — much faster and more reliable than self-calls
+    via the public Cloud Run URL (which adds ~200ms RTT and can timeout).
+
+    Chainlit intercepts /api/* routes on localhost, but our /cu/* routes are
+    mounted on FastAPI in main.py BEFORE mount_chainlit, so they work fine.
+    """
+    port = os.environ.get("PORT", "8080")
+    return f"http://localhost:{port}"
+
+
+def _cu_enqueue_task(connector: str, action: str, params: dict,
+                      agent_id: str = "default", timeout: int = 120,
+                      credentials: dict = None) -> str:
+    """
+    Enqueue a computer-use task via HTTP to the FastAPI server (main.py).
+    Uses the public URL because Chainlit intercepts localhost requests.
+    """
+    import requests as _req
+    task_id = str(_uuid.uuid4())
+    task = {
+        "task_id": task_id,
+        "connector": connector,
+        "action": action,
+        "params": params,
+        "credentials": credentials or {},
+        "timeout": timeout,
+        "status": "pending",
+        "created_at": _datetime.utcnow().isoformat(),
+    }
+    base = _cu_get_base_url()
+    try:
+        _req.post(
+            f"{base}/cu/enqueue",
+            json={"task": task, "agent_id": agent_id},
+            timeout=10,
+        )
+    except Exception:
+        # Fallback: write directly to cu_state (works if same process)
+        _cu_tasks[task_id] = task
+        _cu_pending[agent_id].append(task_id)
+    return task_id
+
+
+async def _cu_wait_result(task_id: str, timeout: int = 130) -> dict:
+    """Wait for a task result by polling /cu/result via the public URL."""
+    import requests as _req
+    base = _cu_get_base_url()
+    url = f"{base}/cu/result/{task_id}"
+    loop = _asyncio.get_event_loop()
+    start = loop.time()
+
+    def _poll():
+        try:
+            r = _req.get(url, timeout=5)
+            return r.json()
+        except Exception:
+            return {}
+
+    while (loop.time() - start) < timeout:
+        data = await loop.run_in_executor(None, _poll)
+        if data.get("ready"):
+            return data.get("result", {})
+        await _asyncio.sleep(2)
+    return {"success": False, "error": f"Task {task_id} timed out after {timeout}s — is the local agent running?"}
+
+# ── Anthropic client ──────────────────────────────────────────────────────────
+_anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
+if not _anthropic_key:
+    raise RuntimeError("ANTHROPIC_API_KEY not set. Add it to .env file in the project root.")
+
+client = anthropic.Anthropic(api_key=_anthropic_key)
+MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-5")
 
 # ── System prompt ─────────────────────────────────────────────────────────────
-SYSTEM_PROMPT = """You are Alex, an AI assistant for an insurance brokerage licensed under ASF (Romania) and BaFin (Germany).
+SYSTEM_PROMPT = """You are Alex, a friendly and proactive AI assistant for an insurance brokerage (ASF Romania / BaFin Germany).
 
-You help insurance brokers with their daily work: finding clients, searching products, generating offers, tracking renewals, and processing claims.
+You talk naturally with brokers in whatever language they use (Romanian, English, German). You NEVER return raw errors — if something fails, you explain simply and offer alternatives.
 
-## Available Tools
-- broker_search_clients — search clients by name, phone, email
-- broker_get_client — full client profile with policies
-- broker_create_client — add new client to database
-- broker_search_products — search insurance products (RCA, CASCO, PAD, CMR, KFZ, LIFE, etc.)
-- broker_compare_products — side-by-side comparison table
-- broker_create_offer — generate professional insurance offer (saves file + shows in chat)
-- broker_list_offers — list generated offers
-- broker_send_offer_email — send offer by email to the client (use offer_id from broker_list_offers)
-- broker_get_renewals_due — policies expiring soon (use days_ahead parameter)
-- broker_list_policies — list policies by client or status
-- broker_log_claim — register new damage claim
-- broker_get_claim_status — check claim status
-- broker_asf_summary — monthly ASF regulatory report (Romania)
-- broker_bafin_summary — monthly BaFin regulatory report (Germany)
-- broker_check_rca_validity — check RCA validity for a client
+## Your Personality
+- Warm, concise, professional
+- Always suggest the next logical step
+- When unsure what the broker wants, ask one clear question
+- Never say "I cannot do that" — always find a way or offer an alternative
+- Respond in the same language the broker writes in
 
-## Document Upload
-When a user uploads a file (PDF, image, etc.), it will be analyzed automatically using Gemini Vision.
-You will receive the analysis result and can then:
-- Create a new client from extracted ID card data
-- Log a claim from extracted accident report data
-- Add a new policy from extracted policy scan data
-- Use damage description from accident photo analysis
+## Tools Available
+- broker_search_clients — caută client după nume, telefon, email
+- broker_get_client — profil complet cu polițe
+- broker_create_client — adaugă client nou
+- broker_update_client — corectează datele unui client existent (nume, telefon, email, etc.)
+- broker_delete_client — șterge client (refuză dacă are polițe active)
+- broker_search_products — caută produse (RCA, CASCO, PAD, CMR, KFZ, LIFE, HEALTH)
+- broker_compare_products — comparație tabelară
+- broker_create_offer — generează ofertă profesională (PDF + XLSX + DOCX)
+- broker_list_offers — listează ofertele generate
+- broker_send_offer_email — trimite oferta pe email clientului
+- broker_get_renewals_due — polițe care expiră curând
+- broker_list_policies — listează polițe
+- broker_log_claim — înregistrează daună
+- broker_get_claim_status — status dosar daună
+- broker_asf_summary — raport lunar ASF (Romania)
+- broker_bafin_summary — raport lunar BaFin (Germania)
+- broker_check_rca_validity — verifică valabilitate RCA
+- broker_cross_sell — analizează portofoliul clientului și sugerează produse lipsă
+- broker_calculate_premium — estimează prima de asigurare (RCA/CASCO) pe baza factorilor de risc
+- broker_compliance_check — verifică completitudinea dosarului client (documente, polițe, conformitate)
+- broker_check_rca — verifică RCA în timp real pe portalul ASF/CEDAM via browser headless pe server (NU necesită agent local — funcționează direct din chat)
+- broker_browse_web — accesează orice URL public și extrage text sau tabele (NU necesită agent local)
+- broker_computer_use_status — verifică dacă agentul local e conectat (necesar doar pentru desktop apps sau intranet)
+- broker_run_task — execută task pe calculatorul angajatului (NUMAI pentru desktop apps, aplicații fără internet, rețea internă). Singurul connector valid: `desktop_generic`.
 
-## Behavior
-- Always be proactive: if a client has urgent renewals, mention it immediately
-- When searching products, compare all available options (even if only 1-2 found)
-- After finding products, ALWAYS proceed to broker_create_offer immediately when broker says "make a proposal" or "yes" — do not ask for confirmation again
-- If a product search returns results, use those product IDs to call broker_create_offer right away
-- If a product search returns 0 results, try an alternative type (e.g. LIFE if HEALTH is empty) and still create an offer
-- Generate offers in English by default; switch to German (de) or Romanian (ro) on request
-- Keep responses concise and professional
-- All amounts: RON for Romanian products, EUR for German (KFZ) products
-- Regulatory framework: ASF Law 236/2018 (RO), VVG + IDD (DE), GDPR (both)
+## Când să folosești ce tool:
+- **RCA verificare** → `broker_check_rca` (instant, fără agent)
+- **Orice site web public** → `broker_browse_web` (fără agent)
+- **Deschide aplicație + scrie text** (TextEdit, Notes, Word, Excel) → `broker_run_task` cu connector=`desktop_generic`, action=`open_app_and_type`, params={app: "TextEdit", text: "textul exact"} — OBLIGATORIU această acțiune, NU run_task!
+- **Calculator** → `broker_run_task` cu connector=`desktop_generic`, action=`run_task`, params.instruction="deschide Calculator si calculeaza 2+2"
+- **Rețea internă** (intranet, VPN) → `broker_run_task` cu connector=`desktop_generic`, action=`run_task`
+- INTERZIS: connector `anthropic_computer_use` — nu funcționează fără API key separat. ÎNTOTDEAUNA folosește `desktop_generic`.
+- INTERZIS: connector `cedam` sau `web_generic` în broker_run_task.
+- INTERZIS: action `fill_form` pentru sarcini desktop simple.
+- INTERZIS: action `run_task` când utilizatorul cere să deschizi o aplicație și să scrii text — folosește `open_app_and_type`.
+
+## CRITICAL: Always use tools — NEVER answer from memory
+
+**You have NO knowledge of real products, clients, or policies.** All data lives in the database.
+- NEVER list insurance products, prices, or insurers from your training — you don't have this data
+- NEVER say "Here are the top HEALTH products: NN, Allianz..." without calling broker_search_products first
+- NEVER confirm or recommend a product without calling the tool first
+- If asked about products → call broker_search_products IMMEDIATELY, then show the real results
+- If asked about a client → call broker_search_clients or broker_get_client first
+
+**Rule:** If you are about to mention a product name, insurer, price, or policy — STOP and call the tool instead.
+
+## How to Handle Any Request
+1. **Understand intent** — even vague requests ("fa ceva cu asta", "vreau oferta", "ce mai am de facut")
+2. **Always call a tool first** — never describe data you haven't fetched yet
+3. **Chain actions** — search client → create if missing → search products → create offer, all in one flow when the broker says "onboard" or "fa oferta"
+4. **After offer is generated** — it's already shown in chat. Don't regenerate. Ask if they want to email it or modify something
+5. **If a tool returns no results** — suggest alternatives: "Nu am găsit produse HEALTH, dar am LIFE cu acoperire similară. Generez oferta cu astea?"
+6. **If something fails** — say what happened in plain language and offer 2-3 options to continue
 
 ## Document Upload Workflow
-When a document is analyzed and the broker says "extract data" or confirms an action:
-1. Search for the client by phone/name extracted from the document
-2. If not found, create the client automatically with extracted data
-3. Based on document context, proactively suggest the most relevant product type
-4. When broker says "make a proposal" or "yes" — search products AND create offer in the same turn, without asking again
+When a doc is analyzed and broker confirms data is correct:
+1. Search DB using CLIENT name (never clinic/issuer phone or name) → create client if not found
+2. Identify best product type from document context
+3. Ask ONE question: "Am creat clientul X. Generez ofertă de HEALTH?" → on any affirmative → do it immediately
+
+CRITICAL for document OCR:
+- The CLIENT is the person the document is ABOUT (patient, vehicle owner, policy holder)
+- The ISSUER is the clinic/insurer/company that issued it — NEVER use issuer phone/name as client data
+- If broker says "corecție" / "greșit" / "numele e..." → update your understanding and use the corrected data
+- NEVER search using a clinic phone number or company name as if it were a client
+
+## Offer Workflow
+- "da" / "yes" / "fă" / "generează" / "make it" after seeing products = call broker_create_offer IMMEDIATELY, no more questions
+- After offer is generated, the UI will ask the broker to approve/edit/download — you don't need to ask again
+- If broker says "aprobă" / "trimite" / "send" after seeing offer → call broker_send_offer_email right away
+- If broker says "editează" / "modifică" + describes changes → call broker_create_offer again with updated parameters
+- Never call broker_create_offer again just to "show" an offer — use the session cache instead
+- NEVER get stuck waiting — always suggest the next logical action
+
+## Language & Format
+- Match the broker's language automatically
+- Keep responses short — max 3-4 lines unless showing data tables
+- Use ✅ ⚠️ 📄 💡 sparingly for clarity
+- Amounts: RON for RO products, EUR for DE/KFZ
 
 ## Compliance
-Never share full ID numbers (CNP/passport) in responses — use client IDs only."""
+Never show full CNP/passport numbers — use client IDs only."""
 
-# ── Tool definitions for Gemini function calling ─────────────────────────────
+# ── Tool definitions for Anthropic function calling ───────────────────────────
 TOOLS = [
-    types.Tool(function_declarations=[
-        types.FunctionDeclaration(
-            name="broker_search_clients",
-            description="Search clients by name, phone, or email address.",
-            parameters=types.Schema(
-                type=types.Type.OBJECT,
-                properties={
-                    "query": types.Schema(type=types.Type.STRING, description="Name, phone, or email to search"),
-                    "limit": types.Schema(type=types.Type.INTEGER, description="Max results (default 10)"),
-                },
-                required=["query"],
-            ),
+    {
+        "name": "broker_search_clients",
+        "description": "Search clients by name, phone, or email address.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Name, phone, or email to search"},
+                "limit": {"type": "integer", "description": "Max results (default 10)"},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "broker_get_client",
+        "description": "Get full client profile including all their policies.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "client_id": {"type": "string", "description": "Client ID (e.g. CLI001)"},
+            },
+            "required": ["client_id"],
+        },
+    },
+    {
+        "name": "broker_create_client",
+        "description": "Create a new client in the database.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "phone": {"type": "string"},
+                "email": {"type": "string"},
+                "address": {"type": "string"},
+                "client_type": {"type": "string", "description": "individual or company"},
+                "country": {"type": "string", "description": "RO or DE"},
+                "source": {"type": "string"},
+            },
+            "required": ["name", "phone"],
+        },
+    },
+    {
+        "name": "broker_update_client",
+        "description": "Update an existing client's details (name, phone, email, address, etc.). Only provided fields are changed.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "client_id": {"type": "string", "description": "Client ID from broker_search_clients"},
+                "name": {"type": "string"},
+                "phone": {"type": "string"},
+                "email": {"type": "string"},
+                "address": {"type": "string"},
+                "id_number": {"type": "string"},
+                "country": {"type": "string", "description": "RO or DE"},
+                "client_type": {"type": "string", "description": "individual or company"},
+                "notes": {"type": "string"},
+            },
+            "required": ["client_id"],
+        },
+    },
+    {
+        "name": "broker_delete_client",
+        "description": "Delete a client. Will refuse if they have active policies. Use broker_search_clients first to get client_id.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "client_id": {"type": "string", "description": "Client ID to delete"},
+            },
+            "required": ["client_id"],
+        },
+    },
+    {
+        "name": "broker_search_products",
+        "description": "Search available insurance products from all partner insurers.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "product_type": {"type": "string", "description": "Type: RCA, CASCO, PAD, HOME, LIFE, CMR, KFZ, LIABILITY, TRANSPORT, HEALTH"},
+                "country": {"type": "string", "description": "RO or DE"},
+            },
+            "required": ["product_type"],
+        },
+    },
+    {
+        "name": "broker_compare_products",
+        "description": "Compare multiple insurance products side by side.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "product_ids": {"type": "string", "description": "Comma-separated product IDs from broker_search_products"},
+            },
+            "required": ["product_ids"],
+        },
+    },
+    {
+        "name": "broker_create_offer",
+        "description": "Generate a professional insurance offer document for a client.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "client_id": {"type": "string"},
+                "product_ids": {"type": "string", "description": "Comma-separated product IDs"},
+                "language": {"type": "string", "description": "en, ro, or de"},
+                "valid_days": {"type": "integer"},
+                "notes": {"type": "string"},
+                "format": {"type": "string", "description": "text or pdf"},
+            },
+            "required": ["client_id", "product_ids"],
+        },
+    },
+    {
+        "name": "broker_list_offers",
+        "description": "List generated offers, optionally filtered by client or status.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "client_id": {"type": "string"},
+                "status": {"type": "string", "description": "sent, accepted, or expired"},
+            },
+        },
+    },
+    {
+        "name": "broker_send_offer_email",
+        "description": "Send a generated offer by email to the client. Fetches client email from DB if to_email not provided.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "offer_id": {"type": "string", "description": "Offer ID from broker_list_offers"},
+                "to_email": {"type": "string", "description": "Recipient email (optional, uses client email from DB if not set)"},
+                "subject": {"type": "string", "description": "Email subject (optional)"},
+            },
+            "required": ["offer_id"],
+        },
+    },
+    {
+        "name": "broker_get_renewals_due",
+        "description": "Get policies expiring within the next N days.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "days_ahead": {"type": "integer", "description": "Number of days to look ahead (default 30)"},
+            },
+        },
+    },
+    {
+        "name": "broker_list_policies",
+        "description": "List policies, optionally filtered by client ID or status.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "client_id": {"type": "string"},
+                "status": {"type": "string", "description": "active, expired, or cancelled"},
+            },
+        },
+    },
+    {
+        "name": "broker_log_claim",
+        "description": "Register a new damage/claims report for a client.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "client_id": {"type": "string"},
+                "policy_id": {"type": "string"},
+                "incident_date": {"type": "string", "description": "YYYY-MM-DD"},
+                "description": {"type": "string"},
+                "damage_estimate": {"type": "number"},
+            },
+            "required": ["client_id", "policy_id", "incident_date", "description"],
+        },
+    },
+    {
+        "name": "broker_get_claim_status",
+        "description": "Get the status of an existing claim.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "claim_id": {"type": "string"},
+            },
+            "required": ["claim_id"],
+        },
+    },
+    {
+        "name": "broker_asf_summary",
+        "description": "Generate monthly ASF (Romanian Financial Supervisory Authority) report.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "month": {"type": "integer", "description": "Month number 1-12"},
+                "year": {"type": "integer"},
+            },
+            "required": ["month", "year"],
+        },
+    },
+    {
+        "name": "broker_bafin_summary",
+        "description": "Generate monthly BaFin (German) regulatory report.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "month": {"type": "integer", "description": "Month number 1-12"},
+                "year": {"type": "integer"},
+            },
+            "required": ["month", "year"],
+        },
+    },
+    {
+        "name": "broker_check_rca_validity",
+        "description": "Check RCA (mandatory Romanian motor insurance) validity for a client.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Client name or policy number"},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "broker_cross_sell",
+        "description": "Analyze a client's portfolio and suggest missing insurance products for cross-selling opportunities.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "client_id": {"type": "string", "description": "Client ID (e.g. CLI001)"},
+            },
+            "required": ["client_id"],
+        },
+    },
+    {
+        "name": "broker_calculate_premium",
+        "description": "Estimate insurance premium based on risk factors. Supports RCA and CASCO for Romania.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "product_type": {"type": "string", "description": "RCA or CASCO"},
+                "age": {"type": "integer", "description": "Driver age (default 35)"},
+                "engine_cc": {"type": "integer", "description": "Engine capacity in cc (default 1600)"},
+                "bonus_malus_class": {"type": "string", "description": "B0-B14 or M1-M8 (default B0)"},
+                "zone": {"type": "string", "description": "City or Urban/Rural (default Urban)"},
+                "vehicle_value": {"type": "number", "description": "Vehicle value in RON (for CASCO)"},
+                "country": {"type": "string", "description": "RO or DE (default RO)"},
+            },
+            "required": ["product_type"],
+        },
+    },
+    {
+        "name": "broker_compliance_check",
+        "description": "Check compliance status for a client — missing documents, expiring policies, mandatory product gaps, regulatory issues. Returns a compliance score 0-100.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "client_id": {"type": "string", "description": "Client ID (e.g. CLI001)"},
+            },
+            "required": ["client_id"],
+        },
+    },
+    # ── Web automation tools (Playwright on Cloud Run — no local agent needed) ──
+    {
+        "name": "broker_check_rca",
+        "description": (
+            "Verifică valabilitatea poliței RCA pentru un număr de înmatriculare, "
+            "accesând portalul ASF/CEDAM în timp real via browser headless pe server. "
+            "Nu necesită agent local — rulează direct pe Cloud Run. "
+            "Returnează: valid/expirat, dată expirare, asigurător, număr poliță, zile rămase."
         ),
-        types.FunctionDeclaration(
-            name="broker_get_client",
-            description="Get full client profile including all their policies.",
-            parameters=types.Schema(
-                type=types.Type.OBJECT,
-                properties={
-                    "client_id": types.Schema(type=types.Type.STRING, description="Client ID (e.g. CLI001)"),
-                },
-                required=["client_id"],
-            ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "plate": {"type": "string", "description": "Numărul de înmatriculare (ex: B123ABC, B 123 ABC, CJ12XYZ)"},
+            },
+            "required": ["plate"],
+        },
+    },
+    {
+        "name": "broker_browse_web",
+        "description": (
+            "Accesează un URL public și extrage conținutul paginii (text sau tabele). "
+            "Util pentru verificări pe site-uri externe: prețuri, știri, portaluri publice, etc. "
+            "Nu necesită agent local — rulează headless pe Cloud Run."
         ),
-        types.FunctionDeclaration(
-            name="broker_create_client",
-            description="Create a new client in the database.",
-            parameters=types.Schema(
-                type=types.Type.OBJECT,
-                properties={
-                    "name": types.Schema(type=types.Type.STRING),
-                    "phone": types.Schema(type=types.Type.STRING),
-                    "email": types.Schema(type=types.Type.STRING),
-                    "address": types.Schema(type=types.Type.STRING),
-                    "client_type": types.Schema(type=types.Type.STRING, description="individual or company"),
-                    "country": types.Schema(type=types.Type.STRING, description="RO or DE"),
-                    "source": types.Schema(type=types.Type.STRING),
-                },
-                required=["name", "phone"],
-            ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "url": {"type": "string", "description": "URL-ul de accesat (trebuie să fie public, fără autentificare)"},
+                "query": {"type": "string", "description": "Ce anume căutăm/extragem din pagină (pentru context)"},
+                "extract_type": {"type": "string", "description": "'text' (default) pentru text complet, 'table' pentru tabele HTML"},
+            },
+            "required": ["url"],
+        },
+    },
+    # ── Computer Use tools (local agent — for desktop apps and intranets) ──
+    {
+        "name": "broker_computer_use_status",
+        "description": "Check if the local computer-use agent is online on the employee's machine. Returns list of connected agents and available connectors (cedam, web_generic, desktop_generic, etc.).",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "broker_run_task",
+        "description": (
+            "Run a computer-use task on the employee's local machine. "
+            "The local agent executes the task (browser automation or desktop automation) and returns the result. "
+            "Use connector='cedam' for RCA checks, connector='web_generic' for any website, connector='desktop_generic' for Windows/Mac apps. "
+            "Actions: extract, fill_form, navigate, click, screenshot, check_rca, read_screen, run_task, open_app_and_type. "
+            "IMPORTANT: For opening a desktop app and typing text, ALWAYS use action='open_app_and_type' with params={app: 'TextEdit', text: 'exact text here'} — NOT run_task."
         ),
-        types.FunctionDeclaration(
-            name="broker_search_products",
-            description="Search available insurance products from all partner insurers.",
-            parameters=types.Schema(
-                type=types.Type.OBJECT,
-                properties={
-                    "product_type": types.Schema(type=types.Type.STRING, description="Type: RCA, CASCO, PAD, HOME, LIFE, CMR, KFZ, LIABILITY, TRANSPORT, HEALTH"),
-                    "country": types.Schema(type=types.Type.STRING, description="RO or DE"),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "connector": {"type": "string", "description": "Connector to use: cedam, web_generic, desktop_generic"},
+                "action": {"type": "string", "description": "Action: extract, fill_form, navigate, click, screenshot, check_rca, read_screen, run_task, login, open_app_and_type"},
+                "params": {
+                    "type": "object",
+                    "description": "Action parameters. For open_app_and_type: {app: 'TextEdit', text: 'exact text to type'}. For run_task: {instruction: '...'}. For check_rca: {plate: 'B123ABC'}.",
+                    "properties": {
+                        "query": {"type": "string"},
+                        "url": {"type": "string"},
+                        "plate": {"type": "string", "description": "License plate for RCA check"},
+                        "instruction": {"type": "string", "description": "Natural language instruction for run_task (desktop apps)"},
+                        "max_steps": {"type": "integer", "description": "Max automation steps (default 10)"},
+                        "app": {"type": "string", "description": "App name for open_app_and_type, e.g. 'TextEdit', 'Notes', 'Word'"},
+                        "text": {"type": "string", "description": "Exact text to type for open_app_and_type"},
+                    },
                 },
-                required=["product_type"],
-            ),
-        ),
-        types.FunctionDeclaration(
-            name="broker_compare_products",
-            description="Compare multiple insurance products side by side.",
-            parameters=types.Schema(
-                type=types.Type.OBJECT,
-                properties={
-                    "product_ids": types.Schema(type=types.Type.STRING, description="Comma-separated product IDs from broker_search_products"),
-                },
-                required=["product_ids"],
-            ),
-        ),
-        types.FunctionDeclaration(
-            name="broker_create_offer",
-            description="Generate a professional insurance offer document for a client.",
-            parameters=types.Schema(
-                type=types.Type.OBJECT,
-                properties={
-                    "client_id": types.Schema(type=types.Type.STRING),
-                    "product_ids": types.Schema(type=types.Type.STRING, description="Comma-separated product IDs"),
-                    "language": types.Schema(type=types.Type.STRING, description="en, ro, or de"),
-                    "valid_days": types.Schema(type=types.Type.INTEGER),
-                    "notes": types.Schema(type=types.Type.STRING),
-                    "format": types.Schema(type=types.Type.STRING, description="text or pdf"),
-                },
-                required=["client_id", "product_ids"],
-            ),
-        ),
-        types.FunctionDeclaration(
-            name="broker_list_offers",
-            description="List generated offers, optionally filtered by client or status.",
-            parameters=types.Schema(
-                type=types.Type.OBJECT,
-                properties={
-                    "client_id": types.Schema(type=types.Type.STRING),
-                    "status": types.Schema(type=types.Type.STRING, description="sent, accepted, or expired"),
-                },
-            ),
-        ),
-        types.FunctionDeclaration(
-            name="broker_send_offer_email",
-            description="Send a generated offer by email to the client. Fetches client email from DB if to_email not provided.",
-            parameters=types.Schema(
-                type=types.Type.OBJECT,
-                properties={
-                    "offer_id": types.Schema(type=types.Type.STRING, description="Offer ID from broker_list_offers"),
-                    "to_email": types.Schema(type=types.Type.STRING, description="Recipient email (optional, uses client email from DB if not set)"),
-                    "subject": types.Schema(type=types.Type.STRING, description="Email subject (optional)"),
-                },
-                required=["offer_id"],
-            ),
-        ),
-        types.FunctionDeclaration(
-            name="broker_get_renewals_due",
-            description="Get policies expiring within the next N days.",
-            parameters=types.Schema(
-                type=types.Type.OBJECT,
-                properties={
-                    "days_ahead": types.Schema(type=types.Type.INTEGER, description="Number of days to look ahead (default 30)"),
-                },
-            ),
-        ),
-        types.FunctionDeclaration(
-            name="broker_list_policies",
-            description="List policies, optionally filtered by client ID or status.",
-            parameters=types.Schema(
-                type=types.Type.OBJECT,
-                properties={
-                    "client_id": types.Schema(type=types.Type.STRING),
-                    "status": types.Schema(type=types.Type.STRING, description="active, expired, or cancelled"),
-                },
-            ),
-        ),
-        types.FunctionDeclaration(
-            name="broker_log_claim",
-            description="Register a new damage/claims report for a client.",
-            parameters=types.Schema(
-                type=types.Type.OBJECT,
-                properties={
-                    "client_id": types.Schema(type=types.Type.STRING),
-                    "policy_id": types.Schema(type=types.Type.STRING),
-                    "incident_date": types.Schema(type=types.Type.STRING, description="YYYY-MM-DD"),
-                    "description": types.Schema(type=types.Type.STRING),
-                    "damage_estimate": types.Schema(type=types.Type.NUMBER),
-                },
-                required=["client_id", "policy_id", "incident_date", "description"],
-            ),
-        ),
-        types.FunctionDeclaration(
-            name="broker_get_claim_status",
-            description="Get the status of an existing claim.",
-            parameters=types.Schema(
-                type=types.Type.OBJECT,
-                properties={
-                    "claim_id": types.Schema(type=types.Type.STRING),
-                },
-                required=["claim_id"],
-            ),
-        ),
-        types.FunctionDeclaration(
-            name="broker_asf_summary",
-            description="Generate monthly ASF (Romanian Financial Supervisory Authority) report.",
-            parameters=types.Schema(
-                type=types.Type.OBJECT,
-                properties={
-                    "month": types.Schema(type=types.Type.INTEGER, description="Month number 1-12"),
-                    "year": types.Schema(type=types.Type.INTEGER),
-                },
-                required=["month", "year"],
-            ),
-        ),
-        types.FunctionDeclaration(
-            name="broker_bafin_summary",
-            description="Generate monthly BaFin (German) regulatory report.",
-            parameters=types.Schema(
-                type=types.Type.OBJECT,
-                properties={
-                    "month": types.Schema(type=types.Type.INTEGER, description="Month number 1-12"),
-                    "year": types.Schema(type=types.Type.INTEGER),
-                },
-                required=["month", "year"],
-            ),
-        ),
-        types.FunctionDeclaration(
-            name="broker_check_rca_validity",
-            description="Check RCA (mandatory Romanian motor insurance) validity for a client.",
-            parameters=types.Schema(
-                type=types.Type.OBJECT,
-                properties={
-                    "query": types.Schema(type=types.Type.STRING, description="Client name or policy number"),
-                },
-                required=["query"],
-            ),
-        ),
-    ])
+                "agent_id": {"type": "string", "description": "Agent ID (from broker_computer_use_status). If omitted, sends to first available agent."},
+                "timeout": {"type": "integer", "description": "Max seconds to wait for result (default 120)"},
+            },
+            "required": ["connector", "action"],
+        },
+    },
 ]
 
 # ── Tool executor ─────────────────────────────────────────────────────────────
@@ -307,6 +733,8 @@ TOOL_DISPATCH = {
     "broker_search_clients":     search_clients_fn,
     "broker_get_client":         get_client_fn,
     "broker_create_client":      create_client_fn,
+    "broker_update_client":      update_client_fn,
+    "broker_delete_client":      delete_client_fn,
     "broker_search_products":    search_products_fn,
     "broker_compare_products":   compare_products_fn,
     "broker_create_offer":       create_offer_fn,
@@ -319,16 +747,208 @@ TOOL_DISPATCH = {
     "broker_asf_summary":        asf_summary_fn,
     "broker_bafin_summary":      bafin_summary_fn,
     "broker_check_rca_validity": check_rca_validity_fn,
+    "broker_cross_sell":         cross_sell_fn,
+    "broker_calculate_premium":  calculate_premium_fn,
+    "broker_compliance_check":   compliance_check_fn,
+    # Web automation (Playwright on Cloud Run — sync wrappers, run in thread pool)
+    "broker_check_rca":          _playwright_check_rca_fn,
+    "broker_browse_web":         _playwright_browse_web_fn,
+    # Computer use tools — status is sync, run_task is async (handled in agentic loop)
+    "broker_computer_use_status": None,  # set after function definition below
+    "broker_run_task":            None,  # async — handled in agentic loop
 }
 
 def execute_tool(tool_name: str, tool_input: dict) -> str:
     fn = TOOL_DISPATCH.get(tool_name)
+    if fn is None and tool_name in TOOL_DISPATCH:
+        # Async tool — should be handled by execute_tool_async
+        return f"[async tool '{tool_name}' — use execute_tool_async]"
     if not fn:
-        return f"Unknown tool: {tool_name}"
+        return (f"Toolul '{tool_name}' nu există. "
+                f"Tooluri disponibile: {', '.join(TOOL_DISPATCH.keys())}")
     try:
-        return fn(**tool_input)
+        result = fn(**tool_input)
+        return result if result else "Operațiunea a fost efectuată cu succes."
+    except TypeError as e:
+        # Missing or wrong arguments — give helpful hint
+        import inspect
+        sig = inspect.signature(fn)
+        return (f"Parametri incorecți pentru {tool_name}. "
+                f"Parametri necesari: {list(sig.parameters.keys())}. "
+                f"Primit: {list(tool_input.keys())}. Eroare: {e}")
     except Exception as e:
-        return f"Tool error: {type(e).__name__}: {e}"
+        err = str(e)
+        # Return friendly message with context so Alex can recover
+        return (f"A apărut o problemă la {tool_name}: {err[:200]}. "
+                f"Input folosit: {tool_input}. "
+                f"Sugestie: verifică dacă ID-ul clientului/produsului este corect.")
+
+
+# ── Computer Use tool implementations (async) ─────────────────────────────────
+
+def _cu_computer_use_status_fn(**kwargs) -> str:
+    """Returns status of connected local agents.
+
+    Reads directly from cu_state._cu_agents (shared module, same process).
+    No HTTP call needed — app.py and main.py share the same cu_state module
+    because they run in the same uvicorn process via mount_chainlit.
+    """
+    from datetime import datetime as _dt2
+    online = []
+    for agent_id, info in _cu_agents.items():
+        try:
+            last = _dt2.fromisoformat(info["last_seen"])
+            delta = (_dt2.utcnow() - last).total_seconds()
+            if delta < 120:
+                online.append({**info, "online": True, "seconds_ago": round(delta)})
+        except Exception:
+            pass
+
+    if not online:
+        return (
+            "⚠️ **Niciun agent local conectat.**\n\n"
+            "Pentru a folosi computer use, porniți agentul local pe calculatorul angajatului:\n"
+            "```\n"
+            "cd alex-local-agent\n"
+            "python main.py start\n"
+            "```"
+        )
+
+    lines = ["## 🤖 Agent Local — Status\n"]
+    for info in online:
+        secs = info.get("seconds_ago", "?")
+        lines.append(f"**Agent:** `{info.get('agent_id', '?')}`")
+        lines.append(f"- Status: 🟢 Online (văzut acum {secs}s)")
+        lines.append(f"- Platform: {info.get('platform', 'N/A')}")
+        connectors = info.get("connectors", [])
+        lines.append(f"- Connectors disponibili: {', '.join(connectors) if connectors else 'niciunul'}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+async def _cu_run_task_async(
+    connector: str,
+    action: str,
+    params: dict = None,
+    agent_id: str = None,
+    timeout: int = 120,
+    credentials: dict = None,
+) -> str:
+    """Async implementation of broker_run_task — enqueues task and waits for result."""
+    params = params or {}
+    credentials = credentials or {}
+
+    # Determine target agent — read directly from cu_state (same process, no HTTP needed)
+    if not agent_id:
+        from datetime import datetime as _dt3
+        for info in _cu_agents.values():
+            try:
+                last = _dt3.fromisoformat(info["last_seen"])
+                delta = (_dt3.utcnow() - last).total_seconds()
+                if delta < 120:
+                    agent_id = info["agent_id"]
+                    break
+            except Exception:
+                pass
+
+    if not agent_id:
+        return (
+            "⚠️ **Niciun agent local online.**\n\n"
+            "Porniți agentul local cu:\n```\ncd alex-local-agent\npython main.py start\n```"
+        )
+
+    # Enqueue task
+    task_id = _cu_enqueue_task(
+        connector=connector,
+        action=action,
+        params=params,
+        agent_id=agent_id,
+        timeout=timeout,
+        credentials=credentials,
+    )
+
+    # Notify user we're waiting
+    connector_emoji = {"cedam": "🚗", "web_generic": "🌐", "desktop_generic": "🖥️",
+                       "anthropic_computer_use": "🤖"}.get(connector, "⚙️")
+    action_desc = {
+        "check_rca": f"verificare RCA pentru {params.get('plate', '')}",
+        "extract": f"extragere: {params.get('query', '')[:60]}",
+        "navigate": f"navigare la {params.get('url', '')}",
+        "fill_form": "completare formular",
+        "screenshot": "capturare ecran",
+        "read_screen": "citire ecran",
+        "login": "autentificare",
+    }.get(action, action)
+
+    wait_msg = f"{connector_emoji} **Execut task pe agentul local** ({connector} / {action_desc})..."
+
+    # Wait for result with timeout
+    result = await _cu_wait_result(task_id, timeout=timeout + 10)
+
+    if not result.get("success"):
+        error = result.get("error", "Eroare necunoscută")
+        return f"❌ **Task eșuat** ({connector}/{action})\n\nEroare: {error}"
+
+    # Format result nicely
+    if action == "check_rca":
+        return _format_rca_result(result, params.get("plate", ""))
+    elif action == "screenshot":
+        # Return info about screenshot (base64 would be too long for chat)
+        size = result.get("size_bytes", 0)
+        return f"📸 **Screenshot capturat** ({size // 1024} KB)\n\nPot analiza ecranul dacă dorești — spune-mi ce să caut."
+    elif action == "extract":
+        data = result.get("data") or result.get("result", {})
+        if isinstance(data, str):
+            return f"📄 **Date extrase:**\n\n{data[:2000]}"
+        elif isinstance(data, (list, dict)):
+            return f"📄 **Date extrase:**\n\n```json\n{json.dumps(data, indent=2, ensure_ascii=False)[:2000]}\n```"
+        return f"📄 **Rezultat:** {str(result)[:1000]}"
+    else:
+        # Generic success response
+        data = result.get("data") or result.get("result") or result
+        if isinstance(data, str):
+            return f"✅ **Task completat** ({connector}/{action})\n\n{data[:1500]}"
+        return f"✅ **Task completat** ({connector}/{action})\n\n```\n{json.dumps(data, indent=2, ensure_ascii=False, default=str)[:1500]}\n```"
+
+
+def _format_rca_result(result: dict, plate: str) -> str:
+    """Format RCA check result as readable markdown."""
+    if not result.get("data_found"):
+        return (
+            f"❌ **Nu există RCA activ** pentru numărul de înmatriculare **{plate}**\n\n"
+            f"Clientul trebuie să achiziționeze o poliță RCA."
+        )
+
+    valid = result.get("rca_valid")
+    expiry = result.get("expiry_date", "N/A")
+    days = result.get("days_until_expiry")
+    insurer = result.get("insurer", "N/A")
+    policy_no = result.get("policy_number", "N/A")
+
+    status_icon = "✅" if valid else "❌"
+    status_text = "**VALABIL**" if valid else "**EXPIRAT**"
+
+    urgency = ""
+    if days is not None and days <= 30:
+        urgency = f"\n\n⚠️ **ATENȚIE: Polița expiră în {days} zile!** Contactați clientul pentru reînnoire."
+    elif days is not None and days <= 60:
+        urgency = f"\n\n📅 Polița expiră în {days} zile — pregătire reînnoire."
+
+    return (
+        f"## {status_icon} Verificare RCA — {plate}\n\n"
+        f"- **Status:** {status_text}\n"
+        f"- **Asigurător:** {insurer}\n"
+        f"- **Număr poliță:** {policy_no}\n"
+        f"- **Dată expirare:** {expiry}\n"
+        f"- **Zile rămase:** {days if days is not None else 'N/A'}"
+        f"{urgency}"
+    )
+
+
+# ── Register async computer use tools in dispatch (after functions are defined) ─
+TOOL_DISPATCH["broker_computer_use_status"] = _cu_computer_use_status_fn
+# broker_run_task stays None — handled specially in agentic loop (await)
 
 
 # ── Export helpers ────────────────────────────────────────────────────────────
@@ -512,17 +1132,17 @@ async def send_export_files(content: str, base_title: str):
 
     xlsx_path = export_to_xlsx(content, base_title)
     if xlsx_path and xlsx_path.exists():
-        elements.append(cl.File(name=xlsx_path.name, path=str(xlsx_path), display="inline"))
+        elements.append(cl.File(name=xlsx_path.name, path=str(xlsx_path), display="side"))
         generated.append("XLSX")
 
     docx_path = export_to_docx(content, base_title)
     if docx_path and docx_path.exists():
-        elements.append(cl.File(name=docx_path.name, path=str(docx_path), display="inline"))
+        elements.append(cl.File(name=docx_path.name, path=str(docx_path), display="side"))
         generated.append("DOCX")
 
     pdf_path = export_to_pdf(content, base_title)
     if pdf_path and pdf_path.exists():
-        elements.append(cl.File(name=pdf_path.name, path=str(pdf_path), display="inline"))
+        elements.append(cl.File(name=pdf_path.name, path=str(pdf_path), display="side"))
         generated.append("PDF")
 
     if elements:
@@ -556,7 +1176,7 @@ def get_dashboard_stats() -> dict:
 
 
 async def process_uploaded_file(file: cl.File) -> str:
-    """Process an uploaded file with Gemini Vision. Returns analysis text."""
+    """Process an uploaded file with Claude Vision. Returns analysis text."""
     name_lower = file.name.lower()
     is_image = any(name_lower.endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"])
     is_pdf = name_lower.endswith(".pdf")
@@ -576,57 +1196,94 @@ async def process_uploaded_file(file: cl.File) -> str:
         text_content = file_bytes.decode("utf-8", errors="replace")
         return f"[Text file: {file.name}]\n\n{text_content[:3000]}"
 
-    # Gemini Vision analysis — use flash model for speed (OCR doesn't need 2.5-pro)
-    OCR_MODEL = "gemini-2.0-flash"
-
     if is_image:
-        mime_type = (
+        media_type = (
             "image/jpeg" if name_lower.endswith((".jpg", ".jpeg")) else
             "image/png" if name_lower.endswith(".png") else
             "image/webp" if name_lower.endswith(".webp") else
             "image/jpeg"
         )
     else:
-        mime_type = "application/pdf"
+        media_type = "application/pdf"
 
-    analysis_prompt = """Analyze this insurance-related document.
+    analysis_prompt = """Analyze this document carefully.
 
-Extract ALL visible information:
+IMPORTANT DISTINCTION:
+- The **CLIENT/PATIENT/SUBJECT** is the person this document is ABOUT (the insured person, patient, vehicle owner, policy holder)
+- The **ISSUER/CLINIC/INSURER** is the organization that ISSUED or SIGNED the document
 
-1. **Document Type:** (ID card / insurance policy / accident photo / constatare amiabila / invoice / other)
-2. **Extracted Data:**
-   - Person/Company name(s)
-   - ID/policy numbers
-   - Dates (start, end, incident)
-   - Amounts/premiums (RON or EUR)
-   - Addresses, phone, email
-   - Vehicle details if applicable
-   - Damage description if accident photo
-   - Coverage details if policy
-3. **Suggested Next Action:** which broker tool to use
+Extract in this exact format:
 
-Be concise but complete."""
+**Document Type:** (ID card / medical referral / insurance policy / accident report / invoice / lab results / other)
+
+**CLIENT DATA** (the person this document is about — NOT the issuing organization):
+- Full Name: [name of the person, NOT the clinic/company/issuer]
+- Phone: [client's personal phone, NOT clinic reception number]
+- Email: [client's email if present]
+- Address: [client's address]
+- Date of Birth / CNP: [if present]
+- ID/Policy Number: [if present]
+
+**ISSUER DATA** (clinic, insurer, company that issued the document):
+- Issuer Name: [clinic name, insurer name, company]
+- Issuer Phone: [clinic/company contact]
+- Issuer Address: [clinic/company address]
+
+**OTHER DETAILS:**
+- Dates: [relevant dates]
+- Amounts: [any monetary amounts in RON/EUR]
+- Vehicle details: [if applicable]
+- Diagnosis/Coverage/Damage: [key content]
+
+**Suggested Insurance Type:** [HEALTH / LIFE / RCA / CASCO / PAD / other based on document context]
+
+Be precise. Never confuse issuer contact data with client personal data."""
 
     try:
-        response = client.models.generate_content(
-            model=OCR_MODEL,
-            contents=[
-                types.Part(inline_data=types.Blob(mime_type=mime_type, data=file_bytes)),
-                types.Part(text=analysis_prompt)
-            ],
-            config=types.GenerateContentConfig(
-                temperature=0.1,
-                max_output_tokens=1024,
-            ),
+        encoded = base64.standard_b64encode(file_bytes).decode("utf-8")
+        # Claude supports images directly; PDFs via base64 document blocks
+        if is_image:
+            content_block = {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": media_type,
+                    "data": encoded,
+                },
+            }
+        else:
+            # PDF — send as document block (supported in claude-3+ models)
+            content_block = {
+                "type": "document",
+                "source": {
+                    "type": "base64",
+                    "media_type": "application/pdf",
+                    "data": encoded,
+                },
+            }
+        response = await _asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: client.messages.create(
+                model=MODEL,
+                max_tokens=1024,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        content_block,
+                        {"type": "text", "text": analysis_prompt},
+                    ],
+                }],
+            )
         )
         analysis = ""
-        if response.candidates and response.candidates[0].content and response.candidates[0].content.parts:
-            for part in response.candidates[0].content.parts:
-                if hasattr(part, "text") and part.text:
-                    analysis += part.text
+        for block in response.content:
+            if hasattr(block, "text"):
+                analysis += block.text
         return f"[Document analyzed: {file.name}]\n\n{analysis}" if analysis else f"Could not extract content from {file.name}."
     except Exception as e:
-        return f"[OCR error for {file.name}]: {str(e)[:200]}"
+        err_str = str(e)
+        return (f"⚠️ Nu am putut analiza {file.name}. "
+                f"(Eroare: {err_str[:200]})")
 
 
 # ── Auth callback (only active when CHAINLIT_AUTH_SECRET is set) ──────────────
@@ -716,13 +1373,13 @@ async def on_chat_start():
 
 @cl.on_message
 async def on_message(message: cl.Message):
-    """Handle incoming broker message — full agentic loop with Gemini."""
+    """Handle incoming broker message — full agentic loop with Claude."""
     history = cl.user_session.get("history", [])
 
-    # Build user message parts (text + any uploaded files)
-    user_parts = []
+    # Build user message content (text + any uploaded files)
+    user_content = []
     if message.content and message.content.strip():
-        user_parts.append(types.Part(text=message.content))
+        user_content.append({"type": "text", "text": message.content})
 
     # Process any uploaded files inline
     if message.elements:
@@ -731,61 +1388,113 @@ async def on_message(message: cl.Message):
             if has_data and hasattr(element, "name"):
                 try:
                     async with cl.Step(name=f"📄 Analyzing {element.name}...", type="tool", show_input=False) as step:
-                        step.output = "Processing with Gemini Vision..."
+                        step.output = "Processing with Claude Vision..."
                         analysis = await process_uploaded_file(element)
 
+                    # Show extracted data with confirmation buttons
                     await cl.Message(
-                        content=f"✅ **Document read: {element.name}**\n\n{analysis}\n\n---\n*What would you like me to do with this?*",
+                        content=(
+                            f"✅ **Document citit: {element.name}**\n\n"
+                            f"{analysis}\n\n"
+                            f"---\n"
+                            f"⚠️ **Verifică datele de mai sus înainte să continui.** "
+                            f"Dacă ceva e greșit (ex: s-a confundat telefonul clinicii cu al clientului), "
+                            f"scrie corecția în mesajul următor."
+                        ),
                         author="Alex 🤖"
                     ).send()
 
-                    # Add analysis to conversation context
-                    user_parts.append(types.Part(text=analysis))
+                    # Ask broker to confirm before proceeding
+                    res = await cl.AskActionMessage(
+                        content="Datele sunt corecte?",
+                        actions=[
+                            cl.Action(name="confirm", label="✅ Corect — continuă", payload={"value": "confirm"}),
+                            cl.Action(name="edit", label="✏️ Vreau să corectez ceva", payload={"value": "edit"}),
+                        ],
+                        author="Alex 🤖",
+                        timeout=60,
+                    ).send()
+
+                    if res and res.get("payload", {}).get("value") == "edit":
+                        await cl.Message(
+                            content="✏️ Scrie corecția (ex: 'Numele clientului e Ion Popescu, telefonul e 0722111222, nu cel al clinicii').",
+                            author="Alex 🤖"
+                        ).send()
+                        # Add analysis to context but flag that broker will correct it
+                        user_content.append({"type": "text", "text": (
+                            f"[Document analizat: {element.name}]\n{analysis}\n\n"
+                            f"[IMPORTANT: Brokerul va corecta datele în mesajul următor. Asteaptă corecția înainte să cauți sau să creezi clientul.]"
+                        )})
+                    else:
+                        # Confirmed or timeout — proceed with analysis
+                        user_content.append({"type": "text", "text": analysis})
+
                 except Exception as e:
                     await cl.Message(
                         content=f"⚠️ Could not process **{element.name}**: {str(e)[:200]}",
                         author="Alex 🤖"
                     ).send()
 
-    if not user_parts:
+    if not user_content:
         return
 
-    history.append(types.Content(role="user", parts=user_parts))
+    # ── Shortcut: "show offer" without calling Claude ─────────────────────────
+    msg_lower = (message.content or "").lower().strip()
+    SHOW_OFFER_TRIGGERS = [
+        "sa vad oferta", "să văd oferta", "show offer", "arata oferta", "arată oferta",
+        "show me the offer", "view offer", "see offer", "oferta", "show the offer",
+        "vreau sa vad", "vreau să văd",
+    ]
+    if any(t in msg_lower for t in SHOW_OFFER_TRIGGERS):
+        last_file = cl.user_session.get("last_offer_file")
+        last_content = cl.user_session.get("last_offer_content")
+        if last_file and Path(last_file).exists():
+            fname = Path(last_file).name
+            await cl.Message(
+                content=f"📄 **Here is the last generated offer:**",
+                elements=[cl.File(name=fname, path=last_file, display="inline")],
+                author="Alex 🤖"
+            ).send()
+            # Also re-send exports
+            last_title = cl.user_session.get("last_offer_title", "Offer")
+            await send_export_files(last_content, last_title)
+            return
+        # No cached offer — let Claude handle it normally
+    # ─────────────────────────────────────────────────────────────────────────
+
+    history.append({"role": "user", "content": user_content})
 
     async with cl.Step(name="Alex is thinking...", type="run", show_input=False) as thinking_step:
         thinking_step.output = "Processing your request..."
 
     final_text = ""
     iterations = 0
+    import asyncio as _asyncio
 
     while iterations < 10:
         iterations += 1
 
-        # Try primary model, fallback to flash on 503/429
-        models_to_try = [MODEL, "gemini-2.0-flash"] if MODEL != "gemini-2.0-flash" else [MODEL]
+        # Call Claude API (run in thread pool to avoid blocking the event loop)
         response = None
         last_error = None
-        for model_attempt in models_to_try:
+        for _attempt in range(3):
             try:
-                response = client.models.generate_content(
-                    model=model_attempt,
-                    contents=history,
-                    config=types.GenerateContentConfig(
-                        system_instruction=SYSTEM_PROMPT,
+                response = await _asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: client.messages.create(
+                        model=MODEL,
+                        max_tokens=4096,
+                        system=SYSTEM_PROMPT,
                         tools=TOOLS,
                         temperature=0.1,
-                        max_output_tokens=4096,
-                    ),
+                        messages=history,
+                    )
                 )
                 # Track token usage
-                if ADMIN_ENABLED and response.usage_metadata:
+                if ADMIN_ENABLED and response.usage:
                     _meta = cl.user_session.get("user_meta", {})
                     if _meta.get("user_id"):
-                        total_tokens = (
-                            getattr(response.usage_metadata, "total_token_count", 0) or
-                            (getattr(response.usage_metadata, "prompt_token_count", 0) +
-                             getattr(response.usage_metadata, "candidates_token_count", 0))
-                        )
+                        total_tokens = (response.usage.input_tokens or 0) + (response.usage.output_tokens or 0)
                         record_token_usage(
                             company_id=_meta.get("company_id"),
                             user_id=_meta["user_id"],
@@ -794,52 +1503,106 @@ async def on_message(message: cl.Message):
                 break  # success
             except Exception as e:
                 last_error = str(e)
-                if "503" in last_error or "UNAVAILABLE" in last_error or "429" in last_error:
-                    continue  # try next model
-                # Other errors — don't retry
+                err_lower = last_error.lower()
+                if "overloaded" in err_lower or "529" in last_error or "503" in last_error or "429" in last_error:
+                    wait_sec = [5, 15, 30][min(_attempt, 2)]
+                    await _asyncio.sleep(wait_sec)
+                    continue
+                # Context too long — trim history and retry
+                if "too long" in err_lower or "too many" in err_lower or "400" in last_error:
+                    if len(history) > 6:
+                        history = history[:2] + history[-4:]
+                        cl.user_session.set("history", history)
+                        continue
+                # Hard error
                 await cl.Message(
-                    content=f"⚠️ Error: {last_error[:300]}",
+                    content="Ceva nu a mers cum trebuie. Poți reformula cererea sau încearcă din nou?",
                     author="Alex 🤖"
                 ).send()
                 return
 
         if response is None:
             await cl.Message(
-                content="⚠️ AI models are currently overloaded. Please try again in 30 seconds.",
+                content="⚠️ Serviciul AI este supraîncărcat momentan. Te rog să retrimiti mesajul.",
                 author="Alex 🤖"
             ).send()
             return
 
-        candidate = response.candidates[0] if response.candidates else None
-        if not candidate or not candidate.content or not candidate.content.parts:
-            final_text = "I couldn't generate a response. Please try again."
-            break
-
-        parts = candidate.content.parts
+        # Parse response content blocks
         text_parts = []
-        function_calls = []
+        tool_use_blocks = []
 
-        for part in parts:
-            if hasattr(part, "text") and part.text and part.text.strip():
-                text_parts.append(part.text)
-            if hasattr(part, "function_call") and part.function_call and part.function_call.name:
-                function_calls.append(part.function_call)
+        for block in response.content:
+            if block.type == "text" and block.text and block.text.strip():
+                text_parts.append(block.text)
+            elif block.type == "tool_use":
+                tool_use_blocks.append(block)
 
-        history.append(types.Content(role="model", parts=parts))
+        # Append assistant turn to history
+        history.append({"role": "assistant", "content": response.content})
 
-        if not function_calls:
+        if not tool_use_blocks:
             final_text = "\n".join(text_parts) if text_parts else ""
+
+            # ── Hallucination guard ────────────────────────────────────────
+            # Check if recent history has any tool results (means we already called tools)
+            recent_tool_results = [
+                msg for msg in history[-4:]
+                if msg.get("role") == "user" and
+                isinstance(msg.get("content"), list) and
+                any(c.get("type") == "tool_result" for c in msg["content"])
+            ]
+            answer_lower = final_text.lower()
+            negative_phrases = [
+                "nu am gasit", "nu am găsit", "nu exista", "nu există",
+                "not found", "no products", "no results", "cannot find",
+                "nu sunt disponibile", "nu s-au gasit", "nu s-au găsit",
+                "lipsesc", "indisponibil",
+            ]
+            has_negative = any(neg in answer_lower for neg in negative_phrases)
+
+            looks_like_hallucination = (
+                not recent_tool_results and
+                not has_negative and
+                any(kw in answer_lower for kw in [
+                    "allianz", "generali", "omniasig", "nn asigurari", "groupama",
+                    "brd asigurari", "asirom", "uniqa", "signal iduna",
+                    "premium anual", "prima anuala", "annual premium",
+                    "here are the", "iată produsele", "top health", "top rca",
+                    "recommend the", "recomand", "produsele disponibile",
+                ]) and
+                any(kw in answer_lower for kw in [
+                    "health", "rca", "casco", "life", "pad", "cmr", "kfz",
+                    "asigurare", "insurance", "polita", "poliță",
+                ])
+            )
+            if looks_like_hallucination:
+                # Discard the hallucinated answer and force tool call
+                history.pop()  # remove assistant turn with hallucinated text
+                history.append({"role": "user", "content": [{
+                    "type": "text",
+                    "text": (
+                        "Nu răspunde din memorie. Apelează imediat broker_search_products "
+                        "cu tipul de produs potrivit și arată rezultatele reale din baza de date."
+                    )
+                }]})
+                final_text = ""
+                continue  # retry — Claude will now call the tool
+            # ────────────────────────────────────────────────────────────────
+
+            # stop_reason == "end_turn" with no tool calls → done
             break
 
         # ── Execute tool calls ─────────────────────────────────────────────
-        function_response_parts = []
+        tool_results = []
 
         allowed_tools = cl.user_session.get("allowed_tools")  # None = all allowed
         user_meta = cl.user_session.get("user_meta", {})
 
-        for fc in function_calls:
-            tool_name = fc.name
-            tool_input = dict(fc.args) if fc.args else {}
+        for tb in tool_use_blocks:
+            tool_name = tb.name
+            tool_input = tb.input if isinstance(tb.input, dict) else {}
+            tool_use_id = tb.id
 
             # ── Permission gate ────────────────────────────────────────────
             if allowed_tools is not None and tool_name not in allowed_tools:
@@ -853,19 +1616,40 @@ async def on_message(message: cl.Message):
                         success=False,
                         tokens=0,
                     )
-                function_response_parts.append(
-                    types.Part(
-                        function_response=types.FunctionResponse(
-                            name=tool_name,
-                            response={"result": denied_result},
-                        )
-                    )
-                )
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": tool_use_id,
+                    "content": denied_result,
+                })
                 continue
 
             async with cl.Step(name=f"🔧 {tool_name}", type="tool", show_input=True) as step:
                 step.input = json.dumps(tool_input, indent=2, ensure_ascii=False)
-                result = execute_tool(tool_name, tool_input)
+
+                # ── Async computer-use tools ──────────────────────────────
+                if tool_name == "broker_computer_use_status":
+                    result = _cu_computer_use_status_fn(**tool_input)
+                elif tool_name == "broker_run_task":
+                    # Show progress message while waiting
+                    connector = tool_input.get("connector", "web_generic")
+                    action = tool_input.get("action", "extract")
+                    progress_icons = {"cedam": "🚗", "web_generic": "🌐", "desktop_generic": "🖥️"}
+                    icon = progress_icons.get(connector, "⚙️")
+                    await cl.Message(
+                        content=f"{icon} Execut task pe agentul local (`{connector}` / `{action}`)... ⏳",
+                        author="Alex 🤖",
+                    ).send()
+                    result = await _cu_run_task_async(
+                        connector=connector,
+                        action=action,
+                        params=tool_input.get("params", {}),
+                        agent_id=tool_input.get("agent_id"),
+                        timeout=tool_input.get("timeout", 120),
+                        credentials=tool_input.get("credentials", {}),
+                    )
+                else:
+                    result = execute_tool(tool_name, tool_input)
+
                 step.output = result[:1000] + ("…" if len(result) > 1000 else "")
 
             # ── Audit log ──────────────────────────────────────────────────
@@ -879,14 +1663,14 @@ async def on_message(message: cl.Message):
                     tokens=0,
                 )
 
-            function_response_parts.append(
-                types.Part(
-                    function_response=types.FunctionResponse(
-                        name=tool_name,
-                        response={"result": result},
-                    )
-                )
-            )
+            # Truncate large tool results in history to avoid oversized context
+            result_for_history = result[:600] + "\n[...truncated for context...]" if len(result) > 600 else result
+
+            tool_results.append({
+                "type": "tool_result",
+                "tool_use_id": tool_use_id,
+                "content": result_for_history,
+            })
 
             # Attach offer file + export options when offer is created
             if tool_name == "broker_create_offer":
@@ -896,14 +1680,65 @@ async def on_message(message: cl.Message):
                     offer_content = latest.read_text(encoding="utf-8")
                     base_title = latest.stem
 
+                    cl.user_session.set("last_offer_file", str(latest))
+                    cl.user_session.set("last_offer_content", offer_content)
+                    cl.user_session.set("last_offer_title", base_title)
+                    cl.user_session.set("offer_approved", False)
+
+                    offer_md = offer_content  # already clean markdown
+
+                    # Display offer as nicely formatted markdown
                     await cl.Message(
-                        content=f"📄 **Offer generated:** `{latest.name}`",
-                        elements=[cl.File(name=latest.name, path=str(latest), display="inline")],
+                        content=offer_md,
                         author="Alex 🤖"
                     ).send()
 
-                    # Generate export formats
-                    await send_export_files(offer_content, base_title)
+                    # Clean action bar — 3 options
+                    res = await cl.AskActionMessage(
+                        content="Ce facem cu oferta?",
+                        actions=[
+                            cl.Action(name="approve", label="✅ Trimite pe email", payload={"value": "approve"}),
+                            cl.Action(name="download", label="📥 Descarcă (PDF / XLSX / DOCX)", payload={"value": "download"}),
+                            cl.Action(name="edit", label="✏️ Modifică oferta", payload={"value": "edit"}),
+                        ],
+                        author="Alex 🤖",
+                        timeout=180,
+                    ).send()
+
+                    if res:
+                        if res.get("payload", {}).get("value") == "approve":
+                            cl.user_session.set("offer_approved", True)
+                            # Add approval as user message for next iteration
+                            tool_results_so_far = list(tool_results)  # capture current list
+                            history.append({"role": "user", "content": tool_results_so_far})
+                            history.append({"role": "user", "content": [{
+                                "type": "text",
+                                "text": "Oferta a fost aprobată de broker. Trimite-o pe email clientului folosind broker_send_offer_email."
+                            }]})
+                            tool_results = []  # already appended above
+                            break  # exit tool loop, continue agentic loop
+                        elif res.get("payload", {}).get("value") == "download":
+                            await send_export_files(offer_content, base_title)
+                            cl.user_session.set("history", history)
+                            return  # done
+                        elif res.get("payload", {}).get("value") == "edit":
+                            await cl.Message(
+                                content=(
+                                    "✏️ **Ce vrei să modifici?** Scrie natural, de exemplu:\n"
+                                    "- *'Schimbă valabilitatea la 14 zile'*\n"
+                                    "- *'Adaugă o notă despre discount de 10%'*\n"
+                                    "- *'Generează în română'*\n"
+                                    "- *'Elimină produsul Generali'*"
+                                ),
+                                author="Alex 🤖"
+                            ).send()
+                            cl.user_session.set("history", history)
+                            return  # wait for broker to type the edit request
+                    else:
+                        # Timeout — generate exports automatically
+                        await send_export_files(offer_content, base_title)
+                        cl.user_session.set("history", history)
+                        return
 
             # Attach export for reports
             elif tool_name in ("broker_asf_summary", "broker_bafin_summary"):
@@ -911,12 +1746,13 @@ async def on_message(message: cl.Message):
                 base_title = f"{report_type}_Report_{date.today().isoformat()}"
                 await send_export_files(result, base_title)
 
-        history.append(types.Content(role="user", parts=function_response_parts))
+        # Append tool results as next user message (Anthropic format)
+        if tool_results:
+            history.append({"role": "user", "content": tool_results})
 
     # ── Send final response ────────────────────────────────────────────────
     cl.user_session.set("history", history)
 
     if final_text and final_text.strip():
         await cl.Message(content=final_text.strip(), author="Alex 🤖").send()
-    else:
-        await cl.Message(content="Done. Let me know if you need anything else.", author="Alex 🤖").send()
+    # else: tool already sent output (offer file, export, etc.) — no generic message needed

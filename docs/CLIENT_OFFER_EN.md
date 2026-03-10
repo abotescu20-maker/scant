@@ -3,8 +3,8 @@
 **Prepared for:** Insurance Brokerage Client (Germany / Romania)
 **Prepared by:** Managed Service Provider — AI Systems & Automation
 **Date:** March 2026
-**Document Reference:** OFFER-2026-INS-EN-002
-**Valid Until:** April 7, 2026
+**Document Reference:** OFFER-2026-INS-EN-003
+**Valid Until:** TBD
 
 ---
 
@@ -18,9 +18,9 @@ This proposal covers everything: the initial build and cloud setup, employee tra
 
 | | |
 |---|---|
-| **One-time implementation fee** | **€3,500** |
-| **Monthly managed service** | **from €490/month** |
-| **AI API costs (your account)** | **~€18–95/month** depending on usage |
+| **One-time implementation fee** | **TBD** |
+| **Monthly managed service** | **TBD** |
+| **AI API costs (your account)** | **TBD** |
 | **Minimum commitment** | 3 months |
 
 ---
@@ -79,7 +79,7 @@ Alex logs the claim, retrieves the policy details, provides the exact Generali c
 
 Alex retrieves everything: incident date, reported date, insurer claim reference, current status, and any notes logged by the team.
 
-**Document processing (with Gemini Vision):**
+**Document processing (with Vision AI):**
 Employee uploads a photo of a handwritten accident report (constatare amiabilă). Alex reads it, extracts the key fields — vehicle registration, damage description, third-party details — and logs them into the system automatically.
 
 ---
@@ -109,6 +109,8 @@ Alex checks the policy, confirms validity status, days remaining, and flags imme
 - **Offer generation:** Professional offer documents in English, German, or Romanian — with your branding — in under 2 minutes
 - **Client history:** Full profile view — all policies, all claims, all offers, renewal timeline — in a single query
 - **Audit trail:** Every action logged with timestamp and employee session — supports compliance documentation requirements
+- **Desktop automation:** Alex can control local desktop applications and intranet systems via the local agent
+- **Web automation:** Alex can browse websites, verify RCA online, extract data from insurer portals
 
 ---
 
@@ -117,19 +119,20 @@ Alex checks the policy, confirms validity status, days remaining, and flags imme
 | Component | What It Does | Where It Runs |
 |---|---|---|
 | **Alex (Chainlit Web UI)** | Browser chat interface — no installation | Google Cloud (EU) |
-| **Custom MCP Server** | 14 broker-specific tools, your data, your logic | Google Cloud (EU) |
+| **24 Broker Tools** | Client, policy, offer, claims, compliance, web, desktop | Google Cloud (EU) |
 | **PostgreSQL Database** | Clients, policies, claims, offers — your data only | Google Cloud (EU) |
-| **Claude API (Anthropic)** | AI reasoning, language, decision-making | Anthropic (US/EU) |
-| **Gemini Vision API (Google)** | OCR: scanned docs, accident photos, handwritten forms | Google Cloud (EU) |
-| **Google Cloud Run** | Serverless hosting — scales to zero when not in use | europe-west3 (Frankfurt) |
+| **Claude Sonnet (Anthropic)** | AI reasoning, language, decision-making | Anthropic API |
+| **Vision AI** | OCR: scanned docs, accident photos, handwritten forms | Google Cloud (EU) |
+| **Google Cloud Run** | Serverless hosting — scales automatically | europe-west3 (Frankfurt) |
+| **Local Agent** | Desktop & intranet automation on employee machines | Employee computer |
 
-**Data sovereignty:** All client data stays on your GCP instance in Frankfurt. Anthropic's API receives only anonymised, structured tool calls — no client names, policy numbers, or personal identifiers ever leave your server.
+**Data sovereignty:** All client data stays on your GCP instance in Frankfurt. The AI API receives only anonymised, structured tool calls — no client names, policy numbers, or personal identifiers ever leave your server.
 
 ---
 
 ## Implementation: What You Are Paying For
 
-### Phase 1 — Process Mapping and Discovery (Weeks 1–2) · €600
+### Phase 1 — Process Mapping and Discovery (Weeks 1–2) · TBD
 
 - One-on-one structured interviews with each team member
 - Full documentation of current workflows: client intake, renewals, claims, reporting
@@ -137,24 +140,26 @@ Alex checks the policy, confirms validity status, days remaining, and flags imme
 - Delivery: workflow map document + integration specification
 - Output used to customise every tool, prompt, and automation in Phase 2
 
-### Phase 2 — Cloud Infrastructure and MCP Server Build (Weeks 2–4) · €1,200
+### Phase 2 — Cloud Infrastructure and Build (Weeks 2–4) · TBD
 
 - GCP project setup: Cloud Run, Cloud SQL (PostgreSQL), Secret Manager, IAM
 - Custom domain configuration + SSL certificate
-- Full deployment of the MCP server with all 14 broker tools:
-  - Client management (search, create, full profile)
+- Full deployment with all 24 broker tools:
+  - Client management (search, create, update, delete, full profile)
   - Product search and comparison (all partner insurers)
   - Offer generation (EN/DE/RO, your branding)
   - Renewals dashboard (urgency-sorted, draft letters)
   - Claims intake and status tracking (insurer-specific guidance)
-  - Gemini Vision OCR pipeline (scanned policies, accident photos, handwritten forms)
+  - Vision AI OCR pipeline (scanned policies, accident photos, handwritten forms)
   - ASF monthly report generator (Law 236/2018)
   - BaFin monthly report generator (VVG + IDD)
   - RCA validity checker
+  - Web automation (browser-based tasks)
+  - Desktop automation (local apps, intranet)
 - Data migration: import your existing client and policy data
 - Integration testing with your real documents and workflows
 
-### Phase 3 — Customisation, Branding, and Employee Training (Weeks 5–6) · €900
+### Phase 3 — Customisation, Branding, and Employee Training (Weeks 5–6) · TBD
 
 - Alex customised with your brokerage name, partner insurers, commission structures
 - Role-specific configuration per employee (claims handler, client broker, compliance)
@@ -162,14 +167,14 @@ Alex checks the policy, confirms validity status, days remaining, and flags imme
 - Usage guides delivered in English and German
 - Feedback round: adjustments based on real employee use
 
-### Phase 4 — Go-Live, Handover, and First Month Support (Week 7) · €800
+### Phase 4 — Go-Live, Handover, and First Month Support (Week 7) · TBD
 
 - Production go-live on GCP
 - Monitoring setup: uptime alerts, error notifications, usage dashboard
 - 30-day intensive support period: priority response, immediate fixes
 - Runbook delivered: how to restart, update, add a new employee
 
-**Total one-time implementation fee: €3,500**
+**Total one-time implementation fee: TBD**
 
 *Payments: 50% on contract signing, 50% on go-live.*
 
@@ -191,13 +196,13 @@ After go-live, you pay a monthly fee for the system to keep running, improving, 
 
 ### Monthly Tiers
 
-| Tier | Employees | Hosting | Monthly Fee |
-|---|---|---|---|
-| **Starter** | 2–3 | GCP Cloud Run (Frankfurt) | **€490/month** |
-| **Growth** | 4–6 | GCP Cloud Run + dedicated DB | **€690/month** |
-| **Scale** | 7–15 | GCP Cloud Run + HA setup + priority support | **€990/month** |
+| Tier | Employees | Monthly Fee |
+|---|---|---|
+| **Starter** | 2–3 | TBD |
+| **Growth** | 4–6 | TBD |
+| **Scale** | 7–15 | TBD |
 
-**Additional employee beyond tier limit:** +€75/month each.
+**Additional employee beyond tier limit:** TBD.
 
 ---
 
@@ -205,45 +210,25 @@ After go-live, you pay a monthly fee for the system to keep running, improving, 
 
 The AI models are billed directly to your API accounts. This keeps costs transparent, under your control, and independent of our service fee.
 
-You need two accounts (both free to create):
-- **Anthropic Console** — [console.anthropic.com](https://console.anthropic.com) — for Claude (the core AI)
-- **Google AI Studio** — [aistudio.google.com](https://aistudio.google.com) — for Gemini Vision (OCR)
+You need one account (free to create):
+- **Anthropic Console** — [console.anthropic.com](https://console.anthropic.com) — for Claude Sonnet (the core AI)
 
 ### Why API-Only (No Claude Team subscription needed)
 
-You do not need a Claude Team subscription ($125/month for 5 seats). The Chainlit interface we built replaces the claude.ai web interface entirely. Your employees use Alex directly — no separate logins, no separate subscriptions.
+You do not need a Claude Team subscription. The Chainlit interface we built replaces the claude.ai web interface entirely. Your employees use Alex directly — no separate logins, no separate subscriptions.
 
 | | Claude Team Plan | API-Only (Our Approach) |
 |---|---|---|
-| **Monthly cost** | $125/mo (5 seats minimum) | $0 subscription — pay per use |
+| **Monthly cost** | Fixed per seat | Pay per use — scales with actual usage |
 | **Interface** | claude.ai web/desktop | Alex (Chainlit) — your branded tool |
 | **Control** | Limited — Anthropic's UI | Full — your prompts, your tools, your data |
 | **Branding** | "Claude" branding | "Alex" — your assistant |
 | **Usage visibility** | None | Full dashboard — tokens, costs, tools |
 | **Works with our system** | No (separate product) | Yes — this is what we built |
 
-### Estimated Monthly API Costs
+### Estimated Monthly AI API Costs
 
-Usage scenario: 3 employees, ~50 queries/day, 22 working days
-
-| Model | Best For | Estimated Cost/Month |
-|---|---|---|
-| **Claude Sonnet 4.5** ⭐ | All daily tasks — client search, offers, renewals, reports | **~€18–25/month** |
-| **Claude Opus 4.5** | Complex document analysis, ambiguous queries | **~€90–110/month** |
-| **Gemini 2.0 Flash** | OCR — scanned policies, accident photos, handwritten forms | **~€2–5/month** |
-
-**Recommendation: Claude Sonnet 4.5 handles 95% of daily brokerage tasks at 1/5th the cost of Opus.** We configure the system to use Sonnet by default and escalate to Opus only when specifically needed.
-
-### Total Monthly Cost Scenarios
-
-| Scenario | Managed Service | AI APIs | **Total/Month** |
-|---|---|---|---|
-| **3 employees, Sonnet only** | €490 | ~€20 | **~€510/month** |
-| **3 employees, Sonnet + Gemini Vision** | €490 | ~€25 | **~€515/month** |
-| **5 employees, Sonnet + Gemini Vision** | €690 | ~€40 | **~€730/month** |
-| **3 employees, Opus (heavy use)** | €490 | ~€100 | **~€590/month** |
-
-*AI API costs are billed directly by Anthropic and Google to your accounts. The figures above are estimates based on typical brokerage usage patterns.*
+Costs depend on usage volume and are billed directly by Anthropic. Estimates available on request.
 
 ---
 
@@ -253,7 +238,7 @@ Usage scenario: 3 employees, ~50 queries/day, 22 working days
 
 - **Your data:** stored exclusively on your GCP Cloud SQL instance in Frankfurt (europe-west3)
 - **API calls:** Claude receives anonymised, structured instructions only — e.g. "compare RCA products for vehicle category X" — never raw client records
-- **Gemini Vision:** document images processed in-memory, not stored by Google beyond the API call
+- **Vision AI:** document images processed in-memory, not stored beyond the API call
 - **Access control:** each employee has an individual login, sessions are isolated and logged
 - **Backups:** automated daily backups with 30-day retention on GCP
 
@@ -274,19 +259,14 @@ Compliance templates are updated at no extra charge when regulatory guidance cha
 
 | Item | Cost |
 |---|---|
-| **Implementation (one-time)** | **€3,500** |
-| Phase 1 — Process Mapping | €600 |
-| Phase 2 — Cloud Build + MCP Server | €1,200 |
-| Phase 3 — Customisation + Training | €900 |
-| Phase 4 — Go-Live + First Month Support | €800 |
+| **Implementation (one-time)** | **TBD** |
+| Phase 1 — Process Mapping | TBD |
+| Phase 2 — Cloud Build | TBD |
+| Phase 3 — Customisation + Training | TBD |
+| Phase 4 — Go-Live + First Month Support | TBD |
 | | |
-| **Managed Service (monthly)** | **from €490/month** |
-| **AI API costs (your accounts)** | **~€20–45/month** typical |
-| | |
-| **Typical first-year total cost** | **~€9,540** |
-| *(€3,500 setup + €490×12 + €25×12 APIs)* | |
-
-For comparison: one junior administrative employee in Germany costs €30,000–€40,000 per year in salary alone, before social contributions, equipment, and management overhead.
+| **Managed Service (monthly)** | **TBD** |
+| **AI API costs (your accounts)** | **TBD** |
 
 ---
 
@@ -301,9 +281,9 @@ For comparison: one junior administrative employee in Germany costs €30,000–
 
 *This document is confidential and prepared exclusively for the named recipient.*
 *All pricing is valid for 30 days from the document date. Prices exclude applicable VAT.*
-*AI API cost estimates are based on typical usage and may vary. Actual costs billed directly by Anthropic and Google.*
+*AI API cost estimates are based on typical usage and may vary. Actual costs billed directly by Anthropic.*
 
 ---
 
-**Document Reference:** OFFER-2026-INS-EN-002
-**Valid Until:** April 7, 2026
+**Document Reference:** OFFER-2026-INS-EN-003
+**Valid Until:** TBD
