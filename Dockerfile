@@ -50,10 +50,13 @@ COPY .chainlit/ ./.chainlit/
 # Ensure output directory exists
 RUN mkdir -p mcp-server/output
 
+# Copy startup script
+COPY startup.sh .
+RUN chmod +x startup.sh
+
 # Cloud Run uses PORT env variable (default 8080)
 ENV PORT=8080
 ENV PYTHONPATH=/app:/app/mcp-server
 
-# Run via uvicorn main:app — FastAPI handles /cu/* + /admin/* routes,
-# then mounts Chainlit at /. This allows custom REST endpoints to work.
-CMD uvicorn main:app --host 0.0.0.0 --port ${PORT}
+# startup.sh: re-seeds demo data on fresh deploys, then starts uvicorn
+CMD ["/app/startup.sh"]
