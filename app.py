@@ -2332,9 +2332,12 @@ async def on_message(message: cl.Message):
                         history = history[:2] + history[-4:]
                         cl.user_session.set("history", history)
                         continue
-                # Hard error
+                # Hard error — log it so we can debug
+                import logging as _logging
+                _logging.getLogger("alex").error(f"[on_message] hard error: {last_error}")
+                print(f"[alex] HARD ERROR in agentic loop: {last_error}", flush=True)
                 await cl.Message(
-                    content="Ceva nu a mers cum trebuie. Poți reformula cererea sau încearcă din nou?",
+                    content=f"Ceva nu a mers cum trebuie. Poți reformula cererea sau încearcă din nou?\n\n*(Eroare internă: {last_error[:200]})*",
                     author="Alex 🤖"
                 ).send()
                 return
