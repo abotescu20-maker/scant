@@ -47,6 +47,7 @@ _SK_CONV_ID    = "conversation_id"
 _SK_PROJECT_ID = "project_id"
 _SK_CLIENT_ID  = "linked_client_id"   # client the conversation is about
 _SK_TITLE_SET  = "title_set"
+_SK_SAVE_NUDGE = "save_nudge_shown"   # show "save conversation" button only once per session
 
 # ── Load .env ──────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).parent
@@ -1823,6 +1824,7 @@ async def on_chat_start():
     cl.user_session.set(_SK_PROJECT_ID, None)
     cl.user_session.set(_SK_CLIENT_ID,  None)
     cl.user_session.set(_SK_TITLE_SET,  False)
+    cl.user_session.set(_SK_SAVE_NUDGE, False)
 
     meta = await _init_session_tools()
     user_id   = meta.get("user_id")
@@ -1979,9 +1981,10 @@ async def on_resume_conversation(action: cl.Action):
 
     history = load_conversation_history(conv_id) if ADMIN_ENABLED else []
 
-    cl.user_session.set(_SK_CONV_ID,   conv_id)
-    cl.user_session.set(_SK_HISTORY,   history)
-    cl.user_session.set(_SK_TITLE_SET, True)
+    cl.user_session.set(_SK_CONV_ID,    conv_id)
+    cl.user_session.set(_SK_HISTORY,    history)
+    cl.user_session.set(_SK_TITLE_SET,  True)
+    cl.user_session.set(_SK_SAVE_NUDGE, True)   # already saved — no nudge needed
 
     if history:
         await _render_history_to_ui(history)
@@ -1990,6 +1993,61 @@ async def on_resume_conversation(action: cl.Action):
         content=f'📂 Resumed **"{title}"** — {len(history)//2} message(s). Continue below.',
         author="Alex 🤖",
     ).send()
+
+
+@cl.action_callback("save_conv_pick_client")
+async def on_save_conv_pick_client(action: cl.Action):
+    """Show client picker so broker can link the current conversation to a client."""
+    await action.remove()
+    conv_id = cl.user_session.get(_SK_CONV_ID)
+    if not conv_id:
+        await cl.Message(content="No active conversation to save.", author="Alex 🤖").send()
+        return
+
+    clients = get_all_clients_for_picker()
+    if not clients:
+        await cl.Message(content="No clients in database yet.", author="Alex 🤖").send()
+        return
+
+    actions = [
+        cl.Action(
+            name="save_conv_confirm",
+            label=f"👤 {c['name']}",
+            payload={"client_id": c["id"], "client_name": c["name"], "conv_id": conv_id},
+        )
+        for c in clients[:20]
+    ]
+    await cl.Message(
+        content="**Link this conversation to a client:**",
+        actions=actions,
+        author="Alex 🤖",
+    ).send()
+
+
+@cl.action_callback("save_conv_confirm")
+async def on_save_conv_confirm(action: cl.Action):
+    """Link the current conversation to the selected client."""
+    await action.remove()
+    client_id   = action.payload["client_id"]
+    client_name = action.payload["client_name"]
+    conv_id     = action.payload["conv_id"]
+
+    try:
+        set_conversation_client(conv_id, client_id)
+        cl.user_session.set(_SK_CLIENT_ID, client_id)
+
+        history = cl.user_session.get("history", [])
+        current_title = cl.user_session.get("title_set")
+        if not current_title:
+            update_conversation_title(conv_id, f"Conversation — {client_name}")
+
+        await cl.Message(
+            content=f"✅ Saved! This conversation is now linked to **{client_name}**.\n"
+                    f"You'll find it under *📁 Conversation history by client* next time.",
+            author="Alex 🤖",
+        ).send()
+    except Exception as e:
+        await cl.Message(content=f"Could not link conversation: {e}", author="Alex 🤖").send()
 
 
 @cl.on_message
@@ -2491,3 +2549,26 @@ async def on_message(message: cl.Message):
     if final_text and final_text.strip():
         await cl.Message(content=final_text.strip(), author="Alex 🤖").send()
     # else: tool already sent output (offer file, export, etc.) — no generic message needed
+
+    # ── "Save conversation" nudge (once per session, after 3+ exchanges, no client linked) ──
+    # len(history) >= 6: 3 user + 3 assistant messages = 3 full exchanges
+    nudge_shown = cl.user_session.get(_SK_SAVE_NUDGE, False)
+    if (
+        ADMIN_ENABLED
+        and conv_id
+        and not client_id               # not yet linked to a client
+        and not nudge_shown             # show only once per session
+        and len(history) >= 6           # at least 3 full exchanges
+    ):
+        cl.user_session.set(_SK_SAVE_NUDGE, True)
+        await cl.Message(
+            content="",
+            actions=[
+                cl.Action(
+                    name="save_conv_pick_client",
+                    label="💾 Save this conversation to a client",
+                    payload={"conv_id": conv_id},
+                )
+            ],
+            author="Alex 🤖",
+        ).send()
