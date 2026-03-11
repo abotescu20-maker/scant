@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 50" width="200" height="50">
+  <!-- Shield icon -->
+  <path d="M8 4 L20 4 L20 14 Q20 22 14 26 Q8 22 8 14 Z" fill="#3b8fdf"/>
+  <path d="M10.5 13 L13 15.5 L17.5 11" stroke="white" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Text: AI BROKER -->
+  <text x="28" y="21" font-family="Arial, sans-serif" font-size="16" font-weight="700" fill="#ffffff" letter-spacing="0.5">AI BROKER</text>
+  <!-- Subtitle -->
+  <text x="28" y="34" font-family="Arial, sans-serif" font-size="9" font-weight="400" fill="#94a3b8" letter-spacing="1.5">POWERED BY ALEX</text>
+</svg>
