@@ -2605,14 +2605,14 @@ async def on_message(message: cl.Message):
                     if res:
                         if res.get("payload", {}).get("value") == "approve":
                             cl.user_session.set("offer_approved", True)
-                            # Add approval as user message for next iteration
-                            tool_results_so_far = list(tool_results)  # capture current list
-                            history.append({"role": "user", "content": tool_results_so_far})
-                            history.append({"role": "user", "content": [{
+                            # Build user message: tool_results + approval instruction in one block
+                            # (Anthropic requires tool_results and text in same user message turn)
+                            combined_content = list(tool_results) + [{
                                 "type": "text",
                                 "text": "Oferta a fost aprobată de broker. Trimite-o pe email clientului folosind broker_send_offer_email."
-                            }]})
-                            tool_results = []  # already appended above
+                            }]
+                            history.append({"role": "user", "content": combined_content})
+                            tool_results = []
                             break  # exit tool loop, continue agentic loop
                         elif res.get("payload", {}).get("value") == "download":
                             await send_export_files(offer_content, base_title)
