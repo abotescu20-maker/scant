@@ -26,6 +26,12 @@ if [ "$CLIENT_COUNT" -lt 5 ]; then
     echo "[startup] Demo reseed complete."
 else
     echo "[startup] DB has data — skipping reseed."
+    # Always ensure demo users exist (idempotent)
+    PYTHONPATH="$PYTHONPATH" python3 -c "
+import sys; sys.path.insert(0, '/app')
+exec(open('/app/scripts/reseed_demo.py').read())
+_seed_demo_users()
+" 2>&1 | grep -E "(Created|already|WARN|ERROR)" || true
 fi
 
 echo "[startup] Starting uvicorn..."

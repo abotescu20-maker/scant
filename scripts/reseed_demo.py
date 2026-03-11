@@ -4,11 +4,15 @@ Re-seed demo database with realistic data:
 - Add realistic policies (spread across future dates)
 - Add realistic claims mix
 - Keep original 6 core clients + add 4 more realistic ones
+- Seed demo users (admin@demo.ro / admin123, broker@demo.ro / broker123)
 """
 import sqlite3
 import sys
 from datetime import date, timedelta
 from pathlib import Path
+
+# Add project root to path for shared modules
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 DB_PATH = Path(__file__).parent.parent / "mcp-server" / "insurance_broker.db"
 
@@ -265,7 +269,73 @@ def main():
         print(f"   {tbl}: {n}")
 
     conn.close()
+
+    print("\n6. Seeding demo users (admin@demo.ro, broker@demo.ro)...")
+    _seed_demo_users()
+
     print("\n✅ Demo DB reseeded successfully!")
+
+
+def _seed_demo_users():
+    """Create demo company and users for the Chainlit login. Idempotent."""
+    try:
+        from shared.db import init_admin_tables, get_conn as _get_conn
+        from shared.auth import hash_password, new_id
+    except ImportError as e:
+        print(f"   WARN: Could not import shared modules ({e}) — skipping user seed.")
+        return
+
+    init_admin_tables()
+    c = _get_conn()
+
+    # Demo company
+    demo_company_id = "COMP-DEMO-01"
+    c.execute(
+        "INSERT OR IGNORE INTO companies (id, name, slug, country, plan_tier) VALUES (?, ?, ?, ?, ?)",
+        (demo_company_id, "Demo Broker SRL", "demo-broker", "RO", "scale"),
+    )
+
+    # admin@demo.ro — superadmin (all tools, admin panel access)
+    if not c.execute("SELECT id FROM users WHERE email='admin@demo.ro'").fetchone():
+        c.execute(
+            "INSERT INTO users (id, company_id, email, hashed_password, full_name, role) VALUES (?, ?, ?, ?, ?, ?)",
+            (new_id("USR"), demo_company_id, "admin@demo.ro",
+             hash_password("admin123"), "Admin Demo", "superadmin"),
+        )
+        print("   ✅ Created admin@demo.ro / admin123")
+    else:
+        print("   ✓  admin@demo.ro already exists")
+
+    # broker@demo.ro — broker role
+    if not c.execute("SELECT id FROM users WHERE email='broker@demo.ro'").fetchone():
+        broker_id = new_id("USR")
+        c.execute(
+            "INSERT INTO users (id, company_id, email, hashed_password, full_name, role) VALUES (?, ?, ?, ?, ?, ?)",
+            (broker_id, demo_company_id, "broker@demo.ro",
+             hash_password("broker123"), "Maria Broker", "broker"),
+        )
+        # Give broker access to all standard tools
+        broker_tools = [
+            "broker_search_clients", "broker_get_client", "broker_create_client",
+            "broker_update_client", "broker_search_products", "broker_compare_products",
+            "broker_create_offer", "broker_list_offers", "broker_send_offer_email",
+            "broker_get_renewals_due", "broker_list_policies",
+            "broker_log_claim", "broker_get_claim_status",
+            "broker_generate_report", "broker_check_compliance",
+            "broker_check_rca", "broker_run_task", "broker_computer_use_status",
+            "broker_calculate_premium", "broker_get_cross_sell",
+            "broker_export_excel", "broker_export_docx",
+            "broker_save_conversation", "broker_get_saved_conversations",
+        ]
+        for t in broker_tools:
+            c.execute("INSERT OR IGNORE INTO tool_permissions (user_id, tool_name) VALUES (?, ?)",
+                      (broker_id, t))
+        print("   ✅ Created broker@demo.ro / broker123")
+    else:
+        print("   ✓  broker@demo.ro already exists")
+
+    c.commit()
+    c.close()
 
 if __name__ == "__main__":
     main()
