@@ -72,6 +72,36 @@
   color: #ffffff !important;
 }
 
+/* ── Hide Chainlit branding ───────────────────────────────────── */
+/* Hide the Chainlit logo image wherever it appears */
+img[alt="Chainlit"],
+img[alt="chainlit"],
+img[src*="chainlit"],
+img[src*="Chainlit"] {
+  display: none !important;
+}
+
+/* Hide the anchor that wraps the Chainlit logo */
+a[href="https://chainlit.io"],
+a[href*="chainlit.io"] {
+  display: none !important;
+}
+
+/* Hide any element containing only the Chainlit logo image */
+header a:has(img[alt="Chainlit"]),
+header a:has(img[alt="chainlit"]),
+nav a:has(img[alt="Chainlit"]),
+nav a:has(img[alt="chainlit"]) {
+  display: none !important;
+}
+
+/* Watermark at the bottom of the chat */
+[class*="watermark"],
+[class*="Watermark"],
+[id*="watermark"] {
+  display: none !important;
+}
+
 /* ── Main chat UI — minor brand tweaks ───────────────────────── */
 /* Keep the rest of the UI as Chainlit defaults but ensure brand color on accents */
 :root {
