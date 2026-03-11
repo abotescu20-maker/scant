@@ -1664,6 +1664,44 @@ async def _init_session_tools():
     return {}
 
 
+async def _refresh_sidebar(user_id: str) -> None:
+    """Open/update the ElementSidebar with saved conversations grouped by client.
+
+    Shows the sidebar only if ADMIN_ENABLED and the user has at least one saved conversation.
+    Broker can click the chat refresh button (↺) or ask Alex to re-open it at any time.
+    """
+    if not ADMIN_ENABLED or not user_id:
+        return
+    try:
+        clients = list_clients_with_conversations(user_id)
+        if not clients:
+            return  # nothing to show yet
+
+        lines = ["## 📁 Conversații salvate\n"]
+        for c in clients[:30]:
+            cname = c["client_name"] if c["client_name"] != "__unlinked__" else "Fără client"
+            lines.append(f"### 👤 {cname}")
+            convs = list_conversations_for_client(user_id, c["client_id"])
+            for conv in convs[:10]:
+                msgs = conv.get("message_count", 0)
+                updated = conv.get("updated_at", "")[:10]
+                label = conv.get("title", "Conversație")
+                detail = f"{msgs} mesaje · {updated}" if msgs else updated
+                lines.append(f"- **{label}** _{detail}_")
+            lines.append("")
+
+        content = "\n".join(lines)
+        sidebar_text = cl.Text(
+            name="saved_conversations",
+            content=content,
+            display="side",
+        )
+        await cl.ElementSidebar.set_title("📁 Conversații salvate")
+        await cl.ElementSidebar.set_elements([sidebar_text])
+    except Exception:
+        pass  # non-fatal — sidebar is cosmetic
+
+
 async def _show_dashboard_welcome(user_id: str | None = None, full_name: str | None = None):
     """Send the portfolio dashboard welcome message with optional history shortcut."""
     stats = get_dashboard_stats()
@@ -1815,6 +1853,28 @@ async def _render_history_to_ui(history: list[dict]):
         await cl.Message(content=text, author=author).send()
 
 
+# ── Starters (quick-action chips in the input area) ──────────────────────────
+@cl.set_starters
+async def set_starters():
+    return [
+        cl.Starter(
+            label="📁 Conversații salvate",
+            message="Arată-mi conversațiile salvate",
+            icon="/public/icons/history.svg",
+        ),
+        cl.Starter(
+            label="⚠️ Reinnoiri urgente",
+            message="Arată polițele care expiră în 30 de zile",
+            icon="/public/icons/alert.svg",
+        ),
+        cl.Starter(
+            label="👥 Clienți activi",
+            message="Caută toți clienții activi",
+            icon="/public/icons/clients.svg",
+        ),
+    ]
+
+
 # ── Chainlit lifecycle ────────────────────────────────────────────────────────
 @cl.on_chat_start
 async def on_chat_start():
@@ -1834,6 +1894,9 @@ async def on_chat_start():
     # If the user has saved projects, the welcome message shows a
     # "📁 My saved conversations" button. No blocking picker on startup.
     await _show_dashboard_welcome(user_id=user_id, full_name=full_name)
+    # Open sidebar with saved conversations (non-blocking, cosmetic)
+    if user_id:
+        await _refresh_sidebar(user_id)
 
 
 # ── Action callbacks ──────────────────────────────────────────────────────────
@@ -2043,9 +2106,14 @@ async def on_save_conv_confirm(action: cl.Action):
 
         await cl.Message(
             content=f"✅ Saved! This conversation is now linked to **{client_name}**.\n"
-                    f"You'll find it under *📁 Conversation history by client* next time.",
+                    f"You'll find it in the sidebar **📁 Conversații salvate** →",
             author="Alex 🤖",
         ).send()
+        # Refresh sidebar immediately so the new entry appears
+        meta = cl.user_session.get("user_meta", {})
+        user_id = meta.get("user_id")
+        if user_id:
+            await _refresh_sidebar(user_id)
     except Exception as e:
         await cl.Message(content=f"Could not link conversation: {e}", author="Alex 🤖").send()
 
@@ -2080,6 +2148,29 @@ async def on_message(message: cl.Message):
         update_conversation_title(conv_id, _title)
         cl.user_session.set(_SK_TITLE_SET, True)
     # ─────────────────────────────────────────────────────────────────────
+
+    # ── Sidebar shortcut — intercept starter message before Claude sees it ──
+    _msg_lower = (message.content or "").strip().lower()
+    if _msg_lower == "arată-mi conversațiile salvate" or "conversații salvate" in _msg_lower:
+        _meta  = cl.user_session.get("user_meta", {})
+        _uid   = _meta.get("user_id")
+        if _uid and ADMIN_ENABLED:
+            _clients = list_clients_with_conversations(_uid)
+            if _clients:
+                await _refresh_sidebar(_uid)
+                await cl.Message(
+                    content="📁 Am deschis panoul **Conversații salvate** în dreapta. "
+                            "Poți revedea sau relua orice conversație anterioară.",
+                    author="Alex 🤖",
+                ).send()
+            else:
+                await cl.Message(
+                    content="Nu ai încă conversații salvate. "
+                            "Conversează cu mine și spune-mi *'salvează discuția'* la final.",
+                    author="Alex 🤖",
+                ).send()
+            return
+    # ────────────────────────────────────────────────────────────────────────
 
     # Build user message content (text + any uploaded files)
     user_content = []
