@@ -18,19 +18,19 @@
     },
     "auth": {
         "login": {
-            "title": "Login to access the app",
+            "title": "Bun venit la Alex — Asistentul tău AI pentru brokeraj",
             "form": {
                 "email": {
-                    "label": "Email address",
-                    "required": "email is a required field",
-                    "placeholder": "me@example.com"
+                    "label": "Email",
+                    "required": "Emailul este obligatoriu",
+                    "placeholder": "angajat@broker.ro"
                 },
                 "password": {
-                    "label": "Password",
-                    "required": "password is a required field"
+                    "label": "Parolă",
+                    "required": "Parola este obligatorie"
                 },
                 "actions": {
-                    "signin": "Sign In"
+                    "signin": "Intră în cont"
                 },
                 "alternativeText": {
                     "or": "OR"
@@ -48,8 +48,8 @@
                 "oauthAccountNotLinked": "To confirm your identity, sign in with the same account you used originally",
                 "emailSignin": "The e-mail could not be sent",
                 "emailVerify": "Please verify your email, a new email has been sent",
-                "credentialsSignin": "Sign in failed. Check the details you provided are correct",
-                "sessionRequired": "Please sign in to access this page"
+                "credentialsSignin": "Autentificare eșuată. Verifică emailul și parola.",
+                "sessionRequired": "Conectează-te pentru a accesa aplicația"
             }
         },
         "provider": {
