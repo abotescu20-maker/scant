@@ -1664,53 +1664,47 @@ async def _init_session_tools():
     return {}
 
 
-async def _refresh_sidebar(user_id: str) -> None:
-    """Open/update the ElementSidebar with saved conversations grouped by client.
-
-    Always opens the sidebar (even if empty) so the broker sees the panel.
-    """
-    if not ADMIN_ENABLED or not user_id:
-        return
+async def _build_sidebar_content(user_id: str) -> str:
+    """Build markdown content for the saved conversations sidebar panel."""
     try:
-        clients = list_clients_with_conversations(user_id)
-
-        if not clients:
-            content = (
-                "## 📁 Conversații salvate\n\n"
-                "_Nu ai conversații salvate încă._\n\n"
-                "**Cum salvezi o conversație:**\n"
-                "1. Discută cu Alex despre un client\n"
-                "2. Spune: **\"salvează discuția\"** sau **\"linkuiește la [Nume Client]\"**\n"
-                "3. Apare aici automat, grupat pe client\n\n"
-                "---\n"
-                "*Sau după 3+ mesaje apare butonul 💾 automat.*"
-            )
-        else:
-            lines = ["## 📁 Conversații salvate\n"]
-            for c in clients[:30]:
-                cname = c["client_name"] if c["client_name"] != "__unlinked__" else "Fără client"
-                conv_count = c.get("conv_count", 0)
-                lines.append(f"### 👤 {cname} ({conv_count})")
-                convs = list_conversations_for_client(user_id, c["client_id"])
-                for conv in convs[:10]:
-                    msgs = conv.get("message_count", 0)
-                    updated = conv.get("updated_at", "")[:10]
-                    label = conv.get("title", "Conversație")
-                    detail = f"{msgs} msg · {updated}" if msgs else updated
-                    lines.append(f"- **{label}**  \n  _{detail}_")
-                lines.append("")
-            lines.append("---\n*Spune 'salvează discuția' pentru a adăuga una nouă.*")
-            content = "\n".join(lines)
-
-        sidebar_text = cl.Text(
-            name="saved_conversations",
-            content=content,
-            display="side",
-        )
-        await cl.ElementSidebar.set_title("📁 Conversații salvate")
-        await cl.ElementSidebar.set_elements([sidebar_text])
+        clients = list_clients_with_conversations(user_id) if ADMIN_ENABLED else []
     except Exception:
-        pass  # non-fatal — sidebar is cosmetic
+        clients = []
+
+    if not clients:
+        return (
+            "## 📁 Conversații salvate\n\n"
+            "_Nu ai conversații salvate încă._\n\n"
+            "**Cum salvezi:**\n"
+            "1. Discută cu Alex despre un client\n"
+            "2. Spune **\"salvează discuția\"**\n"
+            "3. Apare aici grupat pe client\n\n"
+            "_Sau după 3+ mesaje apare butonul 💾 automat._"
+        )
+
+    lines = ["## 📁 Conversații salvate\n"]
+    for c in clients[:30]:
+        cname = c["client_name"] if c["client_name"] != "__unlinked__" else "Fără client"
+        conv_count = c.get("conv_count", 0)
+        lines.append(f"### 👤 {cname} ({conv_count})")
+        try:
+            convs = list_conversations_for_client(user_id, c["client_id"])
+        except Exception:
+            convs = []
+        for conv in convs[:8]:
+            msgs  = conv.get("message_count", 0)
+            upd   = conv.get("updated_at", "")[:10]
+            label = conv.get("title", "Conversație")
+            detail = f"{msgs} msg · {upd}" if msgs else upd
+            lines.append(f"- **{label}**  \n  _{detail}_")
+        lines.append("")
+    lines.append("---\n_Spune 'salvează discuția' pentru a adăuga._")
+    return "\n".join(lines)
+
+
+async def _refresh_sidebar(user_id: str) -> None:
+    """Deprecated stub — sidebar is now attached to the welcome message element."""
+    pass  # See _show_dashboard_welcome which sends the sidebar Text element inline
 
 
 async def _show_dashboard_welcome(user_id: str | None = None, full_name: str | None = None):
@@ -1737,18 +1731,26 @@ async def _show_dashboard_welcome(user_id: str | None = None, full_name: str | N
 
 How can I help you today? *(upload a document, ask about clients, renewals, compliance...)*"""
 
-    # Show saved-conversations shortcut only if the user has conversations by client
     actions = []
     if ADMIN_ENABLED and user_id:
-        clients_with_convs = list_clients_with_conversations(user_id)
-        if clients_with_convs:
-            actions.append(cl.Action(
-                name="open_history",
-                label="📁 Conversation history by client",
-                payload={"user_id": user_id},
-            ))
+        actions.append(cl.Action(
+            name="open_history",
+            label="📁 Conversații salvate",
+            payload={"user_id": user_id},
+        ))
 
-    await cl.Message(content=welcome, actions=actions, author="Alex 🤖").send()
+    # Attach sidebar as a named Text element — display="side" opens the right panel
+    # and stays open as long as the message is visible (persists in Chainlit 2.x)
+    elements = []
+    if ADMIN_ENABLED and user_id:
+        sidebar_content = await _build_sidebar_content(user_id)
+        elements.append(cl.Text(
+            name="📁 Conversații salvate",
+            content=sidebar_content,
+            display="side",
+        ))
+
+    await cl.Message(content=welcome, actions=actions, elements=elements, author="Alex 🤖").send()
 
 
 # ── Conversation picker helpers (client-based) ────────────────────────────────
@@ -2116,16 +2118,22 @@ async def on_save_conv_confirm(action: cl.Action):
         if not current_title:
             update_conversation_title(conv_id, f"Conversation — {client_name}")
 
+        meta    = cl.user_session.get("user_meta", {})
+        user_id = meta.get("user_id")
+        elements = []
+        if user_id and ADMIN_ENABLED:
+            sidebar_content = await _build_sidebar_content(user_id)
+            elements.append(cl.Text(
+                name="📁 Conversații salvate",
+                content=sidebar_content,
+                display="side",
+            ))
         await cl.Message(
-            content=f"✅ Saved! This conversation is now linked to **{client_name}**.\n"
-                    f"You'll find it in the sidebar **📁 Conversații salvate** →",
+            content=f"✅ Conversație salvată și linkuită la **{client_name}**.\n"
+                    f"O găsești în panoul lateral →",
+            elements=elements,
             author="Alex 🤖",
         ).send()
-        # Refresh sidebar immediately so the new entry appears
-        meta = cl.user_session.get("user_meta", {})
-        user_id = meta.get("user_id")
-        if user_id:
-            await _refresh_sidebar(user_id)
     except Exception as e:
         await cl.Message(content=f"Could not link conversation: {e}", author="Alex 🤖").send()
 
@@ -2164,23 +2172,20 @@ async def on_message(message: cl.Message):
     # ── Sidebar shortcut — intercept starter message before Claude sees it ──
     _msg_lower = (message.content or "").strip().lower()
     if _msg_lower == "arată-mi conversațiile salvate" or "conversații salvate" in _msg_lower:
-        _meta  = cl.user_session.get("user_meta", {})
-        _uid   = _meta.get("user_id")
+        _meta = cl.user_session.get("user_meta", {})
+        _uid  = _meta.get("user_id")
         if _uid and ADMIN_ENABLED:
-            _clients = list_clients_with_conversations(_uid)
-            if _clients:
-                await _refresh_sidebar(_uid)
-                await cl.Message(
-                    content="📁 Am deschis panoul **Conversații salvate** în dreapta. "
-                            "Poți revedea sau relua orice conversație anterioară.",
-                    author="Alex 🤖",
-                ).send()
-            else:
-                await cl.Message(
-                    content="Nu ai încă conversații salvate. "
-                            "Conversează cu mine și spune-mi *'salvează discuția'* la final.",
-                    author="Alex 🤖",
-                ).send()
+            _sidebar_content = await _build_sidebar_content(_uid)
+            _elements = [cl.Text(
+                name="📁 Conversații salvate",
+                content=_sidebar_content,
+                display="side",
+            )]
+            await cl.Message(
+                content="📁 **Conversații salvate** — panoul s-a deschis în dreapta.",
+                elements=_elements,
+                author="Alex 🤖",
+            ).send()
             return
     # ────────────────────────────────────────────────────────────────────────
 
