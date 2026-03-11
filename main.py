@@ -66,9 +66,38 @@ from insurance_broker_mcp.tools.client_tools import search_clients_fn
 
 @app.get("/api/renewals")
 async def api_renewals(days: int = Query(default=45, ge=1, le=365)):
-    """Get policies expiring within N days. Used by n8n for renewal reminders."""
-    result = get_renewals_due_fn(days_ahead=days)
-    return JSONResponse(content={"renewals": json.loads(result) if result.startswith("[") else result})
+    """Get policies expiring within N days — structured JSON for n8n automation."""
+    import sqlite3 as _sq3
+    from datetime import date as _date, timedelta as _td
+    from pathlib import Path as _Path
+    _db = _Path(__file__).parent / "mcp-server" / "insurance_broker.db"
+    try:
+        _conn = _sq3.connect(str(_db))
+        _conn.row_factory = _sq3.Row
+        _today = _date.today().isoformat()
+        _cutoff = (_date.today() + _td(days=days)).isoformat()
+        _rows = _conn.execute("""
+            SELECT p.id, p.client_id, c.name as client_name, c.email as client_email,
+                   c.phone as client_phone,
+                   p.policy_type, p.insurer, p.policy_number, p.end_date, p.annual_premium, p.currency,
+                   CAST(julianday(p.end_date) - julianday('now') AS INTEGER) as days_left
+            FROM policies p
+            JOIN clients c ON c.id = p.client_id
+            WHERE p.status = 'active' AND p.end_date BETWEEN ? AND ?
+            ORDER BY p.end_date ASC
+        """, (_today, _cutoff)).fetchall()
+        _conn.close()
+        _items = [dict(r) for r in _rows]
+        return JSONResponse({
+            "as_of": _today,
+            "days_ahead": days,
+            "total": len(_items),
+            "urgent": [i for i in _items if i["days_left"] <= 7],
+            "upcoming": [i for i in _items if i["days_left"] > 7],
+            "all": _items,
+        })
+    except Exception as _ex:
+        return JSONResponse({"error": str(_ex)}, status_code=500)
 
 @app.get("/api/reports/asf")
 async def api_asf_report(month: int = Query(..., ge=1, le=12), year: int = Query(..., ge=2020, le=2030)):
@@ -82,12 +111,64 @@ async def api_bafin_report(month: int = Query(..., ge=1, le=12), year: int = Que
     result = bafin_summary_fn(month=month, year=year)
     return JSONResponse(content={"report": result})
 
+@app.get("/api/claims/open")
+async def api_open_claims(max_age_days: int = Query(default=90, ge=1, le=365)):
+    """Return open/investigating claims — useful for n8n follow-up automation."""
+    import sqlite3 as _sq3
+    from datetime import date as _date, timedelta as _td
+    from pathlib import Path as _Path
+    _db = _Path(__file__).parent / "mcp-server" / "insurance_broker.db"
+    try:
+        _conn = _sq3.connect(str(_db))
+        _conn.row_factory = _sq3.Row
+        _cutoff = (_date.today() - _td(days=max_age_days)).isoformat()
+        _rows = _conn.execute("""
+            SELECT cl.id, cl.client_id, c.name as client_name, c.email as client_email,
+                   c.phone as client_phone,
+                   cl.incident_date, cl.reported_date, cl.description, cl.status,
+                   cl.damage_estimate, cl.insurer_claim_number,
+                   CAST(julianday('now') - julianday(cl.reported_date) AS INTEGER) as days_open
+            FROM claims cl
+            JOIN clients c ON c.id = cl.client_id
+            WHERE cl.status IN ('open', 'investigating') AND cl.reported_date >= ?
+            ORDER BY cl.reported_date ASC
+        """, (_cutoff,)).fetchall()
+        _conn.close()
+        _items = [dict(r) for r in _rows]
+        return JSONResponse({"total": len(_items), "claims": _items})
+    except Exception as _ex:
+        return JSONResponse({"error": str(_ex)}, status_code=500)
+
+@app.get("/api/dashboard")
+async def api_dashboard():
+    """Dashboard summary stats — active policies, clients, open claims, expiring soon."""
+    import sqlite3 as _sq3
+    from datetime import date as _date, timedelta as _td
+    from pathlib import Path as _Path
+    _db = _Path(__file__).parent / "mcp-server" / "insurance_broker.db"
+    try:
+        _conn = _sq3.connect(str(_db))
+        _conn.row_factory = _sq3.Row
+        _today = _date.today().isoformat()
+        _7d    = (_date.today() + _td(days=7)).isoformat()
+        _30d   = (_date.today() + _td(days=30)).isoformat()
+        stats = {
+            "active_policies": _conn.execute("SELECT COUNT(*) FROM policies WHERE status='active'").fetchone()[0],
+            "clients":         _conn.execute("SELECT COUNT(*) FROM clients").fetchone()[0],
+            "open_claims":     _conn.execute("SELECT COUNT(*) FROM claims WHERE status IN ('open','investigating')").fetchone()[0],
+            "expiring_7":      _conn.execute("SELECT COUNT(*) FROM policies WHERE status='active' AND end_date BETWEEN ? AND ?", (_today, _7d)).fetchone()[0],
+            "expiring_30":     _conn.execute("SELECT COUNT(*) FROM policies WHERE status='active' AND end_date BETWEEN ? AND ?", (_today, _30d)).fetchone()[0],
+            "offers_total":    _conn.execute("SELECT COUNT(*) FROM offers").fetchone()[0],
+        }
+        _conn.close()
+        return JSONResponse(stats)
+    except Exception as _ex:
+        return JSONResponse({"error": str(_ex)}, status_code=500)
+
 @app.get("/api/claims/overdue")
 async def api_overdue_claims(days: int = Query(default=14, ge=1, le=180)):
-    """Get claims older than N days still open. Used by n8n for follow-up alerts."""
-    # List all policies to find claims — reuses existing tool
-    policies = list_policies_fn(status="active")
-    return JSONResponse(content={"overdue_threshold_days": days, "data": policies})
+    """Deprecated — use /api/claims/open instead."""
+    return JSONResponse({"deprecated": True, "use_instead": "/api/claims/open"})
 
 @app.get("/api/clients/search")
 async def api_search_clients(q: str = Query(..., min_length=1), limit: int = Query(default=20, ge=1, le=100)):
