@@ -47,6 +47,9 @@ COPY chainlit.md .
 COPY CLAUDE.md .
 COPY .chainlit/ ./.chainlit/
 
+# Copy public assets (custom CSS, logo, etc.)
+COPY public/ ./public/
+
 # Ensure output directory exists
 RUN mkdir -p mcp-server/output
 

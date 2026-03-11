@@ -1,0 +1,79 @@
+/* Alex Insurance Broker AI — Custom Login & UI Styles */
+
+/* ── Login page — left panel (form side) ──────────────────────── */
+.login-page-container {
+  background: linear-gradient(135deg, #0a1628 0%, #0d2244 100%) !important;
+}
+
+/* Override the login card to add our branding */
+.login-page-container > div {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  backdrop-filter: blur(12px) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* ── Custom logo / header on login page ───────────────────────── */
+.login-page-container form::before {
+  content: "";
+  display: block;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 8px;
+  background: linear-gradient(135deg, #1e6fbf 0%, #0d47a1 100%);
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px rgba(30, 111, 191, 0.2);
+}
+
+/* ── Login form input fields ──────────────────────────────────── */
+.login-page-container input[type="text"],
+.login-page-container input[type="email"],
+.login-page-container input[type="password"] {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  color: #ffffff !important;
+  border-radius: 8px !important;
+}
+
+.login-page-container input::placeholder {
+  color: rgba(255, 255, 255, 0.4) !important;
+}
+
+.login-page-container input:focus {
+  border-color: #1e6fbf !important;
+  box-shadow: 0 0 0 2px rgba(30, 111, 191, 0.3) !important;
+}
+
+/* ── Login button ─────────────────────────────────────────────── */
+.login-page-container button[type="submit"] {
+  background: linear-gradient(135deg, #1e6fbf 0%, #1565c0 100%) !important;
+  border: none !important;
+  border-radius: 8px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.3px !important;
+  transition: all 0.2s ease !important;
+}
+
+.login-page-container button[type="submit"]:hover {
+  background: linear-gradient(135deg, #2979c8 0%, #1976d2 100%) !important;
+  box-shadow: 0 4px 16px rgba(30, 111, 191, 0.4) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* ── Labels and text on login page ───────────────────────────── */
+.login-page-container label {
+  color: rgba(255, 255, 255, 0.75) !important;
+}
+
+.login-page-container h1,
+.login-page-container h2,
+.login-page-container h3 {
+  color: #ffffff !important;
+}
+
+/* ── Main chat UI — minor brand tweaks ───────────────────────── */
+/* Keep the rest of the UI as Chainlit defaults but ensure brand color on accents */
+:root {
+  --chainlit-color-primary: #1e6fbf;
+}
