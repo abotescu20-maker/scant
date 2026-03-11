@@ -227,3 +227,7 @@ def register_offer_tools(mcp: FastMCP):
               description="List generated offers, optionally filtered by client ID or status.")
     def broker_list_offers(client_id: Optional[str] = None, status: Optional[str] = None) -> str:
         return _list_offers_impl(client_id, status)
+
+# Public aliases used by app.py
+create_offer_fn = _create_offer_impl
+list_offers_fn = _list_offers_impl
