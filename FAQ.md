@@ -54,9 +54,10 @@ Alex ruleaza in browser (nu necesita instalare) si se conecteaza la baza de date
 - Calculator estimativ prima CASCO: valoare vehicul, varsta, coeficienti
 
 **Automatizari n8n (API endpoints)**
-- `/api/renewals` — polite care expira in N zile (conectat la cron n8n pentru reminder-e email)
+- `/api/renewals` — polite care expira in N zile, JSON structurat cu email/telefon client (cron n8n → email automat)
+- `/api/claims/open` — daune deschise/investigate cu varsta in zile
+- `/api/dashboard` — statistici sumar (polite active, clienti, daune deschise, expirante)
 - `/api/reports/asf` / `/api/reports/bafin` — rapoarte lunare generate automat pe 1 ale lunii
-- `/api/claims/overdue` — daune nerezolvate mai vechi de N zile
 - `/api/clients/search` — cautare clienti din workflow-uri externe
 
 **Procesare Documente**
@@ -66,7 +67,7 @@ Alex ruleaza in browser (nu necesita instalare) si se conecteaza la baza de date
 - **Confirmare inainte de salvare** — brokerul verifica si corecteaza datele extrase
 - Creaza clientul si sugereaza oferta — totul automat dintr-un singur upload
 
-**Automatizare Browser (Playwright pe Cloud Run)** *(NOU)*
+**Automatizare Browser (Playwright pe Cloud Run)**
 - Verificare RCA in timp real pe portalul CEDAM/ASF — direct din chat, fara instalare
 - Acces orice site web public: extragere date, completare formulare
 - Rulează complet pe cloud — angajatul nu instaleaza nimic
@@ -75,6 +76,13 @@ Alex ruleaza in browser (nu necesita instalare) si se conecteaza la baza de date
 - Controleaza aplicatii desktop (Delphi, VB6, Excel local, software broker)
 - Acces la retele interne ale firmei (intranet, VPN)
 - Mod avansat: Claude AI controleaza direct ecranul (Anthropic computer_use)
+
+**Istoric Conversatii — organizat pe client** *(NOU Faza 6)*
+- Conversatiile se salveaza automat si se organizeaza pe numele clientului
+- Buton "📁 Conversation history by client" pe ecranul principal (apare doar cand exista conversatii salvate)
+- Reluare conversatie veche: toate mesajele anterioare se reafiseaza in chat
+- `broker_save_conversation` — Alex poate lega conversatia curenta la un client la cererea brokerului
+  (ex: "salveaza conversatia asta despre Ionescu")
 
 ---
 
@@ -167,7 +175,7 @@ Da. Admin panel cu:
 
 ### 9. Ce vine in urmatoarele update-uri?
 
-**DONE — Faza 1-4 (implementate, live pe Cloud Run)**:
+**DONE — Faza 1-5 (implementate, live pe Cloud Run)**:
 
 *Unelte & Calcule*
 - ✅ Calculator estimativ prima RCA/CASCO (varsta, vehicul, zona, bonus-malus)
@@ -177,7 +185,7 @@ Da. Admin panel cu:
 - ✅ Skill compliance DE (GewO §34d, VVG, IDD, BaFin MaComp)
 
 *Automatizari & Integrari*
-- ✅ Integrare n8n: API endpoints REST pentru renewal reminders, rapoarte automate, claims overdue
+- ✅ Integrare n8n: API endpoints REST — `/api/renewals` (JSON cu email/tel client), `/api/claims/open`, `/api/dashboard`
 - ✅ Rapoarte ASF/BaFin disponibile si via API (n8n cron pe 1 ale lunii)
 - ✅ Email oferte catre clienti (SMTP — Gmail, Outlook, SendGrid, server propriu)
 
@@ -209,12 +217,33 @@ Da. Admin panel cu:
 - ✅ **Mod B: Anthropic computer_use** — Claude AI controleaza direct calculatorul (intelligence maxima)
 - ✅ **REST API `/cu/*`** pe Cloud Run pentru comunicare agent local ↔ Alex
 
-**Planificat — Faza 6**:
-- Connectors specifici: AllianzPortalConnector, GeneraliPortalConnector, PAIDPoolConnector
-- Task-uri programate (cron): "in fiecare zi la 9:00, verifica CEDAM pentru politele din ziua"
-- Extensie Chrome pentru angajati fara Python instalat
-- VM dedicat in cloud (Ubuntu + Xvfb) pentru agent permanent fara laptop local
-- Migrare PostgreSQL (Cloud SQL) pentru persistenta si scalabilitate
+**DONE — Faza 6 (implementata, live)**:
+
+*Istoric Conversatii — organizat pe client*
+- ✅ **Conversatii persistente** — fiecare conversatie se salveaza automat in SQLite la fiecare mesaj
+- ✅ **Organizare pe client** — istoricul e grupat pe numele clientului din baza de date (nu proiecte abstracte)
+- ✅ **UX Varianta A** — pornire directa in chat; butonul "📁 Conversation history by client" apare doar daca exista conversatii salvate
+- ✅ **Reluare conversatie** — click pe o conversatie veche o reafiseaza integral in chat, se poate continua
+- ✅ **broker_save_conversation** — tool nou: Alex leaga conversatia curenta la un client la cerere verbala
+- ✅ **Auto-creare + auto-titlu** — conversatia se creeaza automat la primul mesaj, titlul din text
+
+*Date Demo imbunatatite*
+- ✅ 11 clienti, 24 polite cu date de expirare realiste, 7 dosare daune cu scenarii diverse
+- ✅ `scripts/reseed_demo.py` — script reutilizabil pentru reset DB demo
+
+*REST API imbogatit*
+- ✅ `/api/renewals` — JSON structurat (urgent/upcoming/all) cu email + telefon client
+- ✅ `/api/claims/open` — daune deschise cu varsta in zile (inlocuieste /api/claims/overdue)
+- ✅ `/api/dashboard` — statistici sumar pentru dashboard extern / webhook
+
+**Planificat — Faza 7**:
+- **Persistenta reala pe Cloud Run** — migrare la PostgreSQL (Cloud SQL); SQLite se reseteaza la fiecare deploy nou
+- **Email automat reinnoiri** — n8n cron zilnic: citeste `/api/renewals`, trimite email brokerilor cu lista urgenta
+- **Connectors specifici asiguratori** — AllianzPortalConnector, GeneraliPortalConnector, PAIDPoolConnector
+- **Task-uri programate** — "la 9:00 zilnic, verifica CEDAM pentru politele ce expira in 7 zile"
+- **Multi-broker / multi-company** — izolare completa date per companie, billing separat
+- **Extensie Chrome** — alternativa la agentul local Python (fara instalare)
+- **VM dedicat in cloud** — Ubuntu + Xvfb pentru agent permanent, fara laptop local
 
 ---
 
@@ -491,7 +520,7 @@ python scripts/test_all_tools.py --api
 
 Rezultate ultima testare: **73/73 PASS**, **8/8 DB checks PASS**
 
-Testeaza: toate cele **22 tool-uri** (inclusiv broker_computer_use_status si broker_run_task adaugate in Faza 5), cazuri valide, cazuri limita, ID-uri invalide, persistenta in baza de date, integritatea datelor demo.
+Testeaza: toate cele **23 tool-uri** (inclusiv broker_save_conversation adaugat in Faza 6, broker_computer_use_status si broker_run_task din Faza 5), cazuri valide, cazuri limita, ID-uri invalide, persistenta in baza de date, integritatea datelor demo.
 
 ---
 
