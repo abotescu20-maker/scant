@@ -15,22 +15,31 @@ from shared.auth import hash_password, new_id
 DEMO_COMPANY_ID = "COMP-DEMO-01"
 
 BROKER_TOOLS = [
+    # Clients
     "broker_search_clients", "broker_get_client", "broker_create_client",
     "broker_update_client", "broker_delete_client",
+    # Products & offers
     "broker_search_products", "broker_compare_products",
     "broker_create_offer", "broker_list_offers", "broker_send_offer_email",
+    # Policies & renewals
     "broker_get_renewals_due", "broker_list_policies",
+    # Claims
     "broker_log_claim", "broker_get_claim_status",
-    "broker_generate_report", "broker_check_compliance",
-    "broker_check_rca", "broker_run_task", "broker_computer_use_status",
-    "broker_calculate_premium", "broker_get_cross_sell",
-    "broker_export_excel", "broker_export_docx",
-    "broker_upload_document", "broker_analyze_document",
-    "broker_search_documents", "broker_knowledge_base_status",
-    "broker_reindex_documents",
-    "broker_gdrive_upload", "broker_gdrive_list", "broker_gdrive_get_link",
+    # Reports & compliance
+    "broker_asf_summary", "broker_bafin_summary",
+    "broker_check_rca_validity", "broker_cross_sell",
+    "broker_calculate_premium", "broker_compliance_check",
+    # Conversations
+    "broker_save_conversation",
+    # Web & desktop automation
+    "broker_check_rca", "broker_browse_web",
+    "broker_computer_use_status", "broker_run_task",
+    # Cloud storage
+    "broker_drive_upload", "broker_drive_list", "broker_drive_get_link",
     "broker_sharepoint_upload", "broker_sharepoint_list", "broker_sharepoint_get_link",
-    "broker_save_conversation", "broker_get_saved_conversations",
+    # Knowledge base / RAG
+    "broker_search_knowledge", "broker_upload_document",
+    "broker_analyze_document", "broker_kb_status", "broker_kb_reindex",
 ]
 
 def main():

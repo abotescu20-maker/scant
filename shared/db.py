@@ -150,18 +150,9 @@ def get_user_by_id(user_id: str) -> sqlite3.Row | None:
 
 
 def get_user_tools(user_id: str, role: str) -> list[str]:
-    """Return list of allowed tool names for a user. Superadmin gets all."""
-    all_tools = [
-        "broker_search_clients", "broker_get_client", "broker_create_client",
-        "broker_search_products", "broker_compare_products",
-        "broker_create_offer", "broker_list_offers", "broker_send_offer_email",
-        "broker_get_renewals_due", "broker_list_policies",
-        "broker_log_claim", "broker_get_claim_status",
-        "broker_asf_summary", "broker_bafin_summary", "broker_check_rca_validity",
-        "broker_cross_sell", "broker_calculate_premium", "broker_compliance_check",
-    ]
+    """Return list of allowed tool names for a user. Superadmin/admin gets all (None = unrestricted)."""
     if role in ("superadmin", "company_admin"):
-        return all_tools
+        return None  # None means: no restriction, use all tools from app.py
     conn = get_conn()
     rows = conn.execute(
         "SELECT tool_name FROM tool_permissions WHERE user_id = ?", (user_id,)
