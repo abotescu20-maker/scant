@@ -1667,30 +1667,41 @@ async def _init_session_tools():
 async def _refresh_sidebar(user_id: str) -> None:
     """Open/update the ElementSidebar with saved conversations grouped by client.
 
-    Shows the sidebar only if ADMIN_ENABLED and the user has at least one saved conversation.
-    Broker can click the chat refresh button (↺) or ask Alex to re-open it at any time.
+    Always opens the sidebar (even if empty) so the broker sees the panel.
     """
     if not ADMIN_ENABLED or not user_id:
         return
     try:
         clients = list_clients_with_conversations(user_id)
+
         if not clients:
-            return  # nothing to show yet
+            content = (
+                "## 📁 Conversații salvate\n\n"
+                "_Nu ai conversații salvate încă._\n\n"
+                "**Cum salvezi o conversație:**\n"
+                "1. Discută cu Alex despre un client\n"
+                "2. Spune: **\"salvează discuția\"** sau **\"linkuiește la [Nume Client]\"**\n"
+                "3. Apare aici automat, grupat pe client\n\n"
+                "---\n"
+                "*Sau după 3+ mesaje apare butonul 💾 automat.*"
+            )
+        else:
+            lines = ["## 📁 Conversații salvate\n"]
+            for c in clients[:30]:
+                cname = c["client_name"] if c["client_name"] != "__unlinked__" else "Fără client"
+                conv_count = c.get("conv_count", 0)
+                lines.append(f"### 👤 {cname} ({conv_count})")
+                convs = list_conversations_for_client(user_id, c["client_id"])
+                for conv in convs[:10]:
+                    msgs = conv.get("message_count", 0)
+                    updated = conv.get("updated_at", "")[:10]
+                    label = conv.get("title", "Conversație")
+                    detail = f"{msgs} msg · {updated}" if msgs else updated
+                    lines.append(f"- **{label}**  \n  _{detail}_")
+                lines.append("")
+            lines.append("---\n*Spune 'salvează discuția' pentru a adăuga una nouă.*")
+            content = "\n".join(lines)
 
-        lines = ["## 📁 Conversații salvate\n"]
-        for c in clients[:30]:
-            cname = c["client_name"] if c["client_name"] != "__unlinked__" else "Fără client"
-            lines.append(f"### 👤 {cname}")
-            convs = list_conversations_for_client(user_id, c["client_id"])
-            for conv in convs[:10]:
-                msgs = conv.get("message_count", 0)
-                updated = conv.get("updated_at", "")[:10]
-                label = conv.get("title", "Conversație")
-                detail = f"{msgs} mesaje · {updated}" if msgs else updated
-                lines.append(f"- **{label}** _{detail}_")
-            lines.append("")
-
-        content = "\n".join(lines)
         sidebar_text = cl.Text(
             name="saved_conversations",
             content=content,
@@ -1860,17 +1871,18 @@ async def set_starters():
         cl.Starter(
             label="📁 Conversații salvate",
             message="Arată-mi conversațiile salvate",
-            icon="/public/icons/history.svg",
         ),
         cl.Starter(
             label="⚠️ Reinnoiri urgente",
             message="Arată polițele care expiră în 30 de zile",
-            icon="/public/icons/alert.svg",
         ),
         cl.Starter(
-            label="👥 Clienți activi",
+            label="👥 Caută clienți",
             message="Caută toți clienții activi",
-            icon="/public/icons/clients.svg",
+        ),
+        cl.Starter(
+            label="📊 Dashboard",
+            message="Arată statistici portofoliu",
         ),
     ]
 
