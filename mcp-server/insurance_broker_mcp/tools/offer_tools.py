@@ -143,7 +143,7 @@ def _create_offer_impl(
             INSERT INTO offers (id, client_id, created_at, valid_until, status, products_count, notes)
             VALUES (?,?,?,?,?,?,?)
         """, (offer_id, client_id, date.today().isoformat(), valid_until,
-              "sent", len(products), notes))
+              "draft", len(products), notes))
         conn.commit()
         client_dict = dict(client)
         products_list = [dict(p) for p in products]

@@ -2605,11 +2605,21 @@ async def on_message(message: cl.Message):
                     if res:
                         if res.get("payload", {}).get("value") == "approve":
                             cl.user_session.set("offer_approved", True)
+                            # Extract offer ID from filename (e.g. ClientName_2026-03-11_OFF-XXXXXXXX)
+                            import re as _re
+                            _m = _re.search(r"(OFF-[A-F0-9]{8})", base_title)
+                            _offer_id_hint = _m.group(1) if _m else ""
                             # Build user message: tool_results + approval instruction in one block
                             # (Anthropic requires tool_results and text in same user message turn)
                             combined_content = list(tool_results) + [{
                                 "type": "text",
-                                "text": "Oferta a fost aprobată de broker. Trimite-o pe email clientului folosind broker_send_offer_email."
+                                "text": (
+                                    f"Oferta a fost aprobată de broker. "
+                                    f"Folosește broker_send_offer_email cu offer_id='{_offer_id_hint}' "
+                                    f"pentru a o trimite pe email clientului."
+                                    if _offer_id_hint else
+                                    "Oferta a fost aprobată de broker. Trimite-o pe email clientului folosind broker_send_offer_email."
+                                )
                             }]
                             history.append({"role": "user", "content": combined_content})
                             tool_results = []
