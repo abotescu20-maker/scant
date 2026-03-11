@@ -28,7 +28,6 @@
 ### Rapoarte si Compliance
 - Raport lunar ASF (Romania)
 - Raport lunar BaFin (Germania)
-- Verificare valabilitate RCA
 - Verificare completitudine dosar client (scor 0-100)
 
 ### Analize

@@ -36,7 +36,6 @@ Functioneaza ca un chat — scrii ce vrei in limba romana, engleza sau germana, 
 ### Rapoarte & Compliance
 - **"Fa raportul ASF pentru luna martie"** — raport complet generat automat
 - **"Fa raportul BaFin pentru martie"** — piata germana
-- **"Verifica RCA-ul lui Popescu"** — valabil sau expirat? (verificare live pe CEDAM)
 - **"Verifica dosarul lui CLI001"** — scor compliance 0-100, documente lipsa
 
 ### Analize
