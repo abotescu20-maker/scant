@@ -97,8 +97,71 @@ try:
 
     @_cl_app.get("/api/renewals")
     async def _api_renewals(days: int = _Query(default=45, ge=1, le=365)):
-        result = get_renewals_due_fn(days_ahead=days)
-        return _JSONResponse({"renewals": result})
+        """Structured renewal list — useful for n8n automation.
+        Returns JSON with urgent (≤7 days) and upcoming (≤days) lists.
+        """
+        import sqlite3 as _sqlite3
+        from datetime import date as _date, timedelta as _td
+        from pathlib import Path as _Path
+        _db = _Path(__file__).parent / "mcp-server" / "insurance_broker.db"
+        try:
+            _conn = _sqlite3.connect(str(_db))
+            _conn.row_factory = _sqlite3.Row
+            _today = _date.today().isoformat()
+            _cutoff = (_date.today() + _td(days=days)).isoformat()
+            _rows = _conn.execute("""
+                SELECT p.id, p.client_id, c.name as client_name, c.email as client_email,
+                       c.phone as client_phone,
+                       p.policy_type, p.insurer, p.policy_number, p.end_date, p.annual_premium, p.currency,
+                       CAST(julianday(p.end_date) - julianday('now') AS INTEGER) as days_left
+                FROM policies p
+                JOIN clients c ON c.id = p.client_id
+                WHERE p.status = 'active' AND p.end_date BETWEEN ? AND ?
+                ORDER BY p.end_date ASC
+            """, (_today, _cutoff)).fetchall()
+            _conn.close()
+            _items = [dict(r) for r in _rows]
+            return _JSONResponse({
+                "as_of": _today,
+                "days_ahead": days,
+                "total": len(_items),
+                "urgent": [i for i in _items if i["days_left"] <= 7],
+                "upcoming": [i for i in _items if i["days_left"] > 7],
+                "all": _items,
+            })
+        except Exception as _ex:
+            return _JSONResponse({"error": str(_ex)}, status_code=500)
+
+    @_cl_app.get("/api/claims/open")
+    async def _api_open_claims(max_age_days: int = _Query(default=90, ge=1, le=365)):
+        """Return open/investigating claims — useful for n8n follow-up automation."""
+        import sqlite3 as _sqlite3
+        from pathlib import Path as _Path
+        _db = _Path(__file__).parent / "mcp-server" / "insurance_broker.db"
+        try:
+            _conn = _sqlite3.connect(str(_db))
+            _conn.row_factory = _sqlite3.Row
+            _rows = _conn.execute("""
+                SELECT cl.id as claim_id, cl.client_id, c.name as client_name,
+                       c.email as client_email, c.phone as client_phone,
+                       cl.policy_id, cl.incident_date, cl.status,
+                       cl.damage_estimate, cl.description,
+                       cl.insurer_claim_number, cl.notes,
+                       CAST(julianday('now') - julianday(cl.incident_date) AS INTEGER) as days_open
+                FROM claims cl
+                JOIN clients c ON c.id = cl.client_id
+                WHERE cl.status IN ('open', 'investigating')
+                ORDER BY cl.incident_date ASC
+            """).fetchall()
+            _conn.close()
+            _items = [dict(r) for r in _rows]
+            return _JSONResponse({
+                "total_open": len(_items),
+                "overdue": [i for i in _items if i["days_open"] > max_age_days],
+                "claims": _items,
+            })
+        except Exception as _ex:
+            return _JSONResponse({"error": str(_ex)}, status_code=500)
 
     @_cl_app.get("/api/reports/asf")
     async def _api_asf(month: int = _Query(..., ge=1, le=12), year: int = _Query(..., ge=2020, le=2030)):
@@ -110,15 +173,39 @@ try:
         result = bafin_summary_fn(month=month, year=year)
         return _JSONResponse({"report": result})
 
-    @_cl_app.get("/api/claims/overdue")
-    async def _api_overdue(days: int = _Query(default=14, ge=1, le=180)):
-        result = list_policies_fn(status="active")
-        return _JSONResponse({"overdue_threshold_days": days, "data": result})
-
     @_cl_app.get("/api/clients/search")
     async def _api_clients(q: str = _Query(..., min_length=1), limit: int = _Query(default=20, ge=1, le=100)):
         result = search_clients_fn(query=q, limit=limit)
         return _JSONResponse({"clients": result})
+
+    @_cl_app.get("/api/dashboard")
+    async def _api_dashboard():
+        """Summary dashboard stats — for embedding in external tools."""
+        import sqlite3 as _sqlite3
+        from datetime import date as _date
+        from pathlib import Path as _Path
+        _db = _Path(__file__).parent / "mcp-server" / "insurance_broker.db"
+        try:
+            _conn = _sqlite3.connect(str(_db))
+            _conn.row_factory = _sqlite3.Row
+            _today = _date.today()
+            stats = {
+                "as_of": _today.isoformat(),
+                "active_policies": _conn.execute("SELECT COUNT(*) FROM policies WHERE status='active'").fetchone()[0],
+                "clients": _conn.execute("SELECT COUNT(*) FROM clients").fetchone()[0],
+                "open_claims": _conn.execute("SELECT COUNT(*) FROM claims WHERE status IN ('open','investigating')").fetchone()[0],
+                "expiring_7":  _conn.execute(
+                    "SELECT COUNT(*) FROM policies WHERE status='active' AND julianday(end_date)-julianday('now') BETWEEN 0 AND 7"
+                ).fetchone()[0],
+                "expiring_30": _conn.execute(
+                    "SELECT COUNT(*) FROM policies WHERE status='active' AND julianday(end_date)-julianday('now') BETWEEN 0 AND 30"
+                ).fetchone()[0],
+                "offers_total": _conn.execute("SELECT COUNT(*) FROM offers").fetchone()[0],
+            }
+            _conn.close()
+            return _JSONResponse(stats)
+        except Exception as _ex:
+            return _JSONResponse({"error": str(_ex)}, status_code=500)
 
     @_cl_app.get("/api/debug-from-app")
     async def _debug_from_app():
@@ -358,6 +445,7 @@ You talk naturally with brokers in whatever language they use (Romanian, English
 - broker_cross_sell — analizează portofoliul clientului și sugerează produse lipsă
 - broker_calculate_premium — estimează prima de asigurare (RCA/CASCO) pe baza factorilor de risc
 - broker_compliance_check — verifică completitudinea dosarului client (documente, polițe, conformitate)
+- broker_save_conversation — salvează și asociază conversația curentă cu un client (pentru istoric). Apelează când brokerul spune "salvează", "linkuiește la Ionescu", etc.
 - broker_check_rca — verifică RCA în timp real pe portalul AIDA/BAAR via browser headless pe server (NU necesită agent local). Returnează: rca_valid, expiry_date, insurer, policy_number, coverage_type, insured_sum, days_until_expiry, captcha_blocked, from_cache (cache TTL 6h), screenshot_b64 (la eșec).
 - broker_browse_web — accesează orice URL public și extrage text sau tabele (NU necesită agent local)
 - broker_computer_use_status — verifică dacă agentul local e conectat (necesar doar pentru desktop apps sau intranet)
@@ -698,6 +786,31 @@ TOOLS = [
             "required": ["client_id"],
         },
     },
+    {
+        "name": "broker_save_conversation",
+        "description": (
+            "Save and link the current conversation to a specific client. "
+            "Call this when the broker says something like 'save this conversation', "
+            "'link to Ionescu', 'save chat about CLI001', etc. "
+            "After calling this tool, the conversation will appear under that client's "
+            "history in the '📁 Conversation history by client' section. "
+            "Use broker_search_clients first to find the client_id if you don't have it."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "client_id": {
+                    "type": "string",
+                    "description": "Client ID to link this conversation to (e.g. CLI001)",
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Optional title for this conversation (max 80 chars). If omitted, keeps current title.",
+                },
+            },
+            "required": ["client_id"],
+        },
+    },
     # ── Web automation tools (Playwright on Cloud Run — no local agent needed) ──
     {
         "name": "broker_check_rca",
@@ -961,6 +1074,7 @@ TOOL_DISPATCH = {
     "broker_cross_sell":         cross_sell_fn,
     "broker_calculate_premium":  calculate_premium_fn,
     "broker_compliance_check":   compliance_check_fn,
+    "broker_save_conversation":  None,  # special — handled in agentic loop (needs session context)
     # Web automation (Playwright on Cloud Run — sync wrappers, run in thread pool)
     "broker_check_rca":          _playwright_check_rca_fn,
     "broker_browse_web":         _playwright_browse_web_fn,
@@ -2164,8 +2278,84 @@ async def on_message(message: cl.Message):
             async with cl.Step(name=f"🔧 {tool_name}", type="tool", show_input=True) as step:
                 step.input = json.dumps(tool_input, indent=2, ensure_ascii=False)
 
+                # ── Save conversation → link to client ────────────────────
+                if tool_name == "broker_save_conversation":
+                    _client_id = tool_input.get("client_id", "").strip()
+                    _new_title  = tool_input.get("title", "").strip()
+                    _conv_id   = cl.user_session.get(_SK_CONV_ID)
+
+                    if not ADMIN_ENABLED or not _client_id:
+                        result = "⚠️ Cannot save: admin features disabled or no client_id provided."
+                    elif not _conv_id:
+                        # No conversation yet — create one now
+                        _meta       = cl.user_session.get("user_meta", {})
+                        _uid        = _meta.get("user_id")
+                        _cid_comp   = _meta.get("company_id")
+                        if _uid and _cid_comp:
+                            # Find or create a project for this client
+                            _projects  = list_projects(_uid)
+                            # Try to get client name for project name
+                            import sqlite3 as _sq
+                            _db_conn = None
+                            _client_name = _client_id
+                            try:
+                                from shared.db import get_conn as _gcn
+                                _db_conn = _gcn()
+                                _cr = _db_conn.execute("SELECT name FROM clients WHERE id=?", (_client_id,)).fetchone()
+                                if _cr:
+                                    _client_name = _cr["name"]
+                            except Exception:
+                                pass
+                            finally:
+                                if _db_conn:
+                                    _db_conn.close()
+                            _existing_proj = next((p for p in _projects if p["name"] == _client_name), None)
+                            if _existing_proj:
+                                _proj_id = _existing_proj["id"]
+                            else:
+                                try:
+                                    _proj = create_project(_uid, _cid_comp, _client_name)
+                                    _proj_id = _proj["id"]
+                                except Exception:
+                                    _proj_id = None
+                            _conv = create_conversation(_uid, _proj_id,
+                                                        title=_new_title or f"Conversation about {_client_name}")
+                            _conv_id = _conv["id"]
+                            cl.user_session.set(_SK_CONV_ID,    _conv_id)
+                            cl.user_session.set(_SK_PROJECT_ID, _proj_id)
+                            cl.user_session.set(_SK_CLIENT_ID,  _client_id)
+                            # Save history so far
+                            _hist = cl.user_session.get(_SK_HISTORY, [])
+                            if _hist:
+                                save_conversation_history(_conv_id, _hist)
+                            result = f"✅ Conversation created and linked to **{_client_name}** ({_client_id}). It will appear in '📁 Conversation history by client'."
+                        else:
+                            result = "⚠️ Cannot save: user session not initialized."
+                    else:
+                        # Conversation exists — just link it
+                        try:
+                            set_conversation_client(_conv_id, _client_id)
+                            cl.user_session.set(_SK_CLIENT_ID, _client_id)
+                            if _new_title:
+                                update_conversation_title(_conv_id, _new_title)
+                                cl.user_session.set(_SK_TITLE_SET, True)
+                            # Get client name for friendly message
+                            _client_display = _client_id
+                            try:
+                                from shared.db import get_conn as _gcn2
+                                _dc = _gcn2()
+                                _cr2 = _dc.execute("SELECT name FROM clients WHERE id=?", (_client_id,)).fetchone()
+                                if _cr2:
+                                    _client_display = _cr2["name"]
+                                _dc.close()
+                            except Exception:
+                                pass
+                            result = f"✅ Conversation linked to **{_client_display}** ({_client_id}). It will appear in '📁 Conversation history by client'."
+                        except Exception as _e:
+                            result = f"❌ Could not link conversation: {_e}"
+
                 # ── Async computer-use tools ──────────────────────────────
-                if tool_name == "broker_computer_use_status":
+                elif tool_name == "broker_computer_use_status":
                     result = _cu_computer_use_status_fn(**tool_input)
                 elif tool_name == "broker_run_task":
                     # Show progress message while waiting
