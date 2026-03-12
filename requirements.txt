@@ -31,6 +31,10 @@ google-api-python-client>=2.100.0
 google-auth-oauthlib>=1.1.0
 google-auth-httplib2>=0.2.0
 
+# Firebase Firestore — persistent storage across Cloud Run deploys
+# Conversations, users, and project data survive container restarts
+google-cloud-firestore>=2.16.0
+
 # RAG / Knowledge Base
 chromadb>=1.0.0                    # Vector store (persistent, file-based)
                                    # Embeddings: all-MiniLM-L6-v2 (local, no API key)

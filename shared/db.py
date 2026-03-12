@@ -278,6 +278,9 @@ def create_conversation(user_id: str, project_id: int | None,
     )
     conn.commit()
     conn.close()
+    # Dual-write to Firestore
+    _firestore_sync_conversation(cid, title, user_id, project_id,
+                                  created_at=now, updated_at=now)
     return {"id": cid, "user_id": user_id, "project_id": project_id, "title": title}
 
 
@@ -303,6 +306,13 @@ def update_conversation_title(conversation_id: str, title: str) -> None:
     )
     conn.commit()
     conn.close()
+    # Dual-write to Firestore
+    try:
+        from shared.firestore_db import update_conversation_title_firestore, is_available
+        if is_available():
+            update_conversation_title_firestore(conversation_id, title)
+    except Exception:
+        pass
 
 
 def save_conversation_history(conversation_id: str, history: list[dict]) -> None:
@@ -328,6 +338,13 @@ def save_conversation_history(conversation_id: str, history: list[dict]) -> None
     )
     conn.commit()
     conn.close()
+    # Dual-write to Firestore (async-safe: fire and forget)
+    try:
+        from shared.firestore_db import save_history_to_firestore, is_available
+        if is_available():
+            save_history_to_firestore(conversation_id, history)
+    except Exception:
+        pass
 
 
 def load_conversation_history(conversation_id: str) -> list[dict]:
@@ -447,6 +464,33 @@ def get_all_clients_for_picker() -> list[dict]:
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+# ── Firestore dual-write helpers ─────────────────────────────────────────────
+
+def _firestore_sync_conversation(conv_id: str, title: str, user_id: str,
+                                  project_id, client_id=None, created_at=None,
+                                  updated_at=None):
+    """Background dual-write to Firestore. Silently ignored if Firestore is unavailable."""
+    try:
+        from shared.firestore_db import save_conversation_to_firestore, is_available
+        if not is_available():
+            return
+        save_conversation_to_firestore({
+            "id": conv_id,
+            "user_id": user_id,
+            "project_id": project_id,
+            "client_id": client_id,
+            "title": title,
+            "created_at": created_at or _now_str(),
+            "updated_at": updated_at or _now_str(),
+        })
+    except Exception:
+        pass
+
+
+def _now_str() -> str:
+    return datetime.utcnow().isoformat()
 
 
 # Initialize tables on import

@@ -90,6 +90,18 @@ def main():
 
     conn.commit()
     conn.close()
+
+    # Sync users + company to Firestore for cross-deploy persistence
+    try:
+        from shared.firestore_db import sync_all_users_and_companies, is_available
+        if is_available():
+            stats = sync_all_users_and_companies()
+            print(f"[seed_users] Firestore sync: {stats}")
+        else:
+            print("[seed_users] Firestore not available — skipping sync")
+    except Exception as e:
+        print(f"[seed_users] Firestore sync skipped: {e}")
+
     print("[seed_users] Done.")
 
 if __name__ == "__main__":

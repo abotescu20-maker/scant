@@ -30,5 +30,22 @@ else
     PYTHONPATH="$PYTHONPATH" python3 /app/scripts/seed_users.py 2>&1 || true
 fi
 
+# Restore conversations + users from Firestore (if available)
+# This ensures chat history is NOT lost between Cloud Run deploys
+echo "[startup] Restoring persistent data from Firestore..."
+PYTHONPATH="$PYTHONPATH" python3 -c "
+import sys
+sys.path.insert(0, '/app')
+try:
+    from shared.firestore_db import restore_from_firestore_to_sqlite, is_available
+    if is_available():
+        stats = restore_from_firestore_to_sqlite()
+        print('[startup] Firestore restore:', stats)
+    else:
+        print('[startup] Firestore not available — using local SQLite only')
+except Exception as e:
+    print('[startup] Firestore restore skipped:', e)
+" 2>&1 || echo "[startup] Firestore restore step failed (non-fatal)"
+
 echo "[startup] Starting uvicorn..."
 exec uvicorn main:app --host 0.0.0.0 --port "${PORT:-8080}"
