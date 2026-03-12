@@ -17,7 +17,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcairo2-dev \
     libgdk-pixbuf-2.0-0 \
     libffi-dev \
-    libffi7 \
     fonts-liberation \
     fonts-dejavu-core \
     fontconfig \
