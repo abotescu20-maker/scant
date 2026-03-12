@@ -85,55 +85,58 @@ from insurance_broker_mcp.tools.rag_tools import (
     broker_kb_reindex_fn,
 )
 
-# ── Safari / mobile login fix — JSON→Form middleware ─────────────────────────
-# Safari (iOS + macOS) sends Content-Type: application/json for the /login POST.
-# Chainlit's FastAPI endpoint uses OAuth2PasswordRequestForm which requires
-# application/x-www-form-urlencoded. This middleware converts JSON bodies at /login
-# to form-urlencoded so Safari can authenticate correctly.
+# ── Safari / mobile login fix ─────────────────────────────────────────────────
+# Safari (iOS + macOS WebKit 605.x) sends Content-Type: application/json for
+# the /login POST. Chainlit's route uses OAuth2PasswordRequestForm which requires
+# application/x-www-form-urlencoded. We replace Chainlit's /login route handler
+# with one that accepts BOTH JSON and form-urlencoded bodies.
 try:
-    from chainlit.server import app as _cl_app_mw
-    from starlette.middleware.base import BaseHTTPMiddleware as _BaseHTTPMiddleware
-    from starlette.requests import Request as _MWRequest
-    import json as _json_mw
-    import urllib.parse as _urlparse_mw
+    from chainlit.server import app as _cl_app_login
+    from fastapi import Request as _LoginRequest, Response as _LoginResponse
+    import json as _login_json
 
-    class _LoginJsonToFormMiddleware(_BaseHTTPMiddleware):
-        """Convert JSON login bodies to form-urlencoded for Safari/mobile compatibility."""
-        async def dispatch(self, request, call_next):
-            if (request.method == "POST" and
-                    request.url.path.rstrip("?").rstrip("/").endswith("/login") and
-                    "application/json" in request.headers.get("content-type", "")):
-                try:
-                    body_bytes = await request.body()
-                    data = _json_mw.loads(body_bytes)
-                    # Convert JSON to form-urlencoded
-                    form_body = _urlparse_mw.urlencode({
-                        "username": data.get("username", data.get("email", "")),
-                        "password": data.get("password", ""),
-                    }).encode()
-                    # Rebuild request with form content-type
-                    async def receive():
-                        return {"type": "http.request", "body": form_body, "more_body": False}
-                    request = _MWRequest(
-                        dict(request.scope) | {
-                            "headers": [
-                                (k, v) for k, v in request.scope["headers"]
-                                if k.lower() != b"content-type" and k != b"content-length"
-                            ] + [
-                                (b"content-type", b"application/x-www-form-urlencoded"),
-                                (b"content-length", str(len(form_body)).encode()),
-                            ]
-                        },
-                        receive,
-                    )
-                except Exception:
-                    pass  # Fall through to original handler
-            return await call_next(request)
+    async def _safari_compat_login(request: _LoginRequest, response: _LoginResponse):
+        """Login handler that accepts both JSON and form-urlencoded bodies.
+        Fixes Safari/iOS which sends Content-Type: application/json."""
+        from chainlit.config import config as _cl_config
+        from chainlit.server import _authenticate_user as _cl_auth_user
 
-    _cl_app_mw.add_middleware(_LoginJsonToFormMiddleware)
-except Exception as _mw_err:
-    import logging as _mw_log
-    _mw_log.getLogger("app").warning("Login middleware not loaded: %s", _mw_err)
+        ct = request.headers.get("content-type", "")
+
+        if "application/json" in ct:
+            # Safari / mobile: parse JSON body
+            try:
+                body = await request.body()
+                data = _login_json.loads(body)
+                username = data.get("username") or data.get("email") or ""
+                password = data.get("password") or ""
+            except Exception:
+                from fastapi import HTTPException as _HE
+                raise _HE(status_code=422, detail="Invalid JSON body")
+        else:
+            # Standard: form-urlencoded (Chrome, Firefox, curl)
+            form = await request.form()
+            username = str(form.get("username") or form.get("email") or "")
+            password = str(form.get("password") or "")
+
+        if not _cl_config.code.password_auth_callback:
+            from fastapi import HTTPException as _HE
+            raise _HE(status_code=400, detail="No auth_callback defined")
+
+        user = await _cl_config.code.password_auth_callback(username, password)
+        return await _cl_auth_user(request, user)
+
+    # Replace Chainlit's /login POST handler with our Safari-compatible version
+    for _login_route in _cl_app_login.routes:
+        if (getattr(_login_route, "path", None) == "/login" and
+                "POST" in getattr(_login_route, "methods", set())):
+            _login_route.endpoint = _safari_compat_login
+            _login_route.app = _login_route.get_route_handler()
+            break
+
+except Exception as _login_fix_err:
+    import logging as _lf_log
+    _lf_log.getLogger("app").warning("Safari login fix not applied: %s", _login_fix_err)
 
 # ── REST API endpoints for n8n / external automation ─────────────────────────
 # Added on chainlit.server.app — only /api/* and /health paths, no Chainlit conflicts
