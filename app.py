@@ -126,13 +126,13 @@ try:
         user = await _cl_config.code.password_auth_callback(username, password)
         return await _cl_auth_user(request, user)
 
-    # Replace Chainlit's /login POST handler with our Safari-compatible version
-    for _login_route in _cl_app_login.routes:
-        if (getattr(_login_route, "path", None) == "/login" and
-                "POST" in getattr(_login_route, "methods", set())):
-            _login_route.endpoint = _safari_compat_login
-            _login_route.app = _login_route.get_route_handler()
-            break
+    # Remove Chainlit's /login POST route, add ours instead
+    _cl_app_login.routes = [
+        r for r in _cl_app_login.routes
+        if not (getattr(r, "path", None) == "/login" and
+                "POST" in getattr(r, "methods", set()))
+    ]
+    _cl_app_login.add_api_route("/login", _safari_compat_login, methods=["POST"])
 
 except Exception as _login_fix_err:
     import logging as _lf_log
