@@ -85,6 +85,56 @@ from insurance_broker_mcp.tools.rag_tools import (
     broker_kb_reindex_fn,
 )
 
+# ── Safari / mobile login fix — JSON→Form middleware ─────────────────────────
+# Safari (iOS + macOS) sends Content-Type: application/json for the /login POST.
+# Chainlit's FastAPI endpoint uses OAuth2PasswordRequestForm which requires
+# application/x-www-form-urlencoded. This middleware converts JSON bodies at /login
+# to form-urlencoded so Safari can authenticate correctly.
+try:
+    from chainlit.server import app as _cl_app_mw
+    from starlette.middleware.base import BaseHTTPMiddleware as _BaseHTTPMiddleware
+    from starlette.requests import Request as _MWRequest
+    import json as _json_mw
+    import urllib.parse as _urlparse_mw
+
+    class _LoginJsonToFormMiddleware(_BaseHTTPMiddleware):
+        """Convert JSON login bodies to form-urlencoded for Safari/mobile compatibility."""
+        async def dispatch(self, request, call_next):
+            if (request.method == "POST" and
+                    request.url.path.rstrip("?").rstrip("/").endswith("/login") and
+                    "application/json" in request.headers.get("content-type", "")):
+                try:
+                    body_bytes = await request.body()
+                    data = _json_mw.loads(body_bytes)
+                    # Convert JSON to form-urlencoded
+                    form_body = _urlparse_mw.urlencode({
+                        "username": data.get("username", data.get("email", "")),
+                        "password": data.get("password", ""),
+                    }).encode()
+                    # Rebuild request with form content-type
+                    async def receive():
+                        return {"type": "http.request", "body": form_body, "more_body": False}
+                    request = _MWRequest(
+                        dict(request.scope) | {
+                            "headers": [
+                                (k, v) for k, v in request.scope["headers"]
+                                if k.lower() != b"content-type" and k != b"content-length"
+                            ] + [
+                                (b"content-type", b"application/x-www-form-urlencoded"),
+                                (b"content-length", str(len(form_body)).encode()),
+                            ]
+                        },
+                        receive,
+                    )
+                except Exception:
+                    pass  # Fall through to original handler
+            return await call_next(request)
+
+    _cl_app_mw.add_middleware(_LoginJsonToFormMiddleware)
+except Exception as _mw_err:
+    import logging as _mw_log
+    _mw_log.getLogger("app").warning("Login middleware not loaded: %s", _mw_err)
+
 # ── REST API endpoints for n8n / external automation ─────────────────────────
 # Added on chainlit.server.app — only /api/* and /health paths, no Chainlit conflicts
 try:
