@@ -462,6 +462,7 @@ You talk naturally with brokers in whatever language they use (Romanian, English
 - broker_analyze_document — analizează document cu Claude Vision: polițe scanate, poze daune, facturi, constatare amiabilă, buletin. Acceptă path local SAU file_id.
 - broker_kb_status — starea knowledge base (număr chunks indexate, categorii)
 - broker_kb_reindex — re-indexează knowledge base (după adăugare produse noi sau actualizare docs/)
+- broker_list_output_files — listează ofertele/rapoartele generate și salvate local (PDF, TXT, XLSX, DOCX). Folosește când brokerul întreabă "ce oferte am generat?", "curăță fișierele vechi", "arată-mi ce am salvat".
 
 ## Când să folosești ce tool:
 - **RCA verificare** → `broker_check_rca` (instant, fără agent). Dacă răspunsul conține `captcha_blocked: true` → folosește automat `broker_run_task` cu connector=`cedam` (agent local, browser vizibil, ocolește CAPTCHA).
@@ -1049,6 +1050,17 @@ TOOLS = [
         "name": "broker_kb_reindex",
         "description": "Force re-index all knowledge sources (products, compliance maps, docs). Use after adding new products to DB or updating docs/ files.",
         "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "broker_list_output_files",
+        "description": "List all generated offer/report files (PDF, TXT, XLSX, DOCX) saved in the output directory. Shows filename, size, date. Use when broker asks about generated files or wants to clean up old ones.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "sort_by": {"type": "string", "description": "Sort by: 'date' (newest first, default) or 'name'"},
+                "filter_ext": {"type": "string", "description": "Filter by extension: 'pdf', 'txt', 'xlsx', 'docx' or 'all' (default)"},
+            },
+        },
         "cache_control": {"type": "ephemeral"},  # Cache system prompt + full tools list (last tool)
     },
 ]
@@ -1096,6 +1108,8 @@ TOOL_DISPATCH = {
     "broker_analyze_document":    broker_analyze_document_fn,
     "broker_kb_status":           broker_kb_status_fn,
     "broker_kb_reindex":          broker_kb_reindex_fn,
+    # Output file management
+    "broker_list_output_files":   None,  # handled inline — uses OUTPUT_DIR
 }
 
 def execute_tool(tool_name: str, tool_input: dict) -> str:
@@ -2138,6 +2152,161 @@ async def on_save_conv_confirm(action: cl.Action):
         await cl.Message(content=f"Could not link conversation: {e}", author="Alex 🤖").send()
 
 
+# ── Output file cleanup — interactive flow ────────────────────────────────────
+
+@cl.action_callback("output_cleanup_start")
+async def on_output_cleanup_start(action: cl.Action):
+    """Step 1: Ask what to keep — show age/type filters."""
+    await action.remove()
+    from datetime import datetime as _dt
+    _files = sorted(
+        [f for f in OUTPUT_DIR.iterdir() if f.is_file() and f.suffix.lower() in {".pdf", ".txt", ".xlsx", ".docx"}],
+        key=lambda f: f.stat().st_mtime, reverse=True
+    )
+    if not _files:
+        await cl.Message(content="📂 Nu există fișiere de șters.", author="Alex 🤖").send()
+        return
+
+    # Categorize by age
+    _now = _dt.now().timestamp()
+    _old_30  = [f for f in _files if (_now - f.stat().st_mtime) > 30 * 86400]
+    _old_7   = [f for f in _files if 7 * 86400 < (_now - f.stat().st_mtime) <= 30 * 86400]
+    _recent  = [f for f in _files if (_now - f.stat().st_mtime) <= 7 * 86400]
+    _total_old_mb = sum(f.stat().st_size for f in _old_30) / (1024 * 1024)
+
+    summary = (
+        f"**📂 {len(_files)} fișiere** în total:\n"
+        f"- 🟢 Recente (<7 zile): **{len(_recent)}** fișiere\n"
+        f"- 🟡 7-30 zile: **{len(_old_7)}** fișiere\n"
+        f"- 🔴 Vechi (>30 zile): **{len(_old_30)}** fișiere ({_total_old_mb:.1f} MB)\n\n"
+        f"Ce vrei să ștergi?"
+    )
+
+    await cl.Message(
+        content=summary,
+        actions=[
+            cl.Action(name="output_cleanup_confirm", label=f"🔴 Șterge >30 zile ({len(_old_30)} fișiere, {_total_old_mb:.1f} MB)",
+                      payload={"mode": "old30"}),
+            cl.Action(name="output_cleanup_confirm", label=f"🟡 Șterge >7 zile ({len(_old_7) + len(_old_30)} fișiere)",
+                      payload={"mode": "old7"}),
+            cl.Action(name="output_cleanup_confirm", label=f"🗑️ Șterge TOT ({len(_files)} fișiere)",
+                      payload={"mode": "all"}),
+            cl.Action(name="output_cleanup_cancel", label="❌ Anulează",
+                      payload={"mode": "cancel"}),
+        ],
+        author="Alex 🤖",
+    ).send()
+
+
+@cl.action_callback("output_cleanup_confirm")
+async def on_output_cleanup_confirm(action: cl.Action):
+    """Step 2: Show exact list of files to be deleted — ask final confirmation."""
+    await action.remove()
+    mode = action.payload.get("mode", "cancel")
+
+    from datetime import datetime as _dt
+    _files = sorted(
+        [f for f in OUTPUT_DIR.iterdir() if f.is_file() and f.suffix.lower() in {".pdf", ".txt", ".xlsx", ".docx"}],
+        key=lambda f: f.stat().st_mtime, reverse=True
+    )
+    _now = _dt.now().timestamp()
+
+    if mode == "old30":
+        _to_delete = [f for f in _files if (_now - f.stat().st_mtime) > 30 * 86400]
+        _keep = [f for f in _files if (_now - f.stat().st_mtime) <= 30 * 86400]
+    elif mode == "old7":
+        _to_delete = [f for f in _files if (_now - f.stat().st_mtime) > 7 * 86400]
+        _keep = [f for f in _files if (_now - f.stat().st_mtime) <= 7 * 86400]
+    elif mode == "all":
+        _to_delete = list(_files)
+        _keep = []
+    else:
+        await cl.Message(content="✅ Anulat — niciun fișier șters.", author="Alex 🤖").send()
+        return
+
+    if not _to_delete:
+        await cl.Message(content="✅ Nu există fișiere care să corespundă criteriului.", author="Alex 🤖").send()
+        return
+
+    # Store list in session for final delete step
+    cl.user_session.set("_cleanup_pending", [str(f) for f in _to_delete])
+
+    _del_mb = sum(f.stat().st_size for f in _to_delete) / (1024 * 1024)
+    _lines = [f"### ⚠️ Vor fi șterse {len(_to_delete)} fișiere ({_del_mb:.1f} MB):\n"]
+    for f in _to_delete[:20]:
+        _mtime = _dt.fromtimestamp(f.stat().st_mtime).strftime("%d %b %Y")
+        _sz = f"{f.stat().st_size/1024:.0f} KB"
+        _lines.append(f"- `{f.name}` — {_sz} — {_mtime}")
+    if len(_to_delete) > 20:
+        _lines.append(f"- _... și {len(_to_delete) - 20} fișiere_")
+
+    if _keep:
+        _lines.append(f"\n### ✅ Rămân {len(_keep)} fișiere mai recente:")
+        for f in _keep[:5]:
+            _lines.append(f"- `{f.name}`")
+        if len(_keep) > 5:
+            _lines.append(f"  _... și {len(_keep) - 5} altele_")
+
+    _lines.append("\n**Confirmi ștergerea?** Această acțiune nu poate fi anulată.")
+
+    await cl.Message(
+        content="\n".join(_lines),
+        actions=[
+            cl.Action(name="output_cleanup_execute", label=f"✅ Da, șterge {len(_to_delete)} fișiere",
+                      payload={"confirmed": True}),
+            cl.Action(name="output_cleanup_cancel", label="❌ Nu, anulează",
+                      payload={}),
+        ],
+        author="Alex 🤖",
+    ).send()
+
+
+@cl.action_callback("output_cleanup_execute")
+async def on_output_cleanup_execute(action: cl.Action):
+    """Step 3: Execute the confirmed deletion."""
+    await action.remove()
+    _pending = cl.user_session.get("_cleanup_pending", [])
+    if not _pending:
+        await cl.Message(content="⚠️ Nimic de șters.", author="Alex 🤖").send()
+        return
+
+    _deleted = []
+    _errors = []
+    for _path_str in _pending:
+        try:
+            _p = Path(_path_str)
+            if _p.exists():
+                _p.unlink()
+                _deleted.append(_p.name)
+        except Exception as _e:
+            _errors.append(f"{Path(_path_str).name}: {_e}")
+
+    cl.user_session.set("_cleanup_pending", [])
+
+    _remaining = [f for f in OUTPUT_DIR.iterdir() if f.is_file() and f.suffix.lower() in {".pdf", ".txt", ".xlsx", ".docx"}]
+    _lines = [f"### ✅ Cleanup finalizat\n"]
+    _lines.append(f"- **Șterse:** {len(_deleted)} fișiere")
+    if _errors:
+        _lines.append(f"- **Erori:** {len(_errors)}")
+        for _e in _errors[:3]:
+            _lines.append(f"  - {_e}")
+    _lines.append(f"- **Rămase:** {len(_remaining)} fișiere în output/")
+    if _deleted[:5]:
+        _lines.append(f"\n_Exemple șterse: {', '.join(_deleted[:5])}_")
+
+    await cl.Message(content="\n".join(_lines), author="Alex 🤖").send()
+
+
+@cl.action_callback("output_cleanup_cancel")
+async def on_output_cleanup_cancel(action: cl.Action):
+    """Cancel cleanup."""
+    await action.remove()
+    cl.user_session.set("_cleanup_pending", [])
+    await cl.Message(content="✅ Anulat — niciun fișier șters.", author="Alex 🤖").send()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+
 @cl.on_message
 async def on_message(message: cl.Message):
     """Handle incoming broker message — full agentic loop with Claude."""
@@ -2162,9 +2331,14 @@ async def on_message(message: cl.Message):
             except Exception:
                 pass  # non-fatal — conversation won't be saved but chat works
 
-    # Auto-title from the first user message in this conversation
+    # Auto-title from the first user message — clean, max 60 chars, no markdown
     if conv_id and not title_set and message.content:
-        _title = message.content[:50].strip().replace("\n", " ") or "Conversație"
+        _raw = message.content.strip().replace("\n", " ")
+        # Strip common prefixes brokers type
+        import re as _re2
+        _raw = _re2.sub(r'^(vreau|vrea|as vrea|as dori|cauta|caută|arata|arată|fa|fă|verifica|verifică|spune|hai|hei|alex[,:]?\s*)', '', _raw, flags=_re2.IGNORECASE).strip()
+        _title = (_raw[:57] + "…") if len(_raw) > 60 else _raw
+        _title = _title or "Conversație"
         update_conversation_title(conv_id, _title)
         cl.user_session.set(_SK_TITLE_SET, True)
     # ─────────────────────────────────────────────────────────────────────
@@ -2544,6 +2718,58 @@ async def on_message(message: cl.Message):
                         timeout=tool_input.get("timeout", 120),
                         credentials=tool_input.get("credentials", {}),
                     )
+
+                # ── Output file management ────────────────────────────────
+                elif tool_name == "broker_list_output_files":
+                    _sort_by = tool_input.get("sort_by", "date")
+                    _filter_ext = tool_input.get("filter_ext", "all").lower()
+                    _exts = {".pdf", ".txt", ".xlsx", ".docx"} if _filter_ext == "all" \
+                        else {f".{_filter_ext.lstrip('.')}"}
+                    _files = [
+                        f for f in OUTPUT_DIR.iterdir()
+                        if f.is_file() and f.suffix.lower() in _exts
+                    ]
+                    if _sort_by == "name":
+                        _files.sort(key=lambda f: f.name.lower())
+                    else:
+                        _files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
+
+                    if not _files:
+                        result = "📂 Nu există fișiere generate în directorul output."
+                    else:
+                        _total_mb = sum(f.stat().st_size for f in _files) / (1024 * 1024)
+                        _lines = [
+                            f"## 📂 Fișiere generate ({len(_files)} fișiere, {_total_mb:.1f} MB total)\n",
+                            "| # | Fișier | Tip | Dimensiune | Data |",
+                            "|---|---|---|---|---|",
+                        ]
+                        from datetime import datetime as _dt
+                        for _i, _f in enumerate(_files[:50], 1):
+                            _sz = _f.stat().st_size
+                            _sz_str = f"{_sz/1024:.1f} KB" if _sz < 1_000_000 else f"{_sz/1_000_000:.1f} MB"
+                            _mtime = _dt.fromtimestamp(_f.stat().st_mtime).strftime("%d %b %Y %H:%M")
+                            _ext = _f.suffix.upper().lstrip(".")
+                            _lines.append(f"| {_i} | `{_f.name}` | {_ext} | {_sz_str} | {_mtime} |")
+                        if len(_files) > 50:
+                            _lines.append(f"\n_... și {len(_files) - 50} fișiere mai vechi (afișate primele 50)_")
+                        _lines.append(f"\n_Spune **'curăță fișierele output'** pentru a porni procesul de ștergere selectivă._")
+                        result = "\n".join(_lines)
+
+                        # Trigger interactive cleanup button
+                        await cl.Message(
+                            content=result,
+                            actions=[
+                                cl.Action(
+                                    name="output_cleanup_start",
+                                    label="🧹 Curăță fișierele vechi",
+                                    payload={"total": len(_files)},
+                                )
+                            ],
+                            author="Alex 🤖",
+                        ).send()
+                        # Result already sent — give empty result to agentic loop
+                        result = f"[Listat {len(_files)} fișiere. Buton de cleanup trimis brokerului.]"
+
                 else:
                     result = execute_tool(tool_name, tool_input)
 
@@ -2670,6 +2896,45 @@ async def on_message(message: cl.Message):
     if final_text and final_text.strip():
         await cl.Message(content=final_text.strip(), author="Alex 🤖").send()
     # else: tool already sent output (offer file, export, etc.) — no generic message needed
+
+    # ── Auto-improve conversation title after first full exchange ────────────
+    # After the first assistant response, generate a smarter title from both sides
+    _title_improved = cl.user_session.get("title_improved", False)
+    if conv_id and ADMIN_ENABLED and not _title_improved and len(history) >= 2:
+        try:
+            # Build a 1-shot title from first user msg + first assistant reply
+            _first_user = next((m["content"] for m in history if m["role"] == "user"), "")
+            _first_asst = next((
+                (c["text"] if isinstance(c, dict) else c)
+                for m in history if m["role"] == "assistant"
+                for c in (m["content"] if isinstance(m["content"], list) else [m["content"]])
+                if (isinstance(c, dict) and c.get("type") == "text") or isinstance(c, str)
+            ), "")
+            if isinstance(_first_user, list):
+                _first_user = " ".join(b.get("text", "") for b in _first_user if isinstance(b, dict) and b.get("type") == "text")
+            _snippet_u = str(_first_user)[:200]
+            _snippet_a = str(_first_asst)[:200]
+            if _snippet_u or _snippet_a:
+                _title_resp = anthropic.Anthropic().messages.create(
+                    model="claude-haiku-4-5",
+                    max_tokens=30,
+                    messages=[{
+                        "role": "user",
+                        "content": (
+                            f"Generează un titlu scurt (max 6 cuvinte, fără ghilimele) pentru această conversație:\n"
+                            f"User: {_snippet_u}\nAlex: {_snippet_a}\n"
+                            f"Titlul trebuie să fie în română, concis, descriptiv (ex: 'Ofertă CASCO Ionescu', 'Reînnoire RCA Maria Popescu', 'Raport ASF martie')."
+                        )
+                    }]
+                )
+                _smart_title = _title_resp.content[0].text.strip().strip('"\'').strip()
+                if _smart_title and len(_smart_title) <= 80:
+                    update_conversation_title(conv_id, _smart_title)
+                    cl.user_session.set(_SK_TITLE_SET, True)
+        except Exception:
+            pass  # non-fatal — keep the fallback title
+        cl.user_session.set("title_improved", True)
+    # ────────────────────────────────────────────────────────────────────────
 
     # ── "Save conversation" nudge (once per session, after 3+ exchanges, no client linked) ──
     # len(history) >= 6: 3 user + 3 assistant messages = 3 full exchanges

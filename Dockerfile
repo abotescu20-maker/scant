@@ -12,12 +12,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libpango-1.0-0 \
     libpangocairo-1.0-0 \
+    libpango1.0-dev \
     libcairo2 \
+    libcairo2-dev \
     libgdk-pixbuf-2.0-0 \
     libffi-dev \
+    libffi7 \
     fonts-liberation \
+    fonts-dejavu-core \
+    fontconfig \
     chromium \
     chromium-driver \
+    && fc-cache -fv \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python packages
