@@ -114,8 +114,8 @@ try:
         if "application/json" in ct:
             try:
                 data = _login_json.loads(raw_body)
-                username = data.get("username") or data.get("email") or ""
-                password = data.get("password") or ""
+                username = (data.get("username") or data.get("email") or "").strip()
+                password = (data.get("password") or "").strip()
             except Exception as _je:
                 _log.warning("LOGIN_DEBUG json_parse_error=%s", _je)
                 from fastapi import HTTPException as _HE
@@ -127,8 +127,8 @@ try:
             from starlette.requests import Request as _SR
             _req2 = _SR(request.scope, _receive)
             form = await _req2.form()
-            username = str(form.get("username") or form.get("email") or "")
-            password = str(form.get("password") or "")
+            username = str(form.get("username") or form.get("email") or "").strip()
+            password = str(form.get("password") or "").strip()
 
         _log.warning("LOGIN_DEBUG username=%r password_len=%d", username, len(password))
 
@@ -1711,7 +1711,7 @@ Be precise. Never confuse issuer contact data with client personal data."""
 if os.environ.get("CHAINLIT_AUTH_SECRET") and ADMIN_ENABLED:
     @cl.password_auth_callback
     def auth_callback(username: str, password: str):
-        user = get_user_by_email(username)
+        user = get_user_by_email(username.strip())
         if not user or not user["is_active"]:
             return None
         if not verify_password(password, user["hashed_password"]):
