@@ -126,9 +126,9 @@ try:
         user = await _cl_config.code.password_auth_callback(username, password)
         return await _cl_auth_user(request, user)
 
-    # Remove Chainlit's /login POST route, add ours instead
-    _cl_app_login.routes = [
-        r for r in _cl_app_login.routes
+    # Remove Chainlit's /login POST route from the underlying router, then add ours
+    _cl_app_login.router.routes = [
+        r for r in _cl_app_login.router.routes
         if not (getattr(r, "path", None) == "/login" and
                 "POST" in getattr(r, "methods", set()))
     ]
