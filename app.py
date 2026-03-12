@@ -2837,6 +2837,49 @@ async def on_message(message: cl.Message):
                         # Result already sent — give empty result to agentic loop
                         result = f"[Listat {len(_files)} fișiere. Buton de cleanup trimis brokerului.]"
 
+                # ── Email send: ask broker to confirm/change recipient ────
+                elif tool_name == "broker_send_offer_email":
+                    # Look up client email from DB to show in prompt
+                    _offer_id_e = tool_input.get("offer_id", "")
+                    _to_email_e = tool_input.get("to_email", "")
+                    if not _to_email_e:
+                        try:
+                            from shared.db import get_conn as _gcn_e
+                            _dc_e = _gcn_e()
+                            _row_e = _dc_e.execute(
+                                """SELECT c.email FROM offers o
+                                   JOIN clients c ON o.client_id = c.id
+                                   WHERE o.id = ?""",
+                                (_offer_id_e,)
+                            ).fetchone()
+                            _dc_e.close()
+                            _to_email_e = _row_e["email"] if _row_e else ""
+                        except Exception:
+                            _to_email_e = ""
+
+                    # Ask broker to confirm or change the email address
+                    _email_ask = await cl.AskUserMessage(
+                        content=(
+                            f"📧 **La ce adresă trimiți oferta?**\n\n"
+                            f"Adresa din fișa clientului: **{_to_email_e or 'necunoscută'}**\n\n"
+                            f"Confirma cu **da** / **ok** pentru a folosi adresa de mai sus, "
+                            f"sau scrie o altă adresă de email."
+                        ),
+                        timeout=120,
+                        author="Alex 🤖",
+                    ).send()
+
+                    if _email_ask:
+                        _answer = _email_ask["output"].strip()
+                        # If broker typed a valid email, use it; otherwise keep default
+                        if "@" in _answer and "." in _answer.split("@")[-1]:
+                            tool_input["to_email"] = _answer
+                        elif _to_email_e:
+                            tool_input["to_email"] = _to_email_e
+                        result = execute_tool(tool_name, tool_input)
+                    else:
+                        result = "⚠️ Trimiterea email-ului a fost anulată (timeout)."
+
                 else:
                     result = execute_tool(tool_name, tool_input)
 
