@@ -98,32 +98,46 @@ try:
     async def _safari_compat_login(request: _LoginRequest, response: _LoginResponse):
         """Login handler that accepts both JSON and form-urlencoded bodies.
         Fixes Safari/iOS which sends Content-Type: application/json."""
+        import logging as _ll
+        _log = _ll.getLogger("login_debug")
+
         from chainlit.config import config as _cl_config
         from chainlit.server import _authenticate_user as _cl_auth_user
 
         ct = request.headers.get("content-type", "")
+        raw_body = await request.body()
+
+        _log.warning("LOGIN_DEBUG ct=%r body_len=%d body_preview=%r headers=%s",
+                     ct, len(raw_body), raw_body[:200],
+                     dict(request.headers))
 
         if "application/json" in ct:
-            # Safari / mobile: parse JSON body
             try:
-                body = await request.body()
-                data = _login_json.loads(body)
+                data = _login_json.loads(raw_body)
                 username = data.get("username") or data.get("email") or ""
                 password = data.get("password") or ""
-            except Exception:
+            except Exception as _je:
+                _log.warning("LOGIN_DEBUG json_parse_error=%s", _je)
                 from fastapi import HTTPException as _HE
                 raise _HE(status_code=422, detail="Invalid JSON body")
         else:
-            # Standard: form-urlencoded (Chrome, Firefox, curl)
-            form = await request.form()
+            # re-construct a receive so form() can read the already-consumed body
+            async def _receive():
+                return {"type": "http.request", "body": raw_body, "more_body": False}
+            from starlette.requests import Request as _SR
+            _req2 = _SR(request.scope, _receive)
+            form = await _req2.form()
             username = str(form.get("username") or form.get("email") or "")
             password = str(form.get("password") or "")
+
+        _log.warning("LOGIN_DEBUG username=%r password_len=%d", username, len(password))
 
         if not _cl_config.code.password_auth_callback:
             from fastapi import HTTPException as _HE
             raise _HE(status_code=400, detail="No auth_callback defined")
 
         user = await _cl_config.code.password_auth_callback(username, password)
+        _log.warning("LOGIN_DEBUG auth_result=%r", user)
         return await _cl_auth_user(request, user)
 
     # Remove Chainlit's /login POST route from the underlying router, then add ours
