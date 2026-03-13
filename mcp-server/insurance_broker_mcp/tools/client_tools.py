@@ -105,6 +105,20 @@ def get_client_fn(client_id: str) -> str:
         conn.close()
 
 
+def _fs_sync_client(client_id: str, conn) -> None:
+    """Fire-and-forget Firestore sync for a client row."""
+    try:
+        import sys, os
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
+        from shared.firestore_db import save_client_to_firestore, is_available
+        if is_available():
+            row = conn.execute("SELECT * FROM clients WHERE id=?", (client_id,)).fetchone()
+            if row:
+                save_client_to_firestore(dict(row))
+    except Exception:
+        pass  # Firestore sync is best-effort
+
+
 def update_client_fn(
     client_id: str,
     name: Optional[str] = None,
@@ -141,6 +155,7 @@ def update_client_fn(
         values.append(client_id)
         conn.execute(f"UPDATE clients SET {', '.join(fields)} WHERE id = ?", values)
         conn.commit()
+        _fs_sync_client(client_id, conn)
         return (
             f"✅ **Client updated successfully**\n"
             f"- **ID:** {client_id}\n"
@@ -171,12 +186,22 @@ def delete_client_fn(client_id: str) -> str:
                 f"Cancel or expire the policies first, then delete the client."
             )
 
+        client_name = client["name"]
         # Delete related records first (cascade)
         conn.execute("DELETE FROM claims WHERE client_id = ?", (client_id,))
         conn.execute("DELETE FROM policies WHERE client_id = ?", (client_id,))
         conn.execute("DELETE FROM clients WHERE id = ?", (client_id,))
         conn.commit()
-        return f"🗑️ Client **{client['name']}** (ID: {client_id}) deleted successfully."
+        # Remove from Firestore
+        try:
+            import sys
+            sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
+            from shared.firestore_db import delete_client_from_firestore, is_available
+            if is_available():
+                delete_client_from_firestore(client_id)
+        except Exception:
+            pass
+        return f"🗑️ Client **{client_name}** (ID: {client_id}) deleted successfully."
     finally:
         conn.close()
 
@@ -203,6 +228,7 @@ def create_client_fn(
         """, (client_id, name, id_number, phone, email, address,
               client_type, country, source, notes, created_at))
         conn.commit()
+        _fs_sync_client(client_id, conn)
         return (
             f"✅ **Client created successfully**\n"
             f"- **ID:** {client_id}\n"

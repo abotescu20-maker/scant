@@ -145,6 +145,19 @@ def _create_offer_impl(
         """, (offer_id, client_id, date.today().isoformat(), valid_until,
               "draft", len(products), notes))
         conn.commit()
+
+        # Sync to Firestore
+        try:
+            import sys
+            sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
+            from shared.firestore_db import save_offer_to_firestore, is_available
+            if is_available():
+                row = conn.execute("SELECT * FROM offers WHERE id=?", (offer_id,)).fetchone()
+                if row:
+                    save_offer_to_firestore(dict(row))
+        except Exception:
+            pass
+
         client_dict = dict(client)
         products_list = [dict(p) for p in products]
         offer_text = generate_text_offer(client_dict, products_list, offer_id, valid_until, notes, language)

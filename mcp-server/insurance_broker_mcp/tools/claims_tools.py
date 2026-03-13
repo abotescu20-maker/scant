@@ -81,6 +81,18 @@ def log_claim_fn(
               description, "open", damage_estimate, notes))
         conn.commit()
 
+        # Sync to Firestore
+        try:
+            import sys
+            sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
+            from shared.firestore_db import save_claim_to_firestore, is_available
+            if is_available():
+                row = conn.execute("SELECT * FROM claims WHERE id=?", (claim_id,)).fetchone()
+                if row:
+                    save_claim_to_firestore(dict(row))
+        except Exception:
+            pass
+
         guidance = CLAIMS_GUIDANCE.get(policy['insurer'], CLAIMS_GUIDANCE["DEFAULT"])
 
         return (

@@ -498,3 +498,360 @@ def restore_from_firestore_to_sqlite() -> dict:
 
     log.info("Restore from Firestore complete: %s", stats)
     return stats
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# BROKER DATA — clients, policies, products, insurers, claims, offers
+# These are stored in Firestore so they survive Cloud Run restarts/deploys.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── Clients ──────────────────────────────────────────────────────────────────
+
+def save_client_to_firestore(client: dict) -> bool:
+    try:
+        doc = dict(client)
+        doc["_synced_at"] = _now()
+        _col("broker_clients").document(doc["id"]).set(doc, merge=True)
+        return True
+    except Exception as e:
+        log.warning("save_client_to_firestore %s: %s", client.get("id"), e)
+        return False
+
+
+def delete_client_from_firestore(client_id: str) -> bool:
+    try:
+        _col("broker_clients").document(client_id).delete()
+        return True
+    except Exception as e:
+        log.warning("delete_client_from_firestore %s: %s", client_id, e)
+        return False
+
+
+def list_clients_from_firestore() -> list:
+    try:
+        return [d.to_dict() for d in _col("broker_clients").stream()]
+    except Exception as e:
+        log.warning("list_clients_from_firestore: %s", e)
+        return []
+
+
+# ── Policies ─────────────────────────────────────────────────────────────────
+
+def save_policy_to_firestore(policy: dict) -> bool:
+    try:
+        doc = dict(policy)
+        doc["_synced_at"] = _now()
+        _col("broker_policies").document(doc["id"]).set(doc, merge=True)
+        return True
+    except Exception as e:
+        log.warning("save_policy_to_firestore %s: %s", policy.get("id"), e)
+        return False
+
+
+def delete_policy_from_firestore(policy_id: str) -> bool:
+    try:
+        _col("broker_policies").document(policy_id).delete()
+        return True
+    except Exception as e:
+        log.warning("delete_policy_from_firestore %s: %s", policy_id, e)
+        return False
+
+
+def list_policies_from_firestore() -> list:
+    try:
+        return [d.to_dict() for d in _col("broker_policies").stream()]
+    except Exception as e:
+        log.warning("list_policies_from_firestore: %s", e)
+        return []
+
+
+# ── Products ──────────────────────────────────────────────────────────────────
+
+def save_product_to_firestore(product: dict) -> bool:
+    try:
+        doc = dict(product)
+        doc["_synced_at"] = _now()
+        _col("broker_products").document(doc["id"]).set(doc, merge=True)
+        return True
+    except Exception as e:
+        log.warning("save_product_to_firestore %s: %s", product.get("id"), e)
+        return False
+
+
+def list_products_from_firestore() -> list:
+    try:
+        return [d.to_dict() for d in _col("broker_products").stream()]
+    except Exception as e:
+        log.warning("list_products_from_firestore: %s", e)
+        return []
+
+
+# ── Insurers ─────────────────────────────────────────────────────────────────
+
+def save_insurer_to_firestore(insurer: dict) -> bool:
+    try:
+        doc = dict(insurer)
+        doc["_synced_at"] = _now()
+        _col("broker_insurers").document(doc["id"]).set(doc, merge=True)
+        return True
+    except Exception as e:
+        log.warning("save_insurer_to_firestore %s: %s", insurer.get("id"), e)
+        return False
+
+
+def list_insurers_from_firestore() -> list:
+    try:
+        return [d.to_dict() for d in _col("broker_insurers").stream()]
+    except Exception as e:
+        log.warning("list_insurers_from_firestore: %s", e)
+        return []
+
+
+# ── Claims ────────────────────────────────────────────────────────────────────
+
+def save_claim_to_firestore(claim: dict) -> bool:
+    try:
+        doc = dict(claim)
+        doc["_synced_at"] = _now()
+        _col("broker_claims").document(doc["id"]).set(doc, merge=True)
+        return True
+    except Exception as e:
+        log.warning("save_claim_to_firestore %s: %s", claim.get("id"), e)
+        return False
+
+
+def list_claims_from_firestore() -> list:
+    try:
+        return [d.to_dict() for d in _col("broker_claims").stream()]
+    except Exception as e:
+        log.warning("list_claims_from_firestore: %s", e)
+        return []
+
+
+# ── Offers ────────────────────────────────────────────────────────────────────
+
+def save_offer_to_firestore(offer: dict) -> bool:
+    try:
+        doc = dict(offer)
+        doc["_synced_at"] = _now()
+        _col("broker_offers").document(doc["id"]).set(doc, merge=True)
+        return True
+    except Exception as e:
+        log.warning("save_offer_to_firestore %s: %s", offer.get("id"), e)
+        return False
+
+
+def list_offers_from_firestore() -> list:
+    try:
+        return [d.to_dict() for d in _col("broker_offers").stream()]
+    except Exception as e:
+        log.warning("list_offers_from_firestore: %s", e)
+        return []
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# BROKER DATA SYNC — push all SQLite broker tables to Firestore (run once)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def sync_broker_data_to_firestore() -> dict:
+    """
+    Push all broker tables (clients, policies, products, insurers, claims, offers)
+    from SQLite to Firestore. Idempotent — uses set(merge=True).
+    Returns stats dict.
+    """
+    if not is_available():
+        return {"error": "Firestore not available"}
+
+    import sqlite3 as _sq
+    from pathlib import Path as _Path
+
+    db_path = _Path("/app/mcp-server/insurance_broker.db")
+    if not db_path.exists():
+        # Try local path for development
+        db_path = _Path(__file__).parent.parent / "mcp-server" / "insurance_broker.db"
+    if not db_path.exists():
+        return {"error": f"DB not found at {db_path}"}
+
+    conn = _sq.connect(str(db_path))
+    conn.row_factory = _sq.Row
+    stats = {c: 0 for c in ["clients", "policies", "products", "insurers", "claims", "offers", "errors"]}
+
+    try:
+        for row in conn.execute("SELECT * FROM clients").fetchall():
+            if save_client_to_firestore(dict(row)):
+                stats["clients"] += 1
+            else:
+                stats["errors"] += 1
+
+        for row in conn.execute("SELECT * FROM policies").fetchall():
+            if save_policy_to_firestore(dict(row)):
+                stats["policies"] += 1
+            else:
+                stats["errors"] += 1
+
+        for row in conn.execute("SELECT * FROM products").fetchall():
+            if save_product_to_firestore(dict(row)):
+                stats["products"] += 1
+            else:
+                stats["errors"] += 1
+
+        for row in conn.execute("SELECT * FROM insurers").fetchall():
+            if save_insurer_to_firestore(dict(row)):
+                stats["insurers"] += 1
+            else:
+                stats["errors"] += 1
+
+        for row in conn.execute("SELECT * FROM claims").fetchall():
+            if save_claim_to_firestore(dict(row)):
+                stats["claims"] += 1
+            else:
+                stats["errors"] += 1
+
+        for row in conn.execute("SELECT * FROM offers").fetchall():
+            if save_offer_to_firestore(dict(row)):
+                stats["offers"] += 1
+            else:
+                stats["errors"] += 1
+
+    finally:
+        conn.close()
+
+    log.info("sync_broker_data_to_firestore: %s", stats)
+    return stats
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# BROKER DATA RESTORE — pull Firestore broker data back into SQLite on startup
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def restore_broker_data_from_firestore() -> dict:
+    """
+    On container startup: if Firestore has broker data, restore it into SQLite.
+    Returns stats dict. Only inserts rows that don't already exist (INSERT OR IGNORE).
+    """
+    if not is_available():
+        return {"error": "Firestore not available"}
+
+    import sqlite3 as _sq
+    from pathlib import Path as _Path
+
+    db_path = _Path("/app/mcp-server/insurance_broker.db")
+    if not db_path.exists():
+        db_path = _Path(__file__).parent.parent / "mcp-server" / "insurance_broker.db"
+    if not db_path.exists():
+        return {"error": f"DB not found at {db_path}"}
+
+    conn = _sq.connect(str(db_path))
+    conn.row_factory = _sq.Row
+    conn.execute("PRAGMA foreign_keys=OFF")
+    stats = {c: 0 for c in ["clients", "policies", "products", "insurers", "claims", "offers", "errors"]}
+
+    try:
+        # Clients
+        for d in list_clients_from_firestore():
+            try:
+                conn.execute("""
+                    INSERT OR REPLACE INTO clients
+                    (id, name, id_number, phone, email, address, client_type, country, source, notes, created_at)
+                    VALUES (:id,:name,:id_number,:phone,:email,:address,:client_type,:country,:source,:notes,:created_at)
+                """, d)
+                stats["clients"] += 1
+            except Exception as e:
+                log.warning("restore client %s: %s", d.get("id"), e)
+                stats["errors"] += 1
+        conn.commit()
+
+        # Policies
+        for d in list_policies_from_firestore():
+            try:
+                conn.execute("""
+                    INSERT OR REPLACE INTO policies
+                    (id, client_id, policy_type, insurer, policy_number, start_date, end_date,
+                     annual_premium, insured_sum, currency, installments, status, broker_commission_pct)
+                    VALUES (:id,:client_id,:policy_type,:insurer,:policy_number,:start_date,:end_date,
+                            :annual_premium,:insured_sum,:currency,:installments,:status,:broker_commission_pct)
+                """, d)
+                stats["policies"] += 1
+            except Exception as e:
+                log.warning("restore policy %s: %s", d.get("id"), e)
+                stats["errors"] += 1
+        conn.commit()
+
+        # Insurers
+        for d in list_insurers_from_firestore():
+            try:
+                conn.execute("""
+                    INSERT OR REPLACE INTO insurers (id, name, country, products, rating, broker_contact)
+                    VALUES (:id,:name,:country,:products,:rating,:broker_contact)
+                """, d)
+                stats["insurers"] += 1
+            except Exception as e:
+                log.warning("restore insurer %s: %s", d.get("id"), e)
+                stats["errors"] += 1
+        conn.commit()
+
+        # Products
+        for d in list_products_from_firestore():
+            try:
+                conn.execute("""
+                    INSERT OR REPLACE INTO products
+                    (id, insurer_id, insurer_name, product_type, annual_premium, currency,
+                     insured_sum, deductible, coverage_summary, exclusions, rating)
+                    VALUES (:id,:insurer_id,:insurer_name,:product_type,:annual_premium,:currency,
+                            :insured_sum,:deductible,:coverage_summary,:exclusions,:rating)
+                """, d)
+                stats["products"] += 1
+            except Exception as e:
+                log.warning("restore product %s: %s", d.get("id"), e)
+                stats["errors"] += 1
+        conn.commit()
+
+        # Claims
+        for d in list_claims_from_firestore():
+            try:
+                conn.execute("""
+                    INSERT OR REPLACE INTO claims
+                    (id, client_id, policy_id, incident_date, reported_date,
+                     description, status, damage_estimate, insurer_claim_number, notes)
+                    VALUES (:id,:client_id,:policy_id,:incident_date,:reported_date,
+                            :description,:status,:damage_estimate,:insurer_claim_number,:notes)
+                """, d)
+                stats["claims"] += 1
+            except Exception as e:
+                log.warning("restore claim %s: %s", d.get("id"), e)
+                stats["errors"] += 1
+        conn.commit()
+
+        # Offers
+        for d in list_offers_from_firestore():
+            try:
+                conn.execute("""
+                    INSERT OR REPLACE INTO offers
+                    (id, client_id, created_at, valid_until, status, file_path, products_count, notes)
+                    VALUES (:id,:client_id,:created_at,:valid_until,:status,:file_path,:products_count,:notes)
+                """, d)
+                stats["offers"] += 1
+            except Exception as e:
+                log.warning("restore offer %s: %s", d.get("id"), e)
+                stats["errors"] += 1
+        conn.commit()
+
+    except Exception as e:
+        log.error("restore_broker_data_from_firestore failed: %s", e)
+        stats["errors"] += 1
+    finally:
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.close()
+
+    log.info("restore_broker_data_from_firestore: %s", stats)
+    return stats
+
+
+def broker_data_exists_in_firestore() -> bool:
+    """Return True if Firestore already has broker clients (skip reseed)."""
+    try:
+        docs = list(_col("broker_clients").limit(1).stream())
+        return len(docs) > 0
+    except Exception as e:
+        log.warning("broker_data_exists_in_firestore: %s", e)
+        return False
