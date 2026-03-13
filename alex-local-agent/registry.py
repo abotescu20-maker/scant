@@ -50,18 +50,18 @@ def _get_connector_classes():
     except ImportError as e:
         print(f"[Registry] AnthropicComputerUseConnector not available: {e}")
 
-    # Future connectors — add here:
-    # try:
-    #     from connectors.connector_allianz_portal import AllianzPortalConnector
-    #     connectors["allianz_portal"] = AllianzPortalConnector
-    # except ImportError as e:
-    #     print(f"[Registry] AllianzPortalConnector not available: {e}")
+    try:
+        from connectors.connector_paid import PAIDConnector
+        connectors["paid"] = PAIDConnector
+    except ImportError as e:
+        print(f"[Registry] PAIDConnector not available: {e}")
 
-    # try:
-    #     from connectors.connector_paid_pool import PAIDPoolConnector
-    #     connectors["paid_pool"] = PAIDPoolConnector
-    # except ImportError as e:
-    #     print(f"[Registry] PAIDPoolConnector not available: {e}")
+    try:
+        from connectors.connector_allianz import AllianzConnector
+        connectors["allianz"] = AllianzConnector
+        connectors["allianz_ro"] = AllianzConnector  # alias
+    except ImportError as e:
+        print(f"[Registry] AllianzConnector not available: {e}")
 
     return connectors
 
