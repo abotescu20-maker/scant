@@ -90,6 +90,10 @@ echo "VM ready for agent setup"
 
         cat > "$CRON_FILE" <<CRON
 # Alex Agent SDK — Autonomous Tasks
+# ═══════════════════════════════════════════════
+# CORE TASKS
+# ═══════════════════════════════════════════════
+
 # Morning briefing — 7:30 AM CET
 30 7 * * * cd $AGENT_DIR && $PYTHON agent-sdk/orchestrator.py --task morning-brief >> agent-sdk/logs/cron.log 2>&1
 
@@ -104,6 +108,16 @@ echo "VM ready for agent setup"
 
 # Cross-sell analysis — every Monday at 10:00 AM
 0 10 * * 1 cd $AGENT_DIR && $PYTHON agent-sdk/orchestrator.py --task cross-sell >> agent-sdk/logs/cron.log 2>&1
+
+# ═══════════════════════════════════════════════
+# INTEGRATION TASKS
+# ═══════════════════════════════════════════════
+
+# Local agent sync — 8:15 AM and 2:15 PM (after renewals, checks desktop agents)
+15 8,14 * * * cd $AGENT_DIR && $PYTHON agent-sdk/orchestrator.py --task local-agent-sync >> agent-sdk/logs/cron.log 2>&1
+
+# Upload reports to cloud storage — 6:00 PM daily (after all tasks done)
+0 18 * * * cd $AGENT_DIR && $PYTHON agent-sdk/orchestrator.py --task upload-reports >> agent-sdk/logs/cron.log 2>&1
 CRON
 
         crontab "$CRON_FILE"
