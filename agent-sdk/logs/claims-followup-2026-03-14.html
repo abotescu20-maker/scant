@@ -3,104 +3,99 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Raport Urgent Dosare Deschise - Acțiuni Necesare</title>
+    <title>Urmărire Dosare Asigurări - Acțiuni Necesare</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }
-        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .header { background: #2c3e50; color: white; padding: 15px; margin: -20px -20px 20px -20px; border-radius: 8px 8px 0 0; }
-        .urgent { background: #e74c3c; color: white; padding: 10px; border-radius: 5px; margin-bottom: 15px; }
-        .high { background: #f39c12; color: white; padding: 10px; border-radius: 5px; margin-bottom: 15px; }
-        .medium { background: #3498db; color: white; padding: 10px; border-radius: 5px; margin-bottom: 15px; }
-        .low { background: #27ae60; color: white; padding: 10px; border-radius: 5px; margin-bottom: 15px; }
-        .claim-item { border-left: 4px solid #bdc3c7; padding: 15px; margin-bottom: 15px; background: #f8f9fa; }
-        .claim-urgent { border-left-color: #e74c3c; }
-        .claim-high { border-left-color: #f39c12; }
-        .claim-medium { border-left-color: #3498db; }
-        .claim-low { border-left-color: #27ae60; }
-        .claim-id { font-weight: bold; color: #2c3e50; }
-        .client-info { margin: 10px 0; }
-        .action { background: #ecf0f1; padding: 10px; border-radius: 5px; margin-top: 10px; }
-        .overdue { color: #e74c3c; font-weight: bold; }
-        .summary { background: #34495e; color: white; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
-        .amount { font-weight: bold; color: #27ae60; }
+        .header { background-color: #2c3e50; color: white; padding: 20px; text-align: center; border-radius: 8px; }
+        .summary { background-color: #ecf0f1; padding: 15px; margin: 20px 0; border-radius: 5px; }
+        .priority-critical { border-left: 5px solid #e74c3c; background-color: #fdf2f2; }
+        .priority-high { border-left: 5px solid #f39c12; background-color: #fef9e7; }
+        .priority-medium { border-left: 5px solid #3498db; background-color: #ebf3fd; }
+        .priority-low { border-left: 5px solid #27ae60; background-color: #eafaf1; }
+        .claim-card { margin: 15px 0; padding: 15px; border-radius: 5px; }
+        .claim-header { font-weight: bold; font-size: 1.1em; margin-bottom: 10px; }
+        .claim-details { margin: 10px 0; }
+        .action-item { background-color: #34495e; color: white; padding: 8px 12px; margin: 5px 0; border-radius: 4px; }
+        .overdue-badge { background-color: #e74c3c; color: white; padding: 4px 8px; border-radius: 12px; font-size: 0.8em; }
+        .status-badge { padding: 4px 8px; border-radius: 4px; font-size: 0.8em; color: white; }
+        .status-open { background-color: #f39c12; }
+        .status-investigating { background-color: #3498db; }
+        .contact-info { font-size: 0.9em; color: #666; }
+        .urgent-section { background-color: #e74c3c; color: white; padding: 15px; margin: 20px 0; border-radius: 5px; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🚨 Raport Urgent - Dosare de Asigurări Deschise</h1>
-            <p>Data: 14 Martie 2026 | Total dosare: 24 | Dosare restante (>14 zile): 1</p>
-        </div>
+    <div class="header">
+        <h1>🚨 Urmărire Dosare Asigurări - Acțiuni Urgente</h1>
+        <p>Raport generat: 14 martie 2026</p>
+    </div>
 
-        <div class="summary">
-            <h2>Sumar Priorități</h2>
-            <p><strong>URGENT (>14 zile):</strong> 1 dosar - Necesită acțiune imediată</p>
-            <p><strong>RIDICAT (8-14 zile):</strong> 1 dosar - Urmărire activă necesară</p>
-            <p><strong>MEDIU (4-7 zile):</strong> 1 dosar - Monitorizare regulată</p>
-            <p><strong>SCĂZUT (≤3 zile):</strong> 21 dosare - În procesare normală</p>
-        </div>
+    <div class="summary">
+        <h2>Sumar Executiv</h2>
+        <p><strong>Total dosare deschise:</strong> 24</p>
+        <p><strong>Dosare restante (>14 zile):</strong> <span style="color: #e74c3c; font-weight: bold;">1</span></p>
+        <p><strong>Prioritate critică:</strong> 1 | <strong>Prioritate mare:</strong> 1 | <strong>Prioritate medie:</strong> 1 | <strong>Prioritate mică:</strong> 21</p>
+    </div>
 
-        <div class="urgent">
-            <h2>🔴 PRIORITATE URGENTĂ - RESTANT</h2>
-        </div>
+    <div class="urgent-section">
+        <h2>⚠️ ATENȚIE: Dosare Restante (>14 zile)</h2>
+        <p>Următoarele dosare depășesc termenul standard și necesită acțiune imediată:</p>
+    </div>
 
-        <div class="claim-item claim-urgent">
-            <div class="claim-id">Dosar CLM001 - <span class="overdue">RESTANT (15 zile)</span></div>
-            <div class="client-info">
-                <strong>Client:</strong> Andrei Ionescu<br>
-                <strong>Telefon:</strong> +40745123456 | <strong>Email:</strong> andrei.ionescu@gmail.com<br>
-                <strong>Incident:</strong> Accident minor DN1, daună bară față<br>
-                <strong>Valoare:</strong> <span class="amount">3.200 RON</span><br>
-                <strong>Număr asigurător:</strong> ALZ-CASCO-DMG-2025-001
-            </div>
-            <div class="action">
-                <strong>ACȚIUNE IMEDIATĂ:</strong> Sunați asigurătorul astăzi pentru status final și aprobare plată. Contactați clientul pentru update și calendarul de reparații.
-            </div>
+    <div class="claim-card priority-critical">
+        <div class="claim-header">
+            🔴 PRIORITATE CRITICĂ - CLM001 <span class="overdue-badge">RESTANT 15 ZILE</span>
+            <span class="status-badge status-open">DESCHIS</span>
         </div>
-
-        <div class="high">
-            <h2>🟡 PRIORITATE RIDICATĂ</h2>
+        <div class="claim-details">
+            <p><strong>Client:</strong> Andrei Ionescu</p>
+            <p class="contact-info">📧 andrei.ionescu@gmail.com | 📱 +40745123456</p>
+            <p><strong>Incident:</strong> Accident minor pe DN1, bară față avariată. Partea adversă: Popescu Ion, B-12-XYZ</p>
+            <p><strong>Daune estimate:</strong> 3,200 RON | <strong>Nr. dosar asigurator:</strong> ALZ-CASCO-DMG-2025-001</p>
         </div>
-
-        <div class="claim-item claim-high">
-            <div class="claim-id">Dosar CLM002 - Status: În investigare (8 zile)</div>
-            <div class="client-info">
-                <strong>Client:</strong> SC Logistic Trans SRL<br>
-                <strong>Telefon:</strong> +40721987654 | <strong>Email:</strong> office@logistictrans.ro<br>
-                <strong>Incident:</strong> Camion lovit vehicul parcat Ploiești + daune medicale<br>
-                <strong>Valoare:</strong> <span class="amount">9.700 RON</span><br>
-                <strong>Număr asigurător:</strong> OMA-RCA-INV-2025-007
-            </div>
-            <div class="action">
-                <strong>ACȚIUNE:</strong> Solicitați raport de investigare de la OMA. Verificați dacă sunt necesare documente suplimentare de la client.
-            </div>
+        <div class="action-item">
+            <strong>ACȚIUNE IMEDIATĂ:</strong> Sună asiguratorul pentru status final și aprobarea despăgubirii. Contactează clientul pentru update.
         </div>
+    </div>
 
-        <div class="medium">
-            <h2>🔵 PRIORITATE MEDIE</h2>
+    <div class="claim-card priority-high">
+        <div class="claim-header">
+            🟠 PRIORITATE MARE - CLM002
+            <span class="status-badge status-investigating">ÎN INVESTIGARE</span>
         </div>
-
-        <div class="claim-item claim-medium">
-            <div class="claim-id">Dosar CLM003 (4 zile)</div>
-            <div class="client-info">
-                <strong>Client:</strong> Gheorghe Popa<br>
-                <strong>Telefon:</strong> +40733445566 | <strong>Email:</strong> gheorghe.popa@gmail.com<br>
-                <strong>Incident:</strong> Tamponare E70 lângă Timișoara<br>
-                <strong>Valoare:</strong> În evaluare<br>
-                <strong>Număr asigurător:</strong> Nu este alocat încă
-            </div>
-            <div class="action">
-                <strong>ACȚIUNE:</strong> Urmăriți estimarea daunelor și înregistrarea la asigurător. Solicitați de la client fotografii suplimentare dacă sunt necesare.
-            </div>
+        <div class="claim-details">
+            <p><strong>Client:</strong> SC Logistic Trans SRL</p>
+            <p class="contact-info">📧 office@logistictrans.ro | 📱 +40721987654</p>
+            <p><strong>Incident:</strong> Șofer camion a lovit vehicul parcat în Ploiești. Partea adversă revendică daune vehicul + medicale</p>
+            <p><strong>Daune estimate:</strong> 9,700 RON | <strong>Nr. dosar:</strong> OMA-RCA-INV-2025-007 | <strong>Zile deschis:</strong> 8</p>
         </div>
-
-        <div class="low">
-            <h2>🟢 PRIORITATE SCĂZUTĂ - În procesare</h2>
+        <div class="action-item">
+            <strong>ACȚIUNE:</strong> Solicită raport medical final și evaluarea daunelor de la asigurator. Pregătește documentația pentru închiderea dosarului.
         </div>
+    </div>
 
-        <div class="claim-item claim-low">
-            <div class="claim-id">Dosar CLM007 (2 zile) - Profesională</div>
-            <div class="client-info">
-                <strong>Client:</strong> SC TechRom SRL<br>
-                <strong>Telefon:</strong> +40213456789 | <strong>Email:</strong> contact@techrom.ro<br>
-                <strong>Incident:</strong>
+    <div class="claim-card priority-medium">
+        <div class="claim-header">
+            🔵 PRIORITATE MEDIE - CLM003
+            <span class="status-badge status-open">DESCHIS</span>
+        </div>
+        <div class="claim-details">
+            <p><strong>Client:</strong> Gheorghe Popa</p>
+            <p class="contact-info">📧 gheorghe.popa@gmail.com | 📱 +40733445566</p>
+            <p><strong>Incident:</strong> Tamponare pe spate pe E70 lângă Timișoara. Vehicul adversar: Dacia Logan</p>
+            <p><strong>Status:</strong> Evaluare în așteptare | <strong>Zile deschis:</strong> 4</p>
+        </div>
+        <div class="action-item">
+            <strong>ACȚIUNE:</strong> Urmărește evaluarea daunelor și obținerea numărului de dosar de la asigurator.
+        </div>
+    </div>
+
+    <div class="claim-card priority-high">
+        <div class="claim-header">
+            🟠 PRIORITATE MARE - CLM007
+            <span class="status-badge status-open">DESCHIS</span>
+        </div>
+        <div class="claim-details">
+            <p><strong>Client:</strong> SC TechRom SRL</p>
+            <p class="contact-info">📧 contact@techrom.ro | 📱 +40213456789</p>
+            <p><strong>Incident:

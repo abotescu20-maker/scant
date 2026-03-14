@@ -233,3 +233,84 @@
 2026-03-14 17:37:46,318 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
 2026-03-14 17:37:46,322 [INFO] Upload summary saved: /Users/andreibotescu/Desktop/insurance-broker-agent/agent-sdk/logs/upload-summary-2026-03-14.html
 2026-03-14 17:37:46,322 [INFO] Orchestrator finished
+2026-03-14 19:08:34,378 [INFO] Alex Orchestrator starting — task: upload-reports
+2026-03-14 19:08:34,378 [INFO] API URL: https://insurance-broker-alex-elo6xae6nq-ey.a.run.app
+2026-03-14 19:08:34,378 [INFO] n8n Webhook: ⚪ not set
+2026-03-14 19:08:34,378 [INFO] GCS Bucket: ✅ alex-broker-reports
+2026-03-14 19:08:34,378 [INFO] SharePoint: ⚪ not set
+2026-03-14 19:08:34,379 [INFO] Date: 2026-03-14T19:08:34.379002
+2026-03-14 19:08:34,379 [INFO] === TASK: Upload Reports to Cloud Storage ===
+2026-03-14 19:08:34,379 [INFO] Found 7 reports to upload
+2026-03-14 19:08:34,379 [INFO]   Uploading: renewals-2026-03-14.html
+2026-03-14 19:08:36,339 [INFO] [GCS] ✅ Uploaded renewals-2026-03-14.html → gs://alex-broker-reports/2026-03-14/renewals-2026-03-14.html
+2026-03-14 19:08:36,339 [INFO]   Uploading: upload-summary-2026-03-14.html
+2026-03-14 19:08:37,197 [INFO] [GCS] ✅ Uploaded upload-summary-2026-03-14.html → gs://alex-broker-reports/2026-03-14/upload-summary-2026-03-14.html
+2026-03-14 19:08:37,197 [INFO]   Uploading: local-agent-sync-2026-03-14.html
+2026-03-14 19:08:38,117 [INFO] [GCS] ✅ Uploaded local-agent-sync-2026-03-14.html → gs://alex-broker-reports/2026-03-14/local-agent-sync-2026-03-14.html
+2026-03-14 19:08:38,118 [INFO]   Uploading: local-agent-status-2026-03-14.html
+2026-03-14 19:08:38,987 [INFO] [GCS] ✅ Uploaded local-agent-status-2026-03-14.html → gs://alex-broker-reports/2026-03-14/local-agent-status-2026-03-14.html
+2026-03-14 19:08:38,988 [INFO]   Uploading: claims-followup-2026-03-14.html
+2026-03-14 19:08:39,820 [INFO] [GCS] ✅ Uploaded claims-followup-2026-03-14.html → gs://alex-broker-reports/2026-03-14/claims-followup-2026-03-14.html
+2026-03-14 19:08:39,820 [INFO]   Uploading: morning-brief-2026-03-14.html
+2026-03-14 19:08:40,802 [INFO] [GCS] ✅ Uploaded morning-brief-2026-03-14.html → gs://alex-broker-reports/2026-03-14/morning-brief-2026-03-14.html
+2026-03-14 19:08:40,803 [INFO]   Uploading: cross-sell-2026-03-14.html
+2026-03-14 19:08:41,726 [INFO] [GCS] ✅ Uploaded cross-sell-2026-03-14.html → gs://alex-broker-reports/2026-03-14/cross-sell-2026-03-14.html
+2026-03-14 19:08:50,057 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-03-14 19:08:50,075 [INFO] Upload summary saved: /Users/andreibotescu/Desktop/insurance-broker-agent/agent-sdk/logs/upload-summary-2026-03-14.html
+2026-03-14 19:08:50,076 [INFO] Orchestrator finished
+2026-03-14 19:14:51,227 [INFO] DRY RUN mode — no emails will be sent
+2026-03-14 19:14:51,228 [INFO] Alex Orchestrator starting — task: all
+2026-03-14 19:14:51,228 [INFO] API URL: https://insurance-broker-alex-elo6xae6nq-ey.a.run.app
+2026-03-14 19:14:51,228 [INFO] n8n Webhook: ⚪ not set
+2026-03-14 19:14:51,228 [INFO] GCS Bucket: ✅ alex-broker-reports
+2026-03-14 19:14:51,228 [INFO] SharePoint: ⚪ not set
+2026-03-14 19:14:51,228 [INFO] Date: 2026-03-14T19:14:51.228149
+2026-03-14 19:14:51,228 [INFO] === TASK: Renewal Check ===
+2026-03-14 19:14:51,352 [INFO] Found 1 urgent, 4 upcoming, 5 total
+2026-03-14 19:15:09,211 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-03-14 19:15:09,230 [INFO] Report saved: /Users/andreibotescu/Desktop/insurance-broker-agent/agent-sdk/logs/renewals-2026-03-14.html
+2026-03-14 19:15:09,231 [INFO] === TASK: Compliance Reports ===
+2026-03-14 19:15:36,412 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-03-14 19:15:36,419 [INFO] Compliance report saved: /Users/andreibotescu/Desktop/insurance-broker-agent/agent-sdk/logs/compliance-2026-03.html
+2026-03-14 19:15:36,419 [INFO] === TASK: Claims Follow-up ===
+2026-03-14 19:15:36,551 [INFO] Found 24 open claims
+2026-03-14 19:16:03,543 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-03-14 19:16:03,546 [INFO] Claims report saved: /Users/andreibotescu/Desktop/insurance-broker-agent/agent-sdk/logs/claims-followup-2026-03-14.html
+2026-03-14 19:16:03,546 [INFO] === TASK: Morning Briefing ===
+2026-03-14 19:16:25,796 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-03-14 19:16:25,800 [INFO] Morning brief saved: /Users/andreibotescu/Desktop/insurance-broker-agent/agent-sdk/logs/morning-brief-2026-03-14.html
+2026-03-14 19:16:25,801 [INFO] === TASK: Cross-sell Analysis ===
+2026-03-14 19:16:50,825 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-03-14 19:16:50,830 [INFO] Cross-sell report saved: /Users/andreibotescu/Desktop/insurance-broker-agent/agent-sdk/logs/cross-sell-2026-03-14.html
+2026-03-14 19:16:50,830 [INFO] === TASK: Local Agent Sync ===
+2026-03-14 19:16:50,939 [INFO] Local agents online: 1
+2026-03-14 19:16:50,939 [INFO]   Agent Andreis-MacBook-Air.local-61195a16: web_generic, web, desktop_generic, desktop, cedam, anthropic_computer_use, claude_computer_use, paid, allianz, allianz_ro (last seen 2s ago)
+2026-03-14 19:16:51,052 [INFO]   Dispatching portal screenshot for Gheorghe Popa (policy OMA-RCA-POP-001, 3 days left)
+2026-03-14 19:16:51,052 [INFO] [LocalAgent] Dispatching task a2a5a569 → web_generic/navigate
+2026-03-14 19:16:53,461 [INFO] [LocalAgent] Task a2a5a569 completed
+2026-03-14 19:16:53,462 [INFO]   Result for Gheorghe Popa: success=True
+2026-03-14 19:16:53,462 [INFO]   Requesting desktop agent screenshot (connectivity test)
+2026-03-14 19:16:53,462 [INFO] [LocalAgent] Dispatching task 58aef3b6 → web_generic/screenshot
+2026-03-14 19:16:58,400 [INFO] [LocalAgent] Task 58aef3b6 completed
+2026-03-14 19:16:58,401 [INFO]   Desktop screenshot captured (114582 bytes)
+2026-03-14 19:17:19,044 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-03-14 19:17:19,049 [INFO] Local agent sync report saved: /Users/andreibotescu/Desktop/insurance-broker-agent/agent-sdk/logs/local-agent-sync-2026-03-14.html
+2026-03-14 19:17:19,049 [INFO] === TASK: Upload Reports to Cloud Storage ===
+2026-03-14 19:17:19,050 [INFO] Found 7 reports to upload
+2026-03-14 19:17:19,050 [INFO]   Uploading: renewals-2026-03-14.html
+2026-03-14 19:17:21,151 [INFO] [GCS] ✅ Uploaded renewals-2026-03-14.html → gs://alex-broker-reports/2026-03-14/renewals-2026-03-14.html
+2026-03-14 19:17:21,152 [INFO]   Uploading: upload-summary-2026-03-14.html
+2026-03-14 19:17:22,063 [INFO] [GCS] ✅ Uploaded upload-summary-2026-03-14.html → gs://alex-broker-reports/2026-03-14/upload-summary-2026-03-14.html
+2026-03-14 19:17:22,063 [INFO]   Uploading: local-agent-sync-2026-03-14.html
+2026-03-14 19:17:23,004 [INFO] [GCS] ✅ Uploaded local-agent-sync-2026-03-14.html → gs://alex-broker-reports/2026-03-14/local-agent-sync-2026-03-14.html
+2026-03-14 19:17:23,005 [INFO]   Uploading: local-agent-status-2026-03-14.html
+2026-03-14 19:17:23,897 [INFO] [GCS] ✅ Uploaded local-agent-status-2026-03-14.html → gs://alex-broker-reports/2026-03-14/local-agent-status-2026-03-14.html
+2026-03-14 19:17:23,897 [INFO]   Uploading: claims-followup-2026-03-14.html
+2026-03-14 19:17:24,860 [INFO] [GCS] ✅ Uploaded claims-followup-2026-03-14.html → gs://alex-broker-reports/2026-03-14/claims-followup-2026-03-14.html
+2026-03-14 19:17:24,861 [INFO]   Uploading: morning-brief-2026-03-14.html
+2026-03-14 19:17:25,713 [INFO] [GCS] ✅ Uploaded morning-brief-2026-03-14.html → gs://alex-broker-reports/2026-03-14/morning-brief-2026-03-14.html
+2026-03-14 19:17:25,714 [INFO]   Uploading: cross-sell-2026-03-14.html
+2026-03-14 19:17:26,669 [INFO] [GCS] ✅ Uploaded cross-sell-2026-03-14.html → gs://alex-broker-reports/2026-03-14/cross-sell-2026-03-14.html
+2026-03-14 19:17:35,138 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-03-14 19:17:35,143 [INFO] Upload summary saved: /Users/andreibotescu/Desktop/insurance-broker-agent/agent-sdk/logs/upload-summary-2026-03-14.html
+2026-03-14 19:17:35,143 [INFO] Orchestrator finished

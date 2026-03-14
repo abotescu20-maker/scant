@@ -2,66 +2,80 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Briefing dimineața - 14 martie 2026</title>
+    <title>Briefing Matinal - 14 Martie 2026</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.4; }
-        .header { color: #2c5aa0; border-bottom: 2px solid #2c5aa0; padding-bottom: 10px; }
-        .section { margin: 15px 0; }
-        .urgent { background-color: #fff3cd; padding: 8px; border-left: 4px solid #ffc107; }
-        .dashboard { display: flex; gap: 20px; flex-wrap: wrap; }
-        .metric { background: #f8f9fa; padding: 8px; border-radius: 4px; min-width: 80px; text-align: center; }
-        .claim-item { background: #f8f9fa; margin: 5px 0; padding: 8px; border-radius: 4px; }
-        .online { color: #28a745; font-weight: bold; }
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f5f5f5; }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #2c5aa0; margin-bottom: 10px; font-size: 24px; }
+        h2 { color: #34495e; font-size: 18px; margin: 20px 0 10px 0; border-bottom: 2px solid #3498db; padding-bottom: 5px; }
+        .greeting { color: #27ae60; font-size: 16px; margin-bottom: 20px; }
+        .dashboard { display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 20px; }
+        .metric { background: #ecf0f1; padding: 10px; border-radius: 5px; text-align: center; flex: 1; min-width: 80px; }
+        .metric-value { font-size: 20px; font-weight: bold; color: #2c3e50; }
+        .metric-label { font-size: 12px; color: #7f8c8d; }
+        .urgent { background-color: #ffe6e6; padding: 15px; border-left: 4px solid #e74c3c; margin-bottom: 15px; border-radius: 5px; }
+        .claim { background-color: #fff3cd; padding: 10px; border-left: 3px solid #ffc107; margin-bottom: 10px; border-radius: 3px; }
+        .action-item { background-color: #e8f5e8; padding: 8px; margin-bottom: 8px; border-radius: 3px; }
+        .status { display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; }
+        .status.online { background-color: #d4edda; color: #155724; }
+        ul { margin: 10px 0; padding-left: 20px; }
+        li { margin-bottom: 5px; }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h2>Bună dimineața! Briefing pentru 14 martie 2026</h2>
-    </div>
-
-    <div class="section">
-        <h3>📊 Dashboard</h3>
+    <div class="container">
+        <div class="greeting">Bună dimineața! Iată briefingul pentru vineri, 14 martie 2026:</div>
+        
+        <h2>📊 Prezentare Generală</h2>
         <div class="dashboard">
-            <div class="metric"><strong>32</strong><br>Clienți</div>
-            <div class="metric"><strong>24</strong><br>Polițe active</div>
-            <div class="metric"><strong>24</strong><br>Daune deschise</div>
-            <div class="metric"><strong>72</strong><br>Oferte</div>
+            <div class="metric">
+                <div class="metric-value">24</div>
+                <div class="metric-label">Polițe Active</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value">32</div>
+                <div class="metric-label">Clienți</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value">24</div>
+                <div class="metric-label">Dosare Deschise</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value">1</div>
+                <div class="metric-label">Expirări 7 zile</div>
+            </div>
         </div>
-    </div>
 
-    <div class="section urgent">
-        <h3>⚠️ Reînnoiri urgente</h3>
-        <strong>Gheorghe Popa</strong> - RCA Omniasig expire în <strong>3 zile</strong> (18.03)<br>
-        Prima: 1.500 RON | Tel: +40733445566
-    </div>
-
-    <div class="section">
-        <h3>🔥 Daune prioritare (3 din 24)</h3>
-        <div class="claim-item">
-            <strong>CLM001 - Andrei Ionescu</strong> (15 zile)<br>
-            Accident DN1, estimare: 3.200 RON
+        <h2>🚨 Reînnoire Urgentă</h2>
+        <div class="urgent">
+            <strong>Gheorghe Popa</strong> - RCA Omniasig VIG<br>
+            Expirare: <strong>18 martie (3 zile)</strong><br>
+            Primă: 1.500 RON | Tel: +40733445566
         </div>
-        <div class="claim-item">
-            <strong>CLM002 - SC Logistic Trans</strong> (8 zile)<br>
-            Accident camion Ploiești, estimare: 9.700 RON
-        </div>
-        <div class="claim-item">
-            <strong>CLM007 - SC TechRom</strong> (2 zile)<br>
-            Reclamație proiect întârziat: 15.000 EUR
-        </div>
-    </div>
 
-    <div class="section">
-        <h3>✅ Acțiuni recomandate</h3>
-        • Contactați URGENT Gheorghe Popa pentru reînnoire RCA<br>
-        • Urmăriți progresul daunei CLM002 (valoare mare)<br>
-        • Verificați statusul expertizei CLM001<br>
-        • Analizați documentația CLM007 (profesională)
-    </div>
+        <h2>📋 Dosare Prioritare</h2>
+        <div class="claim">
+            <strong>SC Logistic Trans SRL</strong> - Accident camion Ploiești<br>
+            Estimare: 9.700 RON | Deschis de 8 zile | Status: în investigare
+        </div>
+        <div class="claim">
+            <strong>Gheorghe Popa</strong> - Tamponare E70 Timișoara<br>
+            Fără estimare încă | Deschis de 4 zile
+        </div>
+        <div class="claim">
+            <strong>SC TechRom SRL</strong> - Reclamație proiect software<br>
+            Estimare: €15.000 | Deschis de 2 zile
+        </div>
 
-    <div class="section">
-        <h3>🖥️ Agent local</h3>
-        <span class="online">● ONLINE</span> - 1 agent disponibil (CEDAM/Portal access)
+        <h2>✅ Acțiuni Recomandate</h2>
+        <div class="action-item">1. Contactează urgent Gheorghe Popa pentru reînnoirea RCA</div>
+        <div class="action-item">2. Urmărește estimarea daunelor pentru accidentul de pe E70</div>
+        <div class="action-item">3. Solicită update pentru investigația SC Logistic Trans</div>
+        <div class="action-item">4. Verifică documentația pentru reclamația TechRom</div>
+
+        <h2>💻 Agent Local</h2>
+        <span class="status online">1 agent online</span> - CEDAM/Portal accesibil<br>
+        <small>Andreis-MacBook-Air | 16 task-uri procesate</small>
     </div>
 </body>
 </html>

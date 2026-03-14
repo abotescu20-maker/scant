@@ -28,8 +28,8 @@ Environment:
     SMTP_HOST/PORT/USER/PASS — for email sending
     ALERT_TO           — recipient email(s)
     N8N_WEBHOOK_URL    — n8n webhook URL for workflow triggers
-    GOOGLE_APPLICATION_CREDENTIALS_JSON — Google Drive service account
-    GOOGLE_DRIVE_FOLDER_ID — Google Drive target folder
+    GCS_BUCKET           — Google Cloud Storage bucket for report uploads
+    GCS_SA_KEY_JSON      — GCS service account JSON key (single-line)
     SHAREPOINT_TENANT_ID/CLIENT_ID/CLIENT_SECRET/SITE_URL/FOLDER_PATH — SharePoint
 """
 import os
@@ -384,18 +384,50 @@ def task_local_agent_sync():
 # Uses the existing drive_tools.py from the MCP server.
 # ══════════════════════════════════════════════════════════════════════════════
 
-def upload_to_drive(filepath: Path) -> str:
-    """Upload a file to Google Drive. Returns status message."""
+GCS_BUCKET = os.environ.get("GCS_BUCKET", "")
+GCS_SA_KEY_JSON = os.environ.get("GCS_SA_KEY_JSON", "")
+
+
+def upload_to_gcs(filepath: Path) -> str:
+    """Upload a file to Google Cloud Storage. Returns public URL or error."""
+    if not GCS_BUCKET:
+        return "❌ GCS_BUCKET not configured"
     try:
-        from insurance_broker_mcp.tools.drive_tools import _upload_to_drive_impl
-        result = _upload_to_drive_impl(str(filepath))
-        log.info(f"[Drive] Upload result for {filepath.name}: {result[:80]}...")
-        return result
+        from google.cloud import storage as gcs_storage
+        if GCS_SA_KEY_JSON:
+            import json as _json
+            from google.oauth2 import service_account as _sa
+            creds = _sa.Credentials.from_service_account_info(
+                _json.loads(GCS_SA_KEY_JSON)
+            )
+            client = gcs_storage.Client(credentials=creds, project=creds.project_id)
+        else:
+            client = gcs_storage.Client()  # uses default credentials
+        bucket = client.bucket(GCS_BUCKET)
+        today_str = date.today().isoformat()
+        blob_name = f"{today_str}/{filepath.name}"
+        blob = bucket.blob(blob_name)
+        blob.upload_from_filename(str(filepath), content_type="text/html")
+        url = f"gs://{GCS_BUCKET}/{blob_name}"
+        log.info(f"[GCS] ✅ Uploaded {filepath.name} → {url}")
+        return f"✅ {url}"
     except ImportError:
-        log.warning("[Drive] Google Drive library not installed — skipping upload")
-        return "⚠️ Google Drive not available"
+        # Fallback: use gsutil via subprocess
+        import subprocess
+        today_str = date.today().isoformat()
+        dest = f"gs://{GCS_BUCKET}/{today_str}/{filepath.name}"
+        result = subprocess.run(
+            ["gcloud", "storage", "cp", str(filepath), dest],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode == 0:
+            log.info(f"[GCS] ✅ Uploaded {filepath.name} → {dest}")
+            return f"✅ {dest}"
+        else:
+            log.error(f"[GCS] ❌ gsutil error: {result.stderr}")
+            return f"❌ gsutil error: {result.stderr[:100]}"
     except Exception as e:
-        log.error(f"[Drive] Upload error: {e}")
+        log.error(f"[GCS] Upload error: {e}")
         return f"❌ Upload failed: {e}"
 
 
@@ -414,24 +446,27 @@ def upload_to_sharepoint(filepath: Path) -> str:
         return f"❌ Upload failed: {e}"
 
 
-def list_drive_files(name_filter: str = None) -> str:
-    """List files in Google Drive folder."""
+def list_gcs_files(prefix: str = None) -> list:
+    """List files in GCS bucket."""
+    if not GCS_BUCKET:
+        return []
     try:
-        from insurance_broker_mcp.tools.drive_tools import _list_drive_files_impl
-        return _list_drive_files_impl(limit=20, name_filter=name_filter)
+        from google.cloud import storage as gcs_storage
+        if GCS_SA_KEY_JSON:
+            import json as _json
+            from google.oauth2 import service_account as _sa
+            creds = _sa.Credentials.from_service_account_info(
+                _json.loads(GCS_SA_KEY_JSON)
+            )
+            client = gcs_storage.Client(credentials=creds, project=creds.project_id)
+        else:
+            client = gcs_storage.Client()
+        bucket = client.bucket(GCS_BUCKET)
+        blobs = bucket.list_blobs(prefix=prefix or date.today().isoformat())
+        return [b.name for b in blobs]
     except Exception as e:
-        log.error(f"[Drive] List error: {e}")
-        return f"❌ List failed: {e}"
-
-
-def list_sharepoint_files(name_filter: str = None) -> str:
-    """List files in SharePoint folder."""
-    try:
-        from insurance_broker_mcp.tools.drive_tools import _sp_list_impl
-        return _sp_list_impl(limit=20, name_filter=name_filter)
-    except Exception as e:
-        log.error(f"[SharePoint] List error: {e}")
-        return f"❌ List failed: {e}"
+        log.error(f"[GCS] List error: {e}")
+        return []
 
 
 def task_upload_reports():
@@ -452,18 +487,18 @@ def task_upload_reports():
 
     log.info(f"Found {len(reports)} reports to upload")
 
-    drive_results = []
+    gcs_results = []
     sp_results = []
 
-    has_drive = bool(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON"))
+    has_gcs = bool(GCS_BUCKET)
     has_sp = bool(os.environ.get("SHAREPOINT_TENANT_ID"))
 
     for report in reports:
         log.info(f"  Uploading: {report.name}")
 
-        if has_drive:
-            drive_result = upload_to_drive(report)
-            drive_results.append({"file": report.name, "result": drive_result})
+        if has_gcs:
+            gcs_result = upload_to_gcs(report)
+            gcs_results.append({"file": report.name, "result": gcs_result})
 
         if has_sp:
             sp_result = upload_to_sharepoint(report)
@@ -474,9 +509,10 @@ def task_upload_reports():
         "date": today_str,
         "files_uploaded": len(reports),
         "file_names": [r.name for r in reports],
-        "google_drive": {
-            "configured": has_drive,
-            "results": drive_results,
+        "google_cloud_storage": {
+            "configured": has_gcs,
+            "bucket": GCS_BUCKET,
+            "results": gcs_results,
         },
         "sharepoint": {
             "configured": has_sp,
@@ -487,7 +523,7 @@ def task_upload_reports():
     summary = claude_analyze(
         "Generate a brief HTML summary of report uploads to cloud storage. Include: "
         "1) How many files were uploaded, "
-        "2) Google Drive results (links if successful), "
+        "2) Google Cloud Storage results (bucket and paths if successful), "
         "3) SharePoint results (links if successful), "
         "4) Any errors or missing configurations. "
         "Format as a compact HTML notification.",
@@ -508,7 +544,7 @@ def task_upload_reports():
     n8n_notify("reports-uploaded", {
         "count": len(reports),
         "files": [r.name for r in reports],
-        "drive_ok": has_drive and all("✅" in r.get("result", "") for r in drive_results),
+        "gcs_ok": has_gcs and all("✅" in r.get("result", "") for r in gcs_results),
         "sharepoint_ok": has_sp and all("✅" in r.get("result", "") for r in sp_results),
     })
 
@@ -832,7 +868,7 @@ def main():
     log.info(f"Alex Orchestrator starting — task: {args.task}")
     log.info(f"API URL: {ALEX_API_URL}")
     log.info(f"n8n Webhook: {'✅ configured' if N8N_WEBHOOK_URL else '⚪ not set'}")
-    log.info(f"Google Drive: {'✅ configured' if os.environ.get('GOOGLE_APPLICATION_CREDENTIALS_JSON') else '⚪ not set'}")
+    log.info(f"GCS Bucket: {'✅ ' + GCS_BUCKET if GCS_BUCKET else '⚪ not set'}")
     log.info(f"SharePoint: {'✅ configured' if os.environ.get('SHAREPOINT_TENANT_ID') else '⚪ not set'}")
     log.info(f"Date: {datetime.now().isoformat()}")
 
