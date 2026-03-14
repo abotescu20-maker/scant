@@ -1,17 +1,18 @@
 """
 AllianzConnector — Automatizare portal Allianz-Tiriac România.
 
-Portal broker: https://broker.allianz-tiriac.ro
-Portal public:  https://www.allianz-tiriac.ro
+Portale broker:
+  - MobileOffice (principal): https://mobileoffice.allianztiriac.ro/
+  - SalesOffice:              https://salesoffice.allianztiriac.ro/
+  - Verificare poliță publică: https://online.allianztiriacunit.ro/polita-ta/
+  - Portal client "Contul Meu": https://www.allianztiriac.ro/ro_RO/contul-meu.html
+  - Claims Tracker: https://www.allianztiriac.ro/en_RO/claims-tracker/claims-tracker.html
 
 Capabilități:
-- Login broker pe portalul Allianz-Tiriac
-- Interogare portofoliu polițe (RCA, CASCO, PAD, LIFE)
-- Extrage date poliță după număr poliță sau client
-- Generare ofertă preliminară (dacă portalul suportă)
-- Rapoarte comisioane broker
-
-Documentație partener: https://broker.allianz-tiriac.ro/docs
+- Login broker pe MobileOffice sau SalesOffice
+- Verificare poliță după număr (portal unit public — fără login)
+- Interogare portofoliu polițe (necesită credențiale broker)
+- Track status daune (claims tracker public)
 """
 from __future__ import annotations
 
@@ -24,10 +25,14 @@ from typing import Optional
 from .connector_web_generic import GenericWebConnector
 
 
-# URL-uri portal Allianz România
-ALLIANZ_RO_BROKER_URL = "https://broker.allianz-tiriac.ro"
-ALLIANZ_RO_PUBLIC_URL = "https://www.allianz-tiriac.ro"
-ALLIANZ_RO_LOGIN_URL  = "https://broker.allianz-tiriac.ro/login"
+# URL-uri portal Allianz România (actualizat 2026)
+ALLIANZ_RO_BROKER_URL    = "https://mobileoffice.allianztiriac.ro/"                # portal broker principal ✅ ACTIV
+ALLIANZ_RO_LOGIN_URL     = "https://mobileoffice.allianztiriac.ro/LogIn.aspx"       # pagina login ✅ ACTIV
+ALLIANZ_RO_SALES_URL     = "https://salesoffice.allianztiriac.ro/"                  # portal sales agents
+ALLIANZ_RO_PUBLIC_URL    = "https://www.allianztiriac.ro"
+ALLIANZ_RO_VERIFY_URL    = "https://online.allianztiriacunit.ro/polita-ta/"         # verificare poliță (poate fi inaccesibil)
+ALLIANZ_RO_CLAIMS_URL    = "https://www.allianztiriac.ro/en_RO/claims-tracker/claims-tracker.html"
+ALLIANZ_RO_CLIENT_URL    = "https://www.allianztiriac.ro/ro_RO/contul-meu.html"
 
 # Portal Allianz DE (pentru clienți germani)
 ALLIANZ_DE_BROKER_URL = "https://makler.allianz.de"
@@ -243,31 +248,91 @@ class AllianzConnector(GenericWebConnector):
     async def get_policy_details(self, policy_number: str) -> dict:
         """
         Extrage detaliile unei polițe după numărul de poliță.
-        Încearcă mai întâi cu login, apoi verificare publică.
+        - Dacă e logat: caută pe broker portal (MobileOffice)
+        - Dacă nu e logat: încearcă portalul public de verificare (online.allianztiriacunit.ro)
         """
         self._ensure_ready()
 
         try:
-            # Try broker portal first
-            search_urls = [
-                f"{self._broker_url}/polite/{policy_number}",
-                f"{self._broker_url}/search?q={policy_number}",
-                ALLIANZ_RO_PUBLIC_URL + "/verificare-polita",
-            ]
+            if self._logged_in:
+                # Broker portal search
+                search_urls = [
+                    f"{self._broker_url}/polite/{policy_number}",
+                    f"{self._broker_url}/search?q={policy_number}",
+                ]
+                for url in search_urls:
+                    nav = await self.navigate(url)
+                    if not nav["success"]:
+                        continue
+                    await asyncio.sleep(2)
+                    page_text = await self._page.inner_text("body", timeout=10000)
+                    if policy_number.lower() in page_text.lower():
+                        return await self._parse_policy_details(page_text, policy_number)
 
-            for url in search_urls:
-                nav = await self.navigate(url)
-                if not nav["success"]:
-                    continue
+                return await self._search_policy_via_form(policy_number)
+            else:
+                # Public verification portal (no login needed for Allianz Unit policies)
+                return await self._verify_policy_public(policy_number)
 
-                await asyncio.sleep(2)
-                page_text = await self._page.inner_text("body", timeout=10000)
+        except Exception as e:
+            return {"success": False, "error": str(e)}
 
-                if policy_number.lower() in page_text.lower():
-                    return await self._parse_policy_details(page_text, policy_number)
+    async def _verify_policy_public(self, policy_number: str) -> dict:
+        """
+        Verificare poliță Allianz prin portalul public online.allianztiriacunit.ro/polita-ta/
+        Nu necesită login. Funcționează doar pentru polițe emise prin portalul Unit.
+        """
+        try:
+            nav = await self.navigate(ALLIANZ_RO_VERIFY_URL)
+            if not nav["success"]:
+                return {
+                    "success": False,
+                    "error": f"Nu s-a putut accesa {ALLIANZ_RO_VERIFY_URL}",
+                    "hint": "Portalul de verificare publică Allianz este disponibil doar pentru polițe Unit online.",
+                }
 
-            # Try search form if direct URL failed
-            return await self._search_policy_via_form(policy_number)
+            await asyncio.sleep(2)
+            page_text = await self._page.inner_text("body", timeout=5000)
+
+            # Fill policy number
+            filled = False
+            for sel in POLICY_SEARCH_SELECTORS + ['input[name*="nr"]', 'input[name*="number"]']:
+                try:
+                    el = self._page.locator(sel).first
+                    if await el.is_visible(timeout=1500):
+                        await el.fill(policy_number)
+                        filled = True
+                        break
+                except Exception:
+                    pass
+
+            if not filled:
+                screenshot_b64 = await self._take_screenshot_b64()
+                return {
+                    "success": False,
+                    "error": "Câmpul pentru numărul poliței nu a fost găsit",
+                    "page_text_preview": page_text[:300],
+                    "screenshot_b64": screenshot_b64,
+                }
+
+            # Submit
+            submitted = False
+            for sel in LOGIN_SELECTORS["submit"]:
+                try:
+                    btn = self._page.locator(sel).first
+                    if await btn.is_visible(timeout=1500):
+                        await btn.click()
+                        submitted = True
+                        break
+                except Exception:
+                    pass
+
+            if not submitted:
+                await self._page.keyboard.press("Enter")
+
+            await asyncio.sleep(3)
+            page_text = await self._page.inner_text("body", timeout=10000)
+            return await self._parse_policy_details(page_text, policy_number)
 
         except Exception as e:
             return {"success": False, "error": str(e)}

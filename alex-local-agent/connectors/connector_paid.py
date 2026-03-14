@@ -2,14 +2,15 @@
 PAIDConnector — Verificare și interogare polițe PAD (Pool-ul de Asigurare Împotriva Dezastrelor).
 
 PAD = Polița de Asigurare Împotriva Dezastrelor Naturale (obligatorie pentru locuințe în RO).
-Portal: https://www.paid.ro
+Portal principal: https://asfromania.ro/apps/polite-pad  (ASF România)
+Portal alternativ: https://www.asfromania.ro/asigurari/pad
+
+NOTĂ: paid.ro (domeniu vechi) a expirat (410 Gone) — folosim portalul ASF.
 
 Capabilități:
-- Verifică dacă o proprietate are PAD valid (după adresă sau serie buletin)
-- Extrage data expirării, suma asigurată, asigurătorul
-- Interogare situație portofoliu broker (necesită credențiale)
-
-Documentație: https://www.paid.ro/agenti-brokeri
+- Verifică dacă o proprietate are PAD valid (după adresă sau CNP)
+- Extrage data expirării, suma asigurată, asigurătorul, zona de risc
+- Interogare situație portofoliu broker (necesită credențiale ASF)
 """
 from __future__ import annotations
 
@@ -21,13 +22,13 @@ from typing import Optional
 from .connector_web_generic import GenericWebConnector
 
 
-PAID_URLS = [
-    "https://www.paid.ro/verificare-polita",
-    "https://www.paid.ro/verificare",
-    "https://www.paid.ro",
-]
+# NOTĂ: Nu există portal public online pentru verificare PAD în România (2025-2026).
+# paid.ro a expirat (410 Gone), ASF nu are portal PAD funcțional.
+# Verificarea PAD se face doar prin documentul fizic sau prin sistemul intern al asigurătorilor.
+# Conectorul poate fi extins dacă BAAR/ASF lansează un portal PAD similar cu AIDA pentru RCA.
+PAID_URLS: list[str] = []  # no working public portal currently
 
-PAID_BROKER_URL = "https://www.paid.ro/login"
+PAID_BROKER_URL = "https://www.asfromania.ro/asigurari/pad"  # info page only
 
 # Selectori câmp de căutare pe paid.ro
 ADDRESS_SELECTORS = [
@@ -82,12 +83,12 @@ class PAIDConnector(GenericWebConnector):
     """
 
     name = "paid"
-    description = "Verificare polițe PAD (asigurare dezastre naturale) via paid.ro"
+    description = "Verificare polițe PAD (asigurare dezastre naturale) via ASF România"
     requires_display = False
 
-    PAID_URL = "https://www.paid.ro"
-    BROKER_LOGIN_URL = "https://www.paid.ro/login"
-    VERIFY_URL = "https://www.paid.ro/verificare-polita"
+    PAID_URL = "https://asfromania.ro/apps/polite-pad"
+    BROKER_LOGIN_URL = "https://asfromania.ro/apps/polite-pad"
+    VERIFY_URL = "https://asfromania.ro/apps/polite-pad"
 
     def __init__(self, headless: bool = True):
         super().__init__(headless=headless, browser_type="chromium")
@@ -175,35 +176,42 @@ class PAIDConnector(GenericWebConnector):
     async def check_pad(self, address: Optional[str] = None, cnp: Optional[str] = None) -> dict:
         """
         Verifică dacă o proprietate/persoană are PAD valid.
-        Prioritate: policy_number > address > cnp
+
+        NOTĂ 2026: Nu există portal web public pentru verificare PAD în România.
+        paid.ro a expirat. ASF nu are portal PAD funcțional.
+        Verificarea PAD se face doar prin:
+          1. Documentul fizic al poliței PAD
+          2. Sistemul intern al asigurătorului emitent
+          3. Contactând direct PAID (secretariat@paid.ro sau 021 311 1111)
         """
-        self._ensure_ready()
-
-        for url in PAID_URLS:
-            result = await self._try_check_pad_at(url, address=address, cnp=cnp)
-            if result.get("success"):
-                return result
-
-        screenshot_b64 = await self._take_screenshot_b64()
         return {
             "success": False,
-            "error": "Nu s-a putut accesa portalul PAID pentru verificare",
-            "screenshot_b64": screenshot_b64,
+            "pad_portal_unavailable": True,
+            "error": (
+                "Nu există portal web public pentru verificare PAD online în România (2026). "
+                "paid.ro a expirat (domeniu inactiv). "
+                "Verificarea PAD se face prin documentul fizic al poliței sau "
+                "contactând asigurătorul emitent direct."
+            ),
+            "alternatives": [
+                "Verifică documentul fizic al poliței PAD (seria și numărul poliței)",
+                "Contactează asigurătorul care a emis polița PAD",
+                "Contactează PAID direct: secretariat@paid.ro sau 021 311 1111",
+                "Pagina informativă ASF: https://www.asfromania.ro/asigurari/pad",
+            ],
+            "search_term": address or cnp or "",
         }
 
     async def check_pad_by_policy(self, policy_number: str) -> dict:
-        """Verifică o poliță PAD după numărul de poliță."""
-        self._ensure_ready()
-
-        for url in PAID_URLS:
-            result = await self._try_check_pad_at(url, policy_number=policy_number)
-            if result.get("success"):
-                result["policy_number_searched"] = policy_number
-                return result
-
+        """Verifică o poliță PAD după numărul de poliță — momentan nedisponibil online."""
         return {
             "success": False,
-            "error": f"Nu s-a putut verifica polița PAD {policy_number}",
+            "pad_portal_unavailable": True,
+            "policy_number": policy_number,
+            "error": (
+                "Nu există portal web public pentru verificare PAD online în România (2026). "
+                f"Pentru polița {policy_number}: contactați asigurătorul emitent."
+            ),
         }
 
     async def _try_check_pad_at(

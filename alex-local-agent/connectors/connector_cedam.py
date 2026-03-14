@@ -144,7 +144,9 @@ class CEDAMConnector(GenericWebConnector):
         """
         Verifică valabilitatea RCA pentru un număr de înmatriculare.
 
-        Încearcă AIDA (browser vizibil poate trece CAPTCHA), apoi CEDAM, BAAR, ASF.
+        Încearcă AIDA, apoi CEDAM, BAAR, ASF.
+        Dacă CAPTCHA e detectat în modul headless, returnează captcha_detected=True
+        — TaskExecutor poate retry automat cu headless=False (browser vizibil).
 
         Returns dict cu: plate, rca_valid, policy_number, insurer, coverage_type,
                           insured_sum, expiry_date, days_until_expiry, screenshot_b64
@@ -158,10 +160,19 @@ class CEDAMConnector(GenericWebConnector):
             result["plate"] = plate
             return result
 
+        # If CAPTCHA detected on AIDA, return immediately so executor can retry visible
+        if result.get("captcha_detected"):
+            result["plate"] = plate
+            return result
+
         # Fallback: try remaining URLs generically
         for url in CEDAM_URLS[1:]:
             result = await self._try_check_rca_at(url, plate)
             if result.get("success") and result.get("data_found"):
+                result["plate"] = plate
+                return result
+            # Stop on CAPTCHA here too
+            if result.get("captcha_detected"):
                 result["plate"] = plate
                 return result
 
@@ -184,6 +195,45 @@ class CEDAMConnector(GenericWebConnector):
             pass
         return None
 
+    # _detect_captcha removed — use _has_recaptcha() for iframe-based detection
+
+    async def _has_recaptcha(self) -> bool:
+        """Detectează reCAPTCHA v2 prin prezența iframe-ului Google."""
+        try:
+            frames = self._page.frames
+            for frame in frames:
+                if "google.com/recaptcha" in frame.url or "recaptcha" in frame.url:
+                    return True
+            # Also check DOM for recaptcha div
+            el = await self._page.query_selector('[data-site-key], .g-recaptcha, iframe[src*="recaptcha"]')
+            return el is not None
+        except Exception:
+            return False
+
+    async def _recaptcha_solved(self) -> bool:
+        """Returnează True dacă utilizatorul a rezolvat reCAPTCHA (textarea completată)."""
+        try:
+            val = await self._page.evaluate(
+                "() => { const t = document.getElementById('g-recaptcha-response'); "
+                "return t ? t.value : ''; }"
+            )
+            return bool(val and len(val) > 10)
+        except Exception:
+            return False
+
+    async def _wait_for_captcha_solution(self, timeout_s: int = 90) -> bool:
+        """
+        Așteaptă ca utilizatorul să rezolve reCAPTCHA (browser vizibil).
+        Returnează True dacă rezolvat, False la timeout.
+        """
+        import time
+        deadline = time.time() + timeout_s
+        while time.time() < deadline:
+            if await self._recaptcha_solved():
+                return True
+            await asyncio.sleep(1)
+        return False
+
     async def _try_check_rca_aida(self, plate: str) -> dict:
         """Verificare specifică pentru portalul AIDA (aida.info.ro)."""
         try:
@@ -193,25 +243,88 @@ class CEDAMConnector(GenericWebConnector):
             await asyncio.sleep(2)
             await self._dismiss_cookies()
 
-            # Select "Numar de inmatriculare" radio
+            # Detectează reCAPTCHA prin iframe (nu din text)
+            has_captcha = await self._has_recaptcha()
+            if has_captcha:
+                if self.headless:
+                    # Modul headless: nu putem rezolva CAPTCHA → semnalăm pentru retry vizibil
+                    return {
+                        "success": False,
+                        "captcha_detected": True,
+                        "error": "AIDA cere reCAPTCHA — necesită browser vizibil",
+                    }
+                else:
+                    # Modul vizibil: completăm formularul, AȘTEPTĂM ca brokerul să rezolve CAPTCHA
+                    # Selectează radio 'numar'
+                    try:
+                        await self._page.check('input[name="CriteriuCautare"][value="numar"]', timeout=3000)
+                        await asyncio.sleep(0.3)
+                    except Exception:
+                        pass
+
+                    # Completează numărul de înmatriculare
+                    plate_filled = False
+                    for sel in ['#SerieNumar', 'input[name="SerieNumar"]'] + PLATE_SELECTORS:
+                        try:
+                            el = self._page.locator(sel).first
+                            if await el.is_visible(timeout=1000):
+                                await el.fill(plate)
+                                plate_filled = True
+                                break
+                        except Exception:
+                            pass
+
+                    if not plate_filled:
+                        return {"success": False, "error": "Câmpul de înmatriculare nu a fost găsit"}
+
+                    # Bifează GDPR
+                    try:
+                        cb = self._page.locator('#EsteDeAcordCuConditiile').first
+                        if not await cb.is_checked(timeout=2000):
+                            await cb.click()
+                    except Exception:
+                        pass
+
+                    # Browserul e vizibil — așteptăm ca brokerul să rezolve CAPTCHA (max 90s)
+                    solved = await self._wait_for_captcha_solution(timeout_s=90)
+                    if not solved:
+                        screenshot_b64 = await self._take_screenshot_b64()
+                        return {
+                            "success": False,
+                            "captcha_detected": True,
+                            "error": "Timeout așteptând rezolvarea CAPTCHA (90s). Completează CAPTCHA și trimite din nou.",
+                            "screenshot_b64": screenshot_b64,
+                        }
+
+                    # Apasă butonul Cauta (span, nu button)
+                    try:
+                        await self._page.click('span.btn-cauta-polita', timeout=5000)
+                    except Exception:
+                        try:
+                            await self._page.evaluate("document.querySelector('span.btn-cauta-polita').click()")
+                        except Exception:
+                            pass
+
+                    await asyncio.sleep(4)
+                    await self._page.wait_for_load_state("domcontentloaded", timeout=15000)
+                    return await self._parse_rca_results(plate)
+
+            # Nu e CAPTCHA — completează formularul normal
+            # Selectează radio 'numar'
             try:
-                radio = self._page.locator('#numar')
-                if await radio.is_visible(timeout=2000):
-                    await radio.click()
-                    await asyncio.sleep(0.3)
+                await self._page.check('input[name="CriteriuCautare"][value="numar"]', timeout=3000)
+                await asyncio.sleep(0.3)
             except Exception:
                 pass
 
-            # Fill plate number
+            # Completează numărul de înmatriculare
             plate_filled = False
-            for sel in AIDA_PLATE_SELECTORS + PLATE_SELECTORS:
+            for sel in ['#SerieNumar', 'input[name="SerieNumar"]'] + PLATE_SELECTORS:
                 try:
                     el = self._page.locator(sel).first
                     if await el.is_visible(timeout=1000):
-                        await el.fill("")
                         await el.fill(plate)
                         plate_filled = True
-                        await asyncio.sleep(0.3)
                         break
                 except Exception:
                     pass
@@ -219,22 +332,22 @@ class CEDAMConnector(GenericWebConnector):
             if not plate_filled:
                 return {"success": False, "error": "Câmpul de înmatriculare nu a fost găsit pe AIDA"}
 
-            # Check GDPR checkbox
-            for sel in AIDA_PRIVACY_SELECTORS:
+            # Bifează GDPR
+            try:
+                cb = self._page.locator('#EsteDeAcordCuConditiile').first
+                if not await cb.is_checked(timeout=2000):
+                    await cb.click()
+            except Exception:
+                pass
+
+            # Apasă Cauta
+            try:
+                await self._page.click('span.btn-cauta-polita', timeout=5000)
+            except Exception:
                 try:
-                    cb = self._page.locator(sel).first
-                    if await cb.is_visible(timeout=1000):
-                        if not await cb.is_checked():
-                            await cb.click()
-                            await asyncio.sleep(0.3)
-                        break
+                    await self._page.evaluate("document.querySelector('span.btn-cauta-polita').click()")
                 except Exception:
                     pass
-
-            # Submit (browser vizibil poate completa CAPTCHA manual sau fără CAPTCHA)
-            submitted = await self._submit_search()
-            if not submitted:
-                await self._page.evaluate("document.querySelector('form').submit()")
 
             await asyncio.sleep(4)
             await self._page.wait_for_load_state("domcontentloaded", timeout=15000)
@@ -274,6 +387,16 @@ class CEDAMConnector(GenericWebConnector):
             # Wait for results
             await asyncio.sleep(3)
             await self._page.wait_for_load_state("domcontentloaded", timeout=15000)
+
+            # Detectează reCAPTCHA prin iframe (nu din text)
+            if await self._has_recaptcha():
+                screenshot_b64 = await self._take_screenshot_b64()
+                return {
+                    "success": False,
+                    "captcha_detected": True,
+                    "error": f"Portalul {base_url} cere reCAPTCHA",
+                    "screenshot_b64": screenshot_b64,
+                }
 
             # Extract results
             return await self._parse_rca_results(plate)
@@ -337,11 +460,30 @@ class CEDAMConnector(GenericWebConnector):
         Parsează rezultatele din pagina de după căutare.
         Extrage: valabilitate, dată expirare, asigurător, număr poliță.
         """
-        # Get full page text
+        # Get full page text AND HTML (AIDA ascunde unele date în atribute HTML)
         try:
             page_text = await self._page.inner_text("body", timeout=10000)
         except Exception as e:
             return {"success": False, "error": f"Nu s-a putut citi pagina: {e}"}
+
+        # Try to extract additional data from HTML attributes (AIDA stochează date în data-* attrs)
+        try:
+            page_html = await self._page.content()
+            # AIDA result rows: look for data-* attributes with policy info
+            aida_rows = re.findall(
+                r'data-(?:numar-polita|polita|nr-polita|policy)[^=]*=["\']([^"\']+)["\']',
+                page_html, re.IGNORECASE
+            )
+            # Look for table cells with dates and insurer names
+            td_texts = re.findall(r'<td[^>]*>\s*([^<]{3,80})\s*</td>', page_html)
+            if td_texts:
+                page_text = page_text + "\n" + "\n".join(td_texts)
+            # Look for specific AIDA result structure
+            result_divs = re.findall(
+                r'coordonate[^<]*</[^>]+>\s*(?:<[^>]+>)*([^<]{5,200})', page_html, re.IGNORECASE
+            )
+        except Exception:
+            pass
 
         # Check for "not found" patterns
         no_result_patterns = [
@@ -404,29 +546,47 @@ class CEDAMConnector(GenericWebConnector):
             insured_sum = f"{sum_match.group(1)} {sum_match.group(2).upper()}"
 
         # Check validity indicators
-        valid_patterns = ["valabilă", "activă", "valid", "active", "în vigoare"]
+        # AIDA specific: "are o polita RCA valida" = valid, "nu are o polita RCA" = invalid
+        aida_valid = "are o polita rca valida" in page_lower or "are o polita rca activa" in page_lower
+        aida_invalid = (
+            "nu are o polita rca" in page_lower
+            or "nu exista polita" in page_lower
+            or "nu s-a gasit" in page_lower
+            or "nu există" in page_lower
+        )
+
+        valid_patterns = ["valabilă", "activă", "valid", "active", "în vigoare", "valida"]
         expired_patterns = ["expirată", "expired", "expirat", "invalida", "inactivă"]
 
         rca_valid = None
-        for pattern in valid_patterns:
-            if pattern in page_lower:
-                rca_valid = True
-                break
-        if rca_valid is None:
-            for pattern in expired_patterns:
+        if aida_valid:
+            rca_valid = True
+        elif aida_invalid:
+            rca_valid = False
+        else:
+            for pattern in valid_patterns:
                 if pattern in page_lower:
-                    rca_valid = False
+                    rca_valid = True
                     break
+            if rca_valid is None:
+                for pattern in expired_patterns:
+                    if pattern in page_lower:
+                        rca_valid = False
+                        break
 
-        # Parse expiry date
-        today = date.today()
-        days_until_expiry = None
+        # AIDA stochează data expirării ca imagine — nu poate fi extras din text
+        # Datele găsite în text sunt de obicei data referinței (azi), nu data expirării
+        # Marcăm expiry_date ca None și notăm că detaliile sunt în imagini
         expiry_date_str = None
+        days_until_expiry = None
+        today = date.today()
+
+        # Dacă nu e AIDA sau dacă găsim date care nu sunt azi, le luăm
         for date_str in dates_found:
             for fmt in ["%d.%m.%Y", "%d-%m-%Y", "%d/%m/%Y", "%Y-%m-%d", "%Y.%m.%d"]:
                 try:
                     d = datetime.strptime(date_str, fmt).date()
-                    if d >= today:
+                    if d > today:  # Strict viitor = dată expirare reală
                         days_until_expiry = (d - today).days
                         expiry_date_str = d.isoformat()
                         break
@@ -435,10 +595,19 @@ class CEDAMConnector(GenericWebConnector):
             if expiry_date_str:
                 break
 
-        return {
+        # Note about AIDA image-based details
+        details_note = None
+        if aida_valid and not expiry_date_str:
+            details_note = (
+                "Detaliile poliței (asigurător, număr poliță, dată expirare) sunt "
+                "afișate de AIDA ca imagini și nu pot fi extrase automat. "
+                "Vizualizați browserul pentru detalii complete."
+            )
+
+        result = {
             "success": True,
             "data_found": True,
-            "rca_valid": rca_valid if rca_valid is not None else True,
+            "rca_valid": rca_valid if rca_valid is not None else (True if aida_valid else None),
             "policy_number": policy_numbers[0] if policy_numbers else None,
             "insurer": found_insurer,
             "coverage_type": found_coverage,
@@ -448,6 +617,9 @@ class CEDAMConnector(GenericWebConnector):
             "all_dates_found": dates_found[:5],
             "raw_text": page_text[:3000],
         }
+        if details_note:
+            result["note"] = details_note
+        return result
 
     async def check_multiple_plates(self, plates: list[str]) -> list[dict]:
         """

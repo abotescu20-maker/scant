@@ -28,7 +28,8 @@ BROKER_TOOLS = [
     # Reports & compliance
     "broker_asf_summary", "broker_bafin_summary",
     "broker_check_rca_validity", "broker_cross_sell",
-    "broker_calculate_premium", "broker_compliance_check",
+    "broker_calculate_premium", "broker_compare_premiums_live", "broker_scrape_rca_prices",
+    "broker_compliance_check",
     # Conversations
     "broker_save_conversation",
     # Web & desktop automation

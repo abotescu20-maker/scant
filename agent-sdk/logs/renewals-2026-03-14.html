@@ -1,93 +1,89 @@
 <!DOCTYPE html>
 <html>
-<head>
-    <style>
-        table { border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background-color: #f2f2f2; font-weight: bold; }
-        .urgent { background-color: #ffebee; }
-        .high-priority { background-color: #fff3e0; }
-        .medium { background-color: #f9f9f9; }
-    </style>
-</head>
 <body>
-    <h3>Raport Reînnoiri Polițe de Asigurare - 14 martie 2026</h3>
-    <p><strong>Total polițe:</strong> 5 | <strong>Urgente (< 7 zile):</strong> 1</p>
-    
-    <table>
-        <thead>
-            <tr>
-                <th>Client</th>
-                <th>Tip Polița</th>
-                <th>Data Expirare</th>
-                <th>Zile Rămase</th>
-                <th>Primă (RON/EUR)</th>
-                <th>Acțiune Necesară</th>
-                <th>Contact</th>
-                <th>Urgență</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr class="urgent">
-                <td><strong>Gheorghe Popa</strong></td>
-                <td><strong>RCA</strong></td>
-                <td>18 martie 2026</td>
-                <td><strong>3</strong></td>
-                <td>1,500 RON</td>
-                <td>APEL URGENT! Reînnoire imediată - risc amendă</td>
-                <td>+40733445566<br>gheorghe.popa@gmail.com</td>
-                <td><span style="color: red;"><strong>CRITIC</strong></span></td>
-            </tr>
-            <tr class="high-priority">
-                <td><strong>SC Logistic Trans SRL</strong></td>
-                <td><strong>RCA Flotă</strong></td>
-                <td>7 aprilie 2026</td>
-                <td>23</td>
-                <td><strong>18,400 RON</strong></td>
-                <td>Pregătire ofertă reînnoire - valoare mare</td>
-                <td>+40721987654<br>office@logistictrans.ro</td>
-                <td><span style="color: orange;"><strong>RIDICATĂ</strong></span></td>
-            </tr>
-            <tr class="medium">
-                <td>Ion Gheorghe</td>
-                <td>CASCO</td>
-                <td>26 martie 2026</td>
-                <td>11</td>
-                <td>7,890 RON</td>
-                <td>Contact săptămâna aceasta pentru ofertă</td>
-                <td>+40722334455<br>ion.gheorghe@hotmail.com</td>
-                <td><span style="color: #ff9800;">MEDIE</span></td>
-            </tr>
-            <tr class="medium">
-                <td>Kristina Weber</td>
-                <td>Responsabilitate Civilă</td>
-                <td>2 aprilie 2026</td>
-                <td>18</td>
-                <td>2,100 EUR</td>
-                <td>Contact în română sau germană pentru reînnoire</td>
-                <td>+4989123456789<br>k.weber@weber-bau.de</td>
-                <td><span style="color: #2196F3;">NORMALĂ</span></td>
-            </tr>
-            <tr class="medium">
-                <td>Maria Popescu</td>
-                <td>CASCO</td>
-                <td>17 aprilie 2026</td>
-                <td>33</td>
-                <td>5,200 RON</td>
-                <td>Planificare reînnoire în următoarele 2 săptămâni</td>
-                <td>+40730456789<br>maria.popescu@yahoo.com</td>
-                <td><span style="color: #4CAF50;">SCĂZUTĂ</span></td>
-            </tr>
-        </tbody>
-    </table>
-    
-    <div style="margin-top: 20px; padding: 10px; background-color: #e3f2fd; border-radius: 5px;">
-        <h4>Acțiuni Imediate:</h4>
-        <ol>
-            <li><strong>Gheorghe Popa:</strong> APEL URGENT astăzi - RCA expiră în 3 zile!</li>
-            <li><strong>SC Logistic Trans:</strong> Prioritate maximă - flotă RCA 18,400 RON</li>
-            <li><strong>Ion Gheorghe:</strong> Contact în maxim 2 zile - CASCO expirare 26 martie</li>
-        </ol>
-    </div>
+<h2>Raport Prioritar - Reînnoiri Polițe de Asigurare</h2>
+<p><strong>Data analiză:</strong> 14 martie 2026 | <strong>Total polițe:</strong> 5 | <strong>Urgente (&lt;7 zile):</strong> 1</p>
+
+<table border="1" style="border-collapse: collapse; width: 100%; font-size: 12px;">
+<thead>
+<tr style="background-color: #f2f2f2;">
+<th>Prioritate</th>
+<th>Client</th>
+<th>Tip Poliță</th>
+<th>Expirare</th>
+<th>Zile Rămase</th>
+<th>Primă</th>
+<th>Acțiuni Necesare</th>
+<th>Contact</th>
+<th>Urgență</th>
+</tr>
+</thead>
+<tbody>
+<tr style="background-color: #ffcccc;">
+<td><strong>1</strong></td>
+<td>Gheorghe Popa</td>
+<td><strong>RCA</strong></td>
+<td>18.03.2026</td>
+<td><strong>3</strong></td>
+<td>1.500 RON</td>
+<td>Contactare IMEDIATĂ - risc amendă</td>
+<td>+40733445566<br>gheorghe.popa@gmail.com</td>
+<td><span style="color: red;"><strong>CRITICĂ</strong></span></td>
+</tr>
+<tr style="background-color: #ffffcc;">
+<td><strong>2</strong></td>
+<td>SC Logistic Trans SRL</td>
+<td><strong>RCA</strong></td>
+<td>07.04.2026</td>
+<td>23</td>
+<td><strong>18.400 RON</strong></td>
+<td>Pregătire ofertă - valoare mare</td>
+<td>+40721987654<br>office@logistictrans.ro</td>
+<td><span style="color: orange;">MARE</span></td>
+</tr>
+<tr>
+<td><strong>3</strong></td>
+<td>Ion Gheorghe</td>
+<td>CASCO</td>
+<td>26.03.2026</td>
+<td>11</td>
+<td>7.890 RON</td>
+<td>Contact săptămâna aceasta</td>
+<td>+40722334455<br>ion.gheorghe@hotmail.com</td>
+<td><span style="color: orange;">MARE</span></td>
+</tr>
+<tr>
+<td>4</td>
+<td>Maria Popescu</td>
+<td>CASCO</td>
+<td>17.04.2026</td>
+<td>33</td>
+<td>5.200 RON</td>
+<td>Programare întâlnire</td>
+<td>+40730456789<br>maria.popescu@yahoo.com</td>
+<td><span style="color: green;">MEDIE</span></td>
+</tr>
+<tr>
+<td>5</td>
+<td>Kristina Weber</td>
+<td>LIABILITY</td>
+<td>02.04.2026</td>
+<td>18</td>
+<td>2.100 EUR</td>
+<td>Kontakt in 1 Woche</td>
+<td>+4989123456789<br>k.weber@weber-bau.de</td>
+<td><span style="color: green;">MEDIE</span></td>
+</tr>
+</tbody>
+</table>
+
+<h3>Acțiuni Immediate:</h3>
+<ul>
+<li><strong>ASTĂZI:</strong> Sună urgent la Gheorghe Popa (+40733445566) pentru RCA - doar 3 zile!</li>
+<li><strong>Săptămâna aceasta:</strong> Contact Ion Gheorghe și SC Logistic Trans pentru pregătire oferte</li>
+<li><strong>Săptămâna viitoare:</strong> Programare Maria Popescu și contact Kristina Weber</li>
+</ul>
+
+<p><em>Broker: Alex | Generat automat: 14.03.2026</em></p>
 </body>
 </html>

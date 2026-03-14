@@ -26,7 +26,7 @@ import platform
 import sys
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 import requests
@@ -90,7 +90,7 @@ class AlexAPIClient:
                 "task_id": task_id,
                 "agent_id": self.agent_id,
                 "result": result,
-                "completed_at": datetime.utcnow().isoformat(),
+                "completed_at": datetime.now(timezone.utc).isoformat(),
             }
             r = self.session.post(
                 self._url("/cu/results"),
@@ -110,7 +110,7 @@ class AlexAPIClient:
                 "platform": platform.system(),
                 "python": platform.python_version(),
                 "connectors": connectors,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
             r = self.session.post(
                 self._url("/cu/heartbeat"),
@@ -174,16 +174,47 @@ class TaskExecutor:
         except Exception as e:
             result = {"success": False, "error": str(e)}
 
+        # ── CAPTCHA auto-retry with visible browser ─────────────────────────
+        # If CAPTCHA was detected in headless mode, automatically retry with a
+        # visible browser so the broker can complete the challenge manually.
+        if result.get("captcha_detected") and self.config.get("headless_browser", True):
+            log.warning(f"[Task {task_id[:8]}] CAPTCHA detected — retrying with visible browser")
+            log.info(f"[Task {task_id[:8]}] ⚠️  Browserul se va deschide pe ecranul tău. Completează CAPTCHA, apoi apasă verifică.")
+            try:
+                visible_connector = await self._get_or_create_connector(connector_name, headless=False)
+                retry_result = await asyncio.wait_for(
+                    self._run_action(visible_connector, action, params, credentials),
+                    timeout=max(timeout, 120),  # give more time for manual CAPTCHA
+                )
+                retry_result["visible_browser_used"] = True
+                if retry_result.get("captcha_detected"):
+                    # Still captcha after visible browser — broker needs to interact
+                    log.warning(f"[Task {task_id[:8]}] CAPTCHA still present — broker must complete it in browser window")
+                    retry_result["message"] = (
+                        "Browserul s-a deschis pe ecranul tău. "
+                        "Completează CAPTCHA în fereastra de browser, "
+                        "apoi trimite din nou cererea în Alex."
+                    )
+                result = retry_result
+            except Exception as e:
+                log.error(f"[Task {task_id[:8]}] Visible browser retry failed: {e}")
+                result["visible_browser_error"] = str(e)
+
         log.info(f"[Task {task_id[:8]}] done — success={result.get('success')}")
         return result
 
-    async def _get_or_create_connector(self, name: str):
-        """Get cached connector or create new one."""
-        if name not in self._active_connectors:
-            connector = create_connector(
-                name,
-                headless=self.config.get("headless_browser", True),
-            )
+    async def _get_or_create_connector(self, name: str, headless: bool | None = None):
+        """Get cached connector or create new one.
+
+        headless=None → use config default
+        headless=False → force visible browser (used for CAPTCHA retry)
+        """
+        # Use a different cache key for visible-mode connectors
+        cache_key = name if headless is not False else f"{name}:visible"
+
+        if cache_key not in self._active_connectors:
+            effective_headless = headless if headless is not None else self.config.get("headless_browser", True)
+            connector = create_connector(name, headless=effective_headless)
             if connector is None:
                 raise ValueError(f"Unknown connector: '{name}'. Available: {list(self._active_connectors.keys())}")
 
@@ -194,10 +225,11 @@ class TaskExecutor:
                 connector.api_key = self.config.get("anthropic_api_key", "")
 
             await connector.setup()
-            self._active_connectors[name] = connector
-            log.info(f"Connector '{name}' started")
+            self._active_connectors[cache_key] = connector
+            mode = "visible" if effective_headless is False else "headless"
+            log.info(f"Connector '{name}' started ({mode})")
 
-        return self._active_connectors[name]
+        return self._active_connectors[cache_key]
 
     async def _run_action(self, connector, action: str, params: dict, credentials: dict) -> dict:
         """Dispatch to the correct connector method."""
@@ -260,13 +292,13 @@ class TaskExecutor:
             return {"success": False, "error": f"Unknown action: '{action}'"}
 
     async def teardown_all(self):
-        """Close all active connectors."""
-        for name, connector in self._active_connectors.items():
+        """Close all active connectors (including visible-browser variants)."""
+        for cache_key, connector in self._active_connectors.items():
             try:
                 await connector.teardown()
-                log.info(f"Connector '{name}' closed")
+                log.info(f"Connector '{cache_key}' closed")
             except Exception as e:
-                log.warning(f"Error closing connector '{name}': {e}")
+                log.warning(f"Error closing connector '{cache_key}': {e}")
         self._active_connectors.clear()
 
 

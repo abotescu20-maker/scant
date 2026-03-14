@@ -1,9 +1,11 @@
 # Alex Agent SDK — Raport Testare Completă
 
 **Data:** 14 martie 2026
-**Versiune:** 2.0
-**Timp execuție total:** 2 min 18 sec (toate 7 task-urile)
-**API calls Claude:** 7 | **API calls Alex:** 10 | **Erori:** 0
+**Versiune:** 3.0
+**Timp execuție total:** 2 min 40 sec (toate 7 task-urile)
+**API calls Claude:** 7 | **API calls Alex:** 12 | **Erori:** 0
+**Agent local:** ✅ Online (1 agent, 10 conectori)
+**Cloud Storage:** ✅ GCS — 6/6 rapoarte uploadate
 
 ---
 
@@ -125,21 +127,23 @@
 **Ce generează:**
 - Verifică câți agenți locali sunt online (CEDAM, PAID, Allianz, Playwright)
 - Dispatch verificări RCA prin portalul CEDAM
-- Raport status cu capabilitățile disponibile
-- Instrucțiuni de pornire dacă agentul nu e conectat
+- Screenshot desktop pentru verificare conectivitate
+- Raport complet cu rezultatele verificărilor
 
-**Testare (0 agenți online — normal, agentul nu era pornit):**
-- A detectat corect: 0 agenți online
-- A generat raport HTML cu instrucțiuni: "Pornește agentul cu python main.py start"
-- Listează capabilitățile disponibile: CEDAM RCA, PAID portal, Allianz, Excel, Desktop automation
+**Testare (1 agent online — END-TO-END REAL):**
+- ✅ Agent detectat: `Andreis-MacBook-Air.local-61195a16` (Darwin, Python 3.12.11)
+- ✅ 10 conectori activi: web_generic, web, desktop_generic, desktop, cedam, anthropic_computer_use, claude_computer_use, paid, allianz, allianz_ro
+- ✅ Dispatch navigate task → agent execută → rezultat success
+- ✅ Dispatch screenshot task → agent captură 114KB screenshot
+- ✅ Raport HTML cu toate rezultatele și capabilitățile
 
-**Cum va funcționa cu agent live:**
-1. Orchestratorul verifică `/cu/status` → agentul e online cu conectori: cedam, web_generic
-2. Preia polițele RCA urgente → dispatch `check_rca` per poliță prin `/cu/enqueue`
-3. Poll `/cu/result/{id}` până primește rezultat (timeout 60s)
-4. Include rezultatele verificărilor RCA în raportul de sincronizare
+**Flux end-to-end confirmat:**
+1. Orchestrator → `GET /cu/status` → 1 agent online, 10 conectori ✅
+2. Orchestrator → `POST /cu/enqueue` (navigate) → agent execută în 2s ✅
+3. Orchestrator → `POST /cu/enqueue` (screenshot) → agent captură 114KB ✅
+4. Claude generează raport cu rezultate reale ✅
 
-**Output:** `local-agent-status-2026-03-14.html` (1.5 KB)
+**Output:** `local-agent-sync-2026-03-14.html`
 
 ---
 
@@ -149,24 +153,25 @@
 
 **Ce generează:**
 - Scanează directorul de rapoarte pentru fișierele zilei
-- Încarcă fiecare raport în Google Drive (dacă configurat)
-- Încarcă fiecare raport în SharePoint (dacă configurat)
-- Rezumat HTML cu statusul fiecărui upload
+- Încarcă fiecare raport în **Google Cloud Storage** (GCS)
+- Opțional: și în SharePoint (dacă configurat)
+- Rezumat HTML cu statusul fiecărui upload + linkuri publice
 
-**Testare (cloud storage neconfigurat — normal pentru demo):**
-- A detectat 5 rapoarte HTML generate azi
-- A raportat corect: Google Drive neconfigurat, SharePoint neconfigurat
-- A generat rezumat cu instrucțiuni de configurare
-- Cu cloud storage configurat: ar genera linkuri partajabile per raport
+**Testare (GCS configurat — UPLOAD REAL END-TO-END):**
+- ✅ A detectat 6 rapoarte HTML generate azi
+- ✅ 6/6 rapoarte uploadate cu succes pe GCS
+- ✅ Linkuri publice HTTPS funcționale
+- ✅ Rezumat HTML cu statusul fiecărui upload
 
-**Fișiere detectate pentru upload:**
-1. `renewals-2026-03-14.html` (2.4 KB)
-2. `local-agent-status-2026-03-14.html` (1.5 KB)
-3. `claims-followup-2026-03-14.html` (3.9 KB)
-4. `morning-brief-2026-03-14.html` (1.9 KB)
-5. `cross-sell-2026-03-14.html` (5.2 KB)
+**Fișiere uploadate pe GCS:**
+1. ✅ `renewals-2026-03-14.html` → `https://storage.googleapis.com/alex-broker-reports/2026-03-14/renewals-2026-03-14.html`
+2. ✅ `upload-summary-2026-03-14.html` → `https://storage.googleapis.com/alex-broker-reports/2026-03-14/upload-summary-2026-03-14.html`
+3. ✅ `local-agent-sync-2026-03-14.html` → `https://storage.googleapis.com/alex-broker-reports/2026-03-14/local-agent-sync-2026-03-14.html`
+4. ✅ `claims-followup-2026-03-14.html` → `https://storage.googleapis.com/alex-broker-reports/2026-03-14/claims-followup-2026-03-14.html`
+5. ✅ `morning-brief-2026-03-14.html` → `https://storage.googleapis.com/alex-broker-reports/2026-03-14/morning-brief-2026-03-14.html`
+6. ✅ `cross-sell-2026-03-14.html` → `https://storage.googleapis.com/alex-broker-reports/2026-03-14/cross-sell-2026-03-14.html`
 
-**Output:** `upload-summary-2026-03-14.html` (0.8 KB)
+**Output:** `upload-summary-2026-03-14.html`
 
 ---
 
@@ -175,20 +180,21 @@
 ### Local Agent Bridge
 | Funcție | Status | Notă |
 |---------|--------|------|
-| `GET /cu/status` | ✅ | Verifică agenți online |
-| `POST /cu/enqueue` | ✅ | Dispatch task-uri desktop |
+| `GET /cu/status` | ✅ | 1 agent online, 10 conectori |
+| `POST /cu/enqueue` | ✅ | Navigate + screenshot confirmate |
 | `GET /cu/result/{id}` | ✅ | Poll rezultate cu timeout |
-| CEDAM RCA dispatch | ⏳ | Necesită agent local pornit |
-| Portal screenshots | ⏳ | Necesită agent local pornit |
+| Portal navigate | ✅ | Agent execută în 2s |
+| Desktop screenshot | ✅ | 114KB capturat cu succes |
 
 ### Cloud Storage
 | Funcție | Status | Notă |
 |---------|--------|------|
-| Google Drive upload | ⏳ | Necesită service account |
-| Google Drive list | ⏳ | Necesită service account |
-| SharePoint upload | ⏳ | Necesită Azure AD app |
-| SharePoint list | ⏳ | Necesită Azure AD app |
-| Upload summary report | ✅ | Funcționează |
+| GCS upload | ✅ | 6/6 rapoarte uploadate |
+| GCS public HTTPS | ✅ | Linkuri accesibile din browser |
+| GCS bucket config | ✅ | `alex-broker-reports` europe-west3 |
+| SharePoint upload | ⏳ | Necesită cont organizațional cu admin consent |
+| OneDrive upload | ❌ | Blocat: cont UPB necesită admin approval |
+| Upload summary report | ✅ | Funcționează cu rezultate reale |
 
 ### n8n Webhooks
 | Eveniment | Status | Notă |
@@ -202,6 +208,21 @@
 | `task-failed` | ✅ | La erori |
 
 *Nota: ⏳ = cod funcțional, necesită configurare credențiale pentru producție*
+*❌ = blocat de factori externi (admin approval UPB)*
+
+### Microsoft OneDrive/SharePoint — Status Integrare
+
+**Situație:** Integrarea cu Microsoft OneDrive/SharePoint este **blocată** de politica de admin a Universității Politehnica din București (UPB).
+
+**Ce am încercat:**
+1. Azure Portal → App Registrations → cont student nu are acces (Error 401)
+2. Device code flow cu Microsoft Graph Command Line Tools → "Need admin approval"
+3. UPB tenant-ul necesită admin consent pentru orice app Microsoft Graph
+
+**Soluții pentru producție:**
+- Folosirea unui **cont Microsoft personal** (Outlook/Hotmail) — nu necesită admin approval
+- Sau: obținerea admin consent de la IT-ul organizației client
+- Sau: crearea unui **Azure AD App Registration** pe un tenant propriu (non-educațional)
 
 ---
 

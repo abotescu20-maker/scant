@@ -70,9 +70,9 @@ from insurance_broker_mcp.tools.claims_tools import log_claim_fn, get_claim_stat
 from insurance_broker_mcp.tools.compliance_tools import asf_summary_fn, bafin_summary_fn, check_rca_validity_fn
 from insurance_broker_mcp.tools.email_tools import send_offer_email_fn
 from insurance_broker_mcp.tools.analytics_tools import cross_sell_fn
-from insurance_broker_mcp.tools.calculator_tools import calculate_premium_fn
+from insurance_broker_mcp.tools.calculator_tools import calculate_premium_fn, compare_premiums_live_fn
 from insurance_broker_mcp.tools.compliance_check_tools import compliance_check_fn
-from insurance_broker_mcp.tools.web_tools import check_rca_fn as _playwright_check_rca_fn, browse_web_fn as _playwright_browse_web_fn
+from insurance_broker_mcp.tools.web_tools import check_rca_fn as _playwright_check_rca_fn, browse_web_fn as _playwright_browse_web_fn, scrape_rca_prices_fn as _scrape_rca_prices_fn
 from insurance_broker_mcp.tools.drive_tools import (
     upload_to_drive_fn, list_drive_files_fn, get_drive_link_fn,
     sp_upload_fn, sp_list_fn, sp_get_link_fn,
@@ -511,10 +511,11 @@ You talk naturally with brokers in whatever language they use (Romanian, English
 - broker_bafin_summary — raport lunar BaFin (Germania)
 - broker_check_rca_validity — verifică valabilitate RCA
 - broker_cross_sell — analizează portofoliul clientului și sugerează produse lipsă
-- broker_calculate_premium — estimează prima de asigurare (RCA/CASCO) pe baza factorilor de risc
+- broker_compare_premiums_live — compară prețurile RCA/CASCO de la TOȚI asigurătorii (Allianz, Generali, Omniasig, Groupama, Uniqa, Asirom, Euroins, Grawe). Returnează tabel sortat cel mai ieftin primul. Folosește oricând brokerul întreabă despre prețuri RCA/CASCO, comparații, cel mai ieftin asigurător. Tarife orientative 2024-2025 ASF.
 - broker_compliance_check — verifică completitudinea dosarului client (documente, polițe, conformitate)
 - broker_save_conversation — salvează și asociază conversația curentă cu un client (pentru istoric). Apelează când brokerul spune "salvează", "linkuiește la Ionescu", etc.
 - broker_check_rca — verifică RCA în timp real pe portalul AIDA/BAAR via browser headless pe server (NU necesită agent local). Returnează: rca_valid, expiry_date, insurer, policy_number, coverage_type, insured_sum, days_until_expiry, captcha_blocked, from_cache (cache TTL 6h), screenshot_b64 (la eșec).
+- broker_scrape_rca_prices — **prețuri RCA REALE** via pint.ro (agregator): introduci numărul de înmatriculare, returnează oferte reale de la asigurători, sortat cel mai ieftin primul. Folosește când brokerul are numărul de înmatriculare și vrea prețuri reale. Dacă eșuează, fallback automat la broker_compare_premiums_live.
 - broker_browse_web — accesează orice URL public și extrage text sau tabele (NU necesită agent local)
 - broker_computer_use_status — verifică dacă agentul local e conectat (necesar doar pentru desktop apps sau intranet)
 - broker_run_task — execută task pe calculatorul angajatului. Connectors disponibili: `desktop_generic` (desktop apps, rețea internă), `cedam` (verificare RCA via portal ASF/CEDAM), `web_generic` (orice site web via browser local), `anthropic_computer_use` (computer use avansat cu Claude Vision).
@@ -526,7 +527,7 @@ You talk naturally with brokers in whatever language they use (Romanian, English
 - broker_sharepoint_get_link — obține linkul unui fișier deja încărcat în SharePoint
 - broker_search_knowledge — căutare semantică în knowledge base (RAG): produse, ghiduri daune, conformitate, FAQ. Folosește pentru întrebări vagi/naturale despre acoperiri, excluderi, proceduri.
 - broker_upload_document — încarcă PDF/imagine în Files API Anthropic pentru analiză persistentă. Returnează file_id reutilizabil.
-- broker_analyze_document — analizează document cu Claude Vision: polițe scanate, poze daune, facturi, constatare amiabilă, buletin. Acceptă path local SAU file_id.
+- broker_analyze_document — **[BETA — în testare]** analizează document cu Claude Vision: polițe scanate, facturi, constatare amiabilă, buletin. Acceptă path local SAU file_id. IMPORTANT: rezultatele pot fi inexacte — verificați manual datele extrase înainte de a le folosi. Analiza fotografiilor de daune (doc_type="claim_photo") este dezactivată în producție — disponibilă în Faza 2 după validare RAG.
 - broker_kb_status — starea knowledge base (număr chunks indexate, categorii)
 - broker_kb_reindex — re-indexează knowledge base (după adăugare produse noi sau actualizare docs/)
 - broker_list_output_files — listează ofertele/rapoartele generate și salvate local (PDF, TXT, XLSX, DOCX). Folosește când brokerul întreabă "ce oferte am generat?", "curăță fișierele vechi", "arată-mi ce am salvat".
@@ -544,10 +545,11 @@ You talk naturally with brokers in whatever language they use (Romanian, English
 - **Salvează în SharePoint (Microsoft 365)** → `broker_sharepoint_upload` — pentru firme pe M365
 - **Listează fișierele salvate** → `broker_drive_list` sau `broker_sharepoint_list`
 - **Întrebare vagă despre acoperiri/excluderi/proceduri** (ex: "ce acoperă CASCO?", "ce documente trebuie la daune Allianz?") → `broker_search_knowledge` ÎNAINTE de `broker_search_products`
-- **Broker uploadează un PDF/imagine** → `broker_upload_document` → obții file_id → `broker_analyze_document(file_id)` pentru extragere date
-- **Analizează poliță scanată** → `broker_analyze_document(doc_type="policy")` → extrage automat număr poliță, date, primă, acoperire
-- **Analizează poze daune** → `broker_analyze_document(doc_type="claim_photo")` → estimare daune + recomandare log_claim
-- **Procesează constatare amiabilă** → `broker_analyze_document(doc_type="constatare")` → extrage ambii șoferi + descrie dauna
+- **Broker uploadează un PDF/imagine** → `broker_upload_document` → obții file_id → `broker_analyze_document(file_id)` pentru extragere date (BETA — verificați rezultatele manual)
+- **Analizează poliță scanată** → `broker_analyze_document(doc_type="policy")` → extrage număr poliță, date, primă, acoperire (BETA)
+- **Analizează poze daune** → doc_type="claim_photo" este DEZACTIVAT în producție. Spune brokerului că această funcție este în testare și va fi disponibilă în Faza 2.
+- **Procesează constatare amiabilă** → `broker_analyze_document(doc_type="constatare")` → extrage ambii șoferi (BETA — verificați manual)
+- **Comparator prețuri RCA/CASCO** (orice variantă: "compară", "cât costă", "care e mai ieftin", "vreau să văd prețurile") → `broker_compare_premiums_live` → tabel complet cu toți asigurătorii sortat după preț
 - INTERZIS: action `fill_form` pentru sarcini desktop simple — folosește `run_task` cu instrucțiune naturală.
 - INTERZIS: action `run_task` când utilizatorul cere să deschizi o aplicație și să scrii text — folosește `open_app_and_type`.
 
@@ -559,6 +561,7 @@ You talk naturally with brokers in whatever language they use (Romanian, English
 - NEVER confirm or recommend a product without calling the tool first
 - If asked about products → call broker_search_products IMMEDIATELY, then show the real results
 - If asked about a client → call broker_search_clients or broker_get_client first
+- **NEVER say price comparison is unavailable** — `broker_compare_premiums_live` is ALWAYS available. Call it immediately for ANY RCA/CASCO price question.
 
 **Rule:** If you are about to mention a product name, insurer, price, or policy — STOP and call the tool instead.
 
@@ -828,18 +831,27 @@ TOOLS = [
         },
     },
     {
-        "name": "broker_calculate_premium",
-        "description": "Estimate insurance premium based on risk factors. Supports RCA and CASCO for Romania.",
+        "name": "broker_compare_premiums_live",
+        "description": (
+            "PRIMARY tool for ANY price comparison request. "
+            "Compare RCA or CASCO prices from ALL 8 major Romanian insurers simultaneously "
+            "(Allianz-Tiriac, Generali, Omniasig, Groupama, Uniqa, Asirom, Euroins, Grawe). "
+            "Returns a ranked comparison table sorted cheapest first, with annual premium, monthly cost, insurer rating, and price difference. "
+            "Use this for: 'compară prețurile', 'cât costă RCA', 'care e cel mai ieftin', 'vreau să văd toate prețurile', "
+            "'compara asiguratorii', 'compare prices', 'cheapest RCA', 'price comparison'. "
+            "Sources: market rates 2024-2025 based on public ASF data, updated quarterly."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "product_type": {"type": "string", "description": "RCA or CASCO"},
                 "age": {"type": "integer", "description": "Driver age (default 35)"},
                 "engine_cc": {"type": "integer", "description": "Engine capacity in cc (default 1600)"},
-                "bonus_malus_class": {"type": "string", "description": "B0-B14 or M1-M8 (default B0)"},
-                "zone": {"type": "string", "description": "City or Urban/Rural (default Urban)"},
-                "vehicle_value": {"type": "number", "description": "Vehicle value in RON (for CASCO)"},
-                "country": {"type": "string", "description": "RO or DE (default RO)"},
+                "bonus_malus_class": {"type": "string", "description": "Bonus-Malus class B0-B14 or M1-M8 (default B0)"},
+                "zone": {"type": "string", "description": "City or Urban/Rural — e.g. Bucuresti, Cluj, Urban, Rural (default Urban)"},
+                "vehicle_value": {"type": "number", "description": "Vehicle value in RON — required for CASCO"},
+                "country": {"type": "string", "description": "RO (default)"},
+                "insurers": {"type": "string", "description": "Optional: comma-separated list of specific insurers to compare (e.g. 'Allianz-Tiriac,Groupama'). Leave empty for all."},
             },
             "required": ["product_type"],
         },
@@ -916,6 +928,25 @@ TOOLS = [
                 "extract_type": {"type": "string", "description": "'text' (default) pentru text complet, 'table' pentru tabele HTML"},
             },
             "required": ["url"],
+        },
+    },
+    {
+        "name": "broker_scrape_rca_prices",
+        "description": (
+            "Obține prețuri RCA REALE de la asigurători via pint.ro (agregator de asigurări). "
+            "Input: numărul de înmatriculare al vehiculului. "
+            "pint.ro auto-completează datele vehiculului din numărul de înmatriculare și returnează "
+            "oferte reale de la asigurătorii parteneri. "
+            "Returnează tabel comparativ sortat cel mai ieftin primul, cu preț anual și lunar. "
+            "Cache TTL 2h. Folosește când brokerul are numărul de înmatriculare și vrea prețuri reale (nu estimări). "
+            "Fallback automat la broker_compare_premiums_live dacă scraping-ul eșuează."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "plate": {"type": "string", "description": "Numărul de înmatriculare (ex: B123ABC, CJ12XYZ, B 123 ABC)"},
+            },
+            "required": ["plate"],
         },
     },
     # ── Computer Use tools (local agent — for desktop apps and intranets) ──
@@ -1080,14 +1111,15 @@ TOOLS = [
     {
         "name": "broker_analyze_document",
         "description": (
+            "[BETA — în testare, verificați rezultatele manual] "
             "Analyze a document using Claude Vision. Accepts local file path OR file_id from broker_upload_document. "
             "Auto-extracts by doc_type: "
             "'policy' → policy number, dates, premium, coverage, exclusions; "
-            "'claim_photo' → damage zones, severity, repair estimate; "
             "'invoice' → vendor, items, totals; "
             "'constatare' → both drivers, damage, signatures (handles handwriting in RO/DE/EN); "
             "'id_card' → name, CNP/ID, address. "
-            "Returns structured markdown extraction."
+            "NOTE: doc_type='claim_photo' is DISABLED in production — under development for Phase 2. "
+            "Returns structured markdown extraction — always verify extracted data before use."
         ),
         "input_schema": {
             "type": "object",
@@ -1152,12 +1184,13 @@ TOOL_DISPATCH = {
     "broker_bafin_summary":      bafin_summary_fn,
     "broker_check_rca_validity": check_rca_validity_fn,
     "broker_cross_sell":         cross_sell_fn,
-    "broker_calculate_premium":  calculate_premium_fn,
+    "broker_compare_premiums_live":   compare_premiums_live_fn,
     "broker_compliance_check":   compliance_check_fn,
     "broker_save_conversation":  None,  # special — handled in agentic loop (needs session context)
     # Web automation (Playwright on Cloud Run — sync wrappers, run in thread pool)
     "broker_check_rca":          _playwright_check_rca_fn,
     "broker_browse_web":         _playwright_browse_web_fn,
+    "broker_scrape_rca_prices":  _scrape_rca_prices_fn,
     # Computer use tools — status is sync, run_task is async (handled in agentic loop)
     "broker_computer_use_status": None,  # set after function definition below
     "broker_run_task":            None,  # async — handled in agentic loop
@@ -1276,7 +1309,9 @@ async def _cu_run_task_async(
     if not agent_id:
         return (
             "⚠️ **Niciun agent local online.**\n\n"
-            "Porniți agentul local cu:\n```\ncd alex-local-agent\npython main.py start\n```"
+            "Pornește agentul local cu:\n"
+            "```\ncd /Users/andreibotescu/Desktop/insurance-broker-agent/alex-local-agent\n"
+            "python main.py start\n```"
         )
 
     # Enqueue task
@@ -1306,6 +1341,24 @@ async def _cu_run_task_async(
 
     # Wait for result with timeout
     result = await _cu_wait_result(task_id, timeout=timeout + 10)
+
+    if result.get("captcha_detected") and not result.get("success"):
+        visible_used = result.get("visible_browser_used", False)
+        if visible_used:
+            return (
+                "🔒 **CAPTCHA nerezolvat**\n\n"
+                "Browserul s-a deschis pe calculatorul tău. "
+                "Completează CAPTCHA în fereastra de browser, "
+                "apoi spune-mi să reîncerc verificarea."
+            )
+        else:
+            return (
+                "🔒 **Portalul AIDA cere CAPTCHA**\n\n"
+                "Agentul local va deschide un browser vizibil pe calculatorul tău. "
+                "Verifică dacă agentul rulează cu:\n"
+                "```\ncd /Users/andreibotescu/Desktop/insurance-broker-agent/alex-local-agent\npython main.py start\n```\n"
+                "Dacă rulează, încearcă din nou — browserul se va deschide și poți completa CAPTCHA manual."
+            )
 
     if not result.get("success"):
         error = result.get("error", "Eroare necunoscută")
@@ -2559,6 +2612,7 @@ async def on_message(message: cl.Message):
                             user_id=_meta["user_id"],
                             tokens=total_tokens,
                         )
+
                 break  # success
             except Exception as e:
                 last_error = str(e)

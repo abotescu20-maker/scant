@@ -657,3 +657,312 @@ def browse_web_fn(url: str, query: str = "", extract_type: str = "text") -> str:
     except Exception as e:
         result = {"success": False, "error": str(e)}
     return json.dumps(result, ensure_ascii=False, indent=2)
+
+
+# ── pint.ro RCA price comparator ──────────────────────────────────────────────
+#
+# pint.ro (agregator) returnează prețuri reale de la asigurătorii parteneri
+# pe baza numărului de înmatriculare. Nu cere CNP sau serie șasiu obligatoriu.
+# Datele sunt furnizate de asigurători prin API-ul agregatorul pint.ro.
+# Sursa: https://pint.ro/calculator-asigurare-rca
+#
+# Cache TTL: 2h (prețurile nu se schimbă frecvent în aceeași zi)
+
+_price_cache: dict = {}
+_PRICE_CACHE_TTL_HOURS = 2
+
+
+def _price_cache_get(plate: str) -> dict | None:
+    entry = _price_cache.get(plate.upper().replace(" ", ""))
+    if entry is None:
+        return None
+    age_hours = (datetime.utcnow() - entry["cached_at"]).total_seconds() / 3600
+    if age_hours > _PRICE_CACHE_TTL_HOURS:
+        del _price_cache[plate.upper().replace(" ", "")]
+        return None
+    return dict(entry["result"])
+
+
+def _price_cache_set(plate: str, result: dict) -> None:
+    _price_cache[plate.upper().replace(" ", "")] = {
+        "result": result,
+        "cached_at": datetime.utcnow(),
+    }
+
+
+async def _scrape_pint_rca_async(plate: str) -> dict:
+    """
+    Scrape pint.ro pentru prețuri RCA reale pe baza numărului de înmatriculare.
+    Parcurge formularul în 3 pași: vehicul → detalii client (minimal) → oferte.
+    Returnează lista de oferte cu asigurător + preț anual + preț lunar.
+    """
+    if not PLAYWRIGHT_AVAILABLE:
+        return {"success": False, "error": "Playwright nu este disponibil pe acest server."}
+
+    plate_norm = plate.upper().replace(" ", "").replace("-", "")
+    page, context = await _new_page()
+    try:
+        # ── Pasul 1: Detalii autovehicul ──────────────────────────────────────
+        await page.goto("https://pint.ro/calculator-asigurare-rca", wait_until="domcontentloaded", timeout=30000)
+        await page.wait_for_timeout(2500)
+
+        # Dismiss cookie banner via JS (CybotCookiebotDialogBodyButton)
+        await page.evaluate("""
+            () => {
+                const btns = document.querySelectorAll('button');
+                for (const b of btns) {
+                    const t = b.textContent.trim();
+                    if (t === 'Accepta' || t === 'Accept' || t === 'OK' || b.id.includes('Cookie')) {
+                        b.click(); return 'clicked ' + t;
+                    }
+                }
+            }
+        """)
+        await page.wait_for_timeout(1000)
+
+        # Completează numărul de înmatriculare via JS (bypass overlay issues)
+        await page.evaluate(f"""
+            () => {{
+                const inputs = document.querySelectorAll('input');
+                for (const inp of inputs) {{
+                    const ph = (inp.placeholder || '').toLowerCase();
+                    if (ph.includes('pozitia a') || ph.includes('nmatriculare')) {{
+                        inp.value = '{plate_norm}';
+                        inp.dispatchEvent(new Event('input', {{bubbles: true}}));
+                        inp.dispatchEvent(new Event('change', {{bubbles: true}}));
+                        return 'filled';
+                    }}
+                }}
+            }}
+        """)
+        await page.wait_for_timeout(500)
+
+        # Completat automat — auto-fill date vehicul după numărul de înmatriculare
+        try:
+            auto_btn = page.locator("text=Completati automat").first
+            if await auto_btn.is_visible(timeout=2000):
+                await auto_btn.click()
+                await page.wait_for_timeout(5000)  # așteptăm API call DRPCIV
+        except Exception:
+            pass
+
+        # Apasă "Înainte" via JS
+        await page.evaluate("""
+            () => {
+                const btns = document.querySelectorAll('button, a');
+                for (const b of btns) {
+                    if (b.textContent.includes('nainte')) { b.click(); return 'clicked Inainte'; }
+                }
+            }
+        """)
+        await page.wait_for_timeout(3000)
+
+        # ── Pasul 2: Detalii client (minim obligatoriu) ────────────────────────
+        await page.wait_for_timeout(2000)
+
+        # Data nașterii dacă e cerută
+        try:
+            dob_input = page.locator('input[type="date"], input[placeholder*="data"], input[name*="dataNastere"]').first
+            if await dob_input.is_visible(timeout=1500):
+                await dob_input.fill("1985-06-15")
+                await page.wait_for_timeout(300)
+        except Exception:
+            pass
+
+        # Apasă "Înainte" din nou via JS
+        await page.evaluate("""
+            () => {
+                const btns = document.querySelectorAll('button, a');
+                for (const b of btns) {
+                    if (b.textContent.includes('nainte')) { b.click(); return 'clicked Inainte 2'; }
+                }
+            }
+        """)
+        await page.wait_for_timeout(5000)  # așteptăm ofertele să se încarce
+
+        # ── Pasul 3: Oferte ────────────────────────────────────────────────────
+        await page.wait_for_load_state("domcontentloaded", timeout=15000)
+        await page.wait_for_timeout(3000)
+
+        # Extrage ofertele — pint.ro afișează carduri cu asigurător + preț
+        page_text = await page.inner_text("body", timeout=10000)
+        page_url = page.url
+
+        # Parse oferte din text
+        offers = _parse_pint_offers(page_text)
+
+        if not offers:
+            # Fallback: returnează text brut pentru debugging
+            return {
+                "success": False,
+                "plate": plate_norm,
+                "error": "Nu s-au putut extrage ofertele. Site-ul poate fi blocat sau a schimbat structura.",
+                "page_url": page_url,
+                "raw_snippet": page_text[:1500],
+            }
+
+        return {
+            "success": True,
+            "source": "pint.ro",
+            "plate": plate_norm,
+            "offers": offers,
+            "offer_count": len(offers),
+        }
+
+    except Exception as e:
+        return {"success": False, "plate": plate_norm, "error": str(e)}
+    finally:
+        await context.close()
+
+
+def _parse_pint_offers(text: str) -> list[dict]:
+    """
+    Parsează ofertele din textul paginii pint.ro.
+    pint.ro afișează: Asigurător | Preț anual | Preț lunar
+    """
+    offers = []
+    known_insurers = [
+        "Allianz", "Generali", "Omniasig", "Groupama", "Uniqa",
+        "Asirom", "Euroins", "Grawe", "Signal Iduna", "Gothaer",
+        "Certasig", "BCR", "Axeria",
+    ]
+
+    lines = text.split("\n")
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        insurer_found = None
+        for ins in known_insurers:
+            if ins.lower() in line.lower():
+                insurer_found = ins
+                break
+
+        if insurer_found:
+            # Caută prețul în liniile următoare (max 6 linii)
+            # Prima valoare RON mare = preț anual, a doua mai mică (< annual/6) = preț lunar
+            price_annual = None
+            price_monthly = None
+            for j in range(i + 1, min(i + 7, len(lines))):
+                # Stop dacă am dat de alt asigurător
+                if any(ins.lower() in lines[j].lower() for ins in known_insurers if ins != insurer_found):
+                    break
+                price_match = re.search(r"([\d\s,.]+)\s*(RON|lei|ron)", lines[j], re.IGNORECASE)
+                if price_match:
+                    raw = price_match.group(1).replace(" ", "").replace(".", "").replace(",", "")
+                    try:
+                        val = int(raw)
+                        if price_annual is None and 300 <= val <= 20000:
+                            price_annual = val
+                        elif price_annual is not None and price_monthly is None:
+                            # Lunar trebuie să fie mult mai mic decât anual (max 1/6 din anual)
+                            if 50 <= val <= price_annual // 6 * 2:
+                                price_monthly = val
+                    except ValueError:
+                        pass
+
+            if price_annual:
+                offers.append({
+                    "insurer": insurer_found,
+                    "annual_ron": price_annual,
+                    "monthly_ron": price_monthly or round(price_annual / 12),
+                })
+        i += 1
+
+    # Deduplică și sortează
+    seen = set()
+    unique = []
+    for o in offers:
+        if o["insurer"] not in seen:
+            seen.add(o["insurer"])
+            unique.append(o)
+    unique.sort(key=lambda x: x["annual_ron"])
+    return unique
+
+
+def scrape_rca_prices_fn(plate: str) -> str:
+    """
+    Obține prețuri RCA reale de la asigurători via pint.ro (agregator).
+    Input: numărul de înmatriculare al vehiculului (ex: B123ABC).
+    Returnează tabel comparativ cu prețuri reale, sortat cel mai ieftin primul.
+    Cache TTL: 2 ore (prețurile sunt stabile în aceeași zi).
+    """
+    import json
+
+    plate = plate.upper().strip()
+
+    # Check cache
+    cached = _price_cache_get(plate)
+    if cached:
+        cached["from_cache"] = True
+        return _format_pint_result(cached)
+
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                future = pool.submit(asyncio.run, _scrape_pint_rca_async(plate))
+                result = future.result(timeout=60)
+        else:
+            result = loop.run_until_complete(_scrape_pint_rca_async(plate))
+    except Exception as e:
+        result = {"success": False, "error": str(e)}
+
+    if result.get("success"):
+        _price_cache_set(plate, result)
+
+    return _format_pint_result(result)
+
+
+def _format_pint_result(result: dict) -> str:
+    """Formatează rezultatul scraping-ului pint.ro ca tabel markdown."""
+    if not result.get("success"):
+        error = result.get("error", "Eroare necunoscută")
+        plate = result.get("plate", "")
+        snippet = result.get("raw_snippet", "")
+        msg = (
+            f"❌ **Prețuri live indisponibile** pentru `{plate}`\n\n"
+            f"Motiv: {error}\n\n"
+            f"💡 Folosește `broker_compare_premiums_live` pentru tarife orientative 2024-2025 "
+            f"(nu necesită număr de înmatriculare)."
+        )
+        if snippet:
+            msg += f"\n\n*Debug snippet:* ```\n{snippet[:500]}\n```"
+        return msg
+
+    offers = result.get("offers", [])
+    plate = result.get("plate", "")
+    from_cache = result.get("from_cache", False)
+    cache_note = " *(din cache)*" if from_cache else ""
+
+    if not offers:
+        return (
+            f"❌ Nu s-au găsit oferte pentru `{plate}` pe pint.ro.\n\n"
+            f"💡 Folosește `broker_compare_premiums_live` pentru tarife orientative."
+        )
+
+    lines = [
+        f"## 🔴 Prețuri RCA LIVE — `{plate}`{cache_note}\n",
+        f"> Sursa: **pint.ro** (agregator) — prețuri reale de la asigurători.\n",
+        f"| # | Asigurător | Preț anual | Preț lunar |",
+        f"|---|---|---|---|",
+    ]
+    min_price = offers[0]["annual_ron"]
+    for i, o in enumerate(offers, 1):
+        marker = " ✅" if i == 1 else ""
+        diff = o["annual_ron"] - min_price
+        diff_str = "" if diff == 0 else f" (+{diff:,} RON)"
+        lines.append(
+            f"| {i} | **{o['insurer']}**{marker} | **{o['annual_ron']:,} RON**{diff_str} | {o['monthly_ron']:,} RON/lună |"
+        )
+
+    best = offers[0]
+    lines.append(
+        f"\n### 💡 Cel mai bun preț\n"
+        f"**{best['insurer']}** — **{best['annual_ron']:,} RON/an** ({best['monthly_ron']:,} RON/lună)\n"
+    )
+    lines.append(
+        f"*Prețuri furnizate de asigurători via pint.ro. "
+        f"Prețul final poate varia în funcție de istoricul șoferului și condițiile poliței.*"
+    )
+    return "\n".join(lines)

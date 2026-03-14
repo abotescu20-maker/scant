@@ -323,7 +323,8 @@ def _seed_demo_users():
             "broker_log_claim", "broker_get_claim_status",
             "broker_generate_report", "broker_check_compliance",
             "broker_check_rca", "broker_run_task", "broker_computer_use_status",
-            "broker_calculate_premium", "broker_get_cross_sell",
+            "broker_calculate_premium", "broker_compare_premiums_live", "broker_scrape_rca_prices",
+            "broker_get_cross_sell",
             "broker_export_excel", "broker_export_docx",
             "broker_save_conversation", "broker_get_saved_conversations",
         ]

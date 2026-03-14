@@ -50,10 +50,10 @@ Alex trimite un email cu rezumatul zilei:
 - Prioritizează: întâi companiile mari, apoi persoanele fizice
 
 ### Seara (18:00) — Upload Rapoarte în Cloud
-- Încarcă automat toate rapoartele zilei în Google Drive
-- Opțional: și în SharePoint (Microsoft 365)
-- Linkuri partajabile gata de trimis clienților
+- Încarcă automat toate rapoartele zilei în **Google Cloud Storage** (GCS)
+- Linkuri publice HTTPS gata de trimis clienților
 - Arhivare automată a tuturor documentelor generate
+- Opțional: SharePoint (Microsoft 365) pentru organizații cu M365
 
 ---
 
@@ -89,7 +89,7 @@ Alex trimite un email cu rezumatul zilei:
 │ • Allianz       │       │  • 36 MCP tools     │        │  • Claude Sonnet    │
 │ • Excel         │       │  • Admin panel      │        │  • Email SMTP       │
 │ • Computer Use  │       │  • Firestore DB     │        │  • Cron jobs 24/7   │
-│ • Playwright    │       │  • Google Drive API  │        │  • n8n webhooks     │
+│ • Playwright    │       │  • GCS Upload        │        │  • n8n webhooks     │
 └─────────────────┘       │  • SharePoint API   │        │  • Cloud upload     │
                           └─────────────────────┘        └──────────┬──────────┘
                                                                     │ webhook
@@ -107,7 +107,7 @@ Alex trimite un email cu rezumatul zilei:
 1. **Agent SDK** (pe server) apelează API-ul Alex (pe Cloud Run) pentru date live
 2. **Claude Sonnet** (Anthropic AI) analizează datele și generează rapoarte
 3. **Agent local** (pe desktopul brokerului) verifică portalele asigurătorilor
-4. **Google Drive / SharePoint** primesc automat rapoartele generate
+4. **Google Cloud Storage** primește automat rapoartele generate (linkuri publice HTTPS)
 5. **n8n** primește evenimente și declanșează acțiuni (SMS, CRM, Slack)
 6. **SMTP** trimite rapoartele pe email brokerilor
 7. Totul automat, fără intervenție umană
@@ -125,8 +125,10 @@ Agentul local rulează pe computerul brokerului și poate:
 - **Computer Use** (Anthropic) — operare completă a desktopului
 
 ### Cloud Storage
-- **Google Drive** — upload automat rapoarte, linkuri partajabile
-- **SharePoint** — integrare Microsoft 365, acces organizație
+- **Google Cloud Storage (GCS)** — upload automat rapoarte, linkuri publice HTTPS ✅
+  - Bucket: `alex-broker-reports` | Region: europe-west3 (Frankfurt)
+  - URL rapoarte: `https://storage.googleapis.com/alex-broker-reports/2026-03-14/`
+- **SharePoint** — integrare Microsoft 365 (necesită cont organizațional cu admin consent)
 
 ### Automatizare n8n
 Evenimentele generate automat:
@@ -148,7 +150,7 @@ Evenimentele generate automat:
 |---|---|
 | Server Google Cloud (Frankfurt) | ~€23 |
 | Claude AI (analiză + rapoarte) | ~€2-15 |
-| Google Drive API | Gratuit |
+| Google Cloud Storage (GCS) | ~€0.02/GB |
 | SharePoint API | Gratuit (inclus în M365) |
 | n8n (self-hosted) | Gratuit |
 | **Total** | **€25-38/lună** |
@@ -171,6 +173,8 @@ Evenimentele generate automat:
 - ✅ n8n webhook pe toate evenimentele
 - ✅ Rapoarte HTML pe email
 - ✅ Date demonstrative (6 clienți, 24 polițe)
+- ✅ Google Cloud Storage funcțional (6/6 rapoarte uploadate)
+- ✅ Agent local funcțional (navigate + screenshot confirmate)
 
 ### Faza 2 (După validare — Producție)
 - Date reale (post-DPA)
@@ -178,7 +182,7 @@ Evenimentele generate automat:
 - Dashboard web pentru vizualizare rapoarte
 - SMS pentru alerte urgente (RCA obligatoriu)
 - n8n workflows configurate (Twilio, HubSpot, Slack)
-- Google Drive / SharePoint conectate la contul firmei
+- Microsoft OneDrive/SharePoint (necesită cont organizațional cu admin consent)
 
 ### Faza 3 (Autonomie completă)
 - Agent care răspunde automat la emailuri de la clienți
