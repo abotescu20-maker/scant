@@ -83,9 +83,19 @@ def claude_analyze(prompt: str, data: dict, max_tokens: int = 2000) -> str:
             "role": "user",
             "content": f"{prompt}\n\nData:\n```json\n{json.dumps(data, indent=2, default=str)}\n```"
         }],
-        system="You are Alex, an insurance broker AI assistant. Be concise, actionable, and professional. Respond in Romanian when the data contains Romanian clients, German for German clients, English otherwise."
+        system="You are Alex, an insurance broker AI assistant. Be concise, actionable, and professional. Respond in Romanian when the data contains Romanian clients, German for German clients, English otherwise. IMPORTANT: Output raw HTML only — no markdown, no ```html``` code fences, no backticks. Start directly with <!DOCTYPE html> or <html> or the first HTML tag."
     )
-    return message.content[0].text
+    result = message.content[0].text
+    # Strip markdown code fences if Claude wraps the output
+    if result.startswith("```"):
+        lines = result.split("\n")
+        # Remove first line (```html) and last line (```)
+        if lines[-1].strip() == "```":
+            lines = lines[1:-1]
+        elif lines[0].startswith("```"):
+            lines = lines[1:]
+        result = "\n".join(lines)
+    return result.strip()
 
 
 # ── Email Sending ────────────────────────────────────────────────────────────
