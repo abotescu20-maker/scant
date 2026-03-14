@@ -109,6 +109,53 @@ def init_admin_tables():
             ON conversations(user_id, project_id);
         CREATE INDEX IF NOT EXISTS idx_projects_user
             ON projects(user_id);
+
+        -- ── Approval Queue (broker reviews before sending to client) ────────
+        CREATE TABLE IF NOT EXISTS approval_queue (
+            id              TEXT PRIMARY KEY,
+            type            TEXT NOT NULL,           -- 'renewal', 'cross_sell', 'claim_followup', 'follow_up', 'policy_creation'
+            client_id       TEXT NOT NULL,
+            client_name     TEXT,
+            client_email    TEXT,
+            priority        TEXT DEFAULT 'medium',   -- 'urgent', 'high', 'medium', 'low'
+            status          TEXT DEFAULT 'pending',  -- 'pending', 'approved', 'rejected', 'sent', 'expired'
+            trigger_data    TEXT,                    -- JSON: policy/claim details that triggered this
+            subject         TEXT,                    -- Email subject (editable by broker)
+            email_body_html TEXT,                    -- HTML email body (editable by broker)
+            offer_id        TEXT,                    -- FK to offers table (if an offer was generated)
+            broker_notes    TEXT,
+            approved_by     TEXT,
+            approved_at     TEXT,
+            rejected_reason TEXT,
+            created_at      TEXT DEFAULT (datetime('now')),
+            updated_at      TEXT DEFAULT (datetime('now')),
+            expires_at      TEXT,
+            sent_at         TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_approval_queue_status
+            ON approval_queue(status, priority);
+        CREATE INDEX IF NOT EXISTS idx_approval_queue_client
+            ON approval_queue(client_id);
+
+        -- ── Email Tracking (track sent emails: opens, clicks, responses) ────
+        CREATE TABLE IF NOT EXISTS email_tracking (
+            id              TEXT PRIMARY KEY,
+            approval_id     TEXT REFERENCES approval_queue(id),
+            offer_id        TEXT,
+            client_id       TEXT,
+            recipient       TEXT NOT NULL,
+            sent_at         TEXT,
+            opened_at       TEXT,
+            open_count      INTEGER DEFAULT 0,
+            clicked_at      TEXT,
+            click_count     INTEGER DEFAULT 0,
+            responded       TEXT,                   -- 'accepted', 'rejected', null
+            responded_at    TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_email_tracking_approval
+            ON email_tracking(approval_id);
     """)
     conn.commit()
 
@@ -125,6 +172,22 @@ def init_admin_tables():
         conn.commit()
     except sqlite3.OperationalError:
         pass
+
+    # ── Migration: extend offers table with response tracking ──
+    for col_sql in [
+        "ALTER TABLE offers ADD COLUMN approval_id TEXT",
+        "ALTER TABLE offers ADD COLUMN approved_at TEXT",
+        "ALTER TABLE offers ADD COLUMN rejected_at TEXT",
+        "ALTER TABLE offers ADD COLUMN client_response TEXT",          # 'accepted', 'rejected', 'no_response'
+        "ALTER TABLE offers ADD COLUMN client_response_at TEXT",
+        "ALTER TABLE offers ADD COLUMN follow_up_count INTEGER DEFAULT 0",
+        "ALTER TABLE offers ADD COLUMN next_follow_up TEXT",
+    ]:
+        try:
+            conn.execute(col_sql)
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # column already exists
 
     conn.close()
 

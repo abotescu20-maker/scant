@@ -358,5 +358,496 @@ async def cu_debug_localhost():
     return JSONResponse({"port": port, "pid": os.getpid(), "results": results})
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# APPROVAL DASHBOARD — Web UI for broker to review/approve/reject items
+# ══════════════════════════════════════════════════════════════════════════════
+
+from fastapi.responses import HTMLResponse, Response
+from fastapi import Body
+import sqlite3 as _sqlite3
+
+_DB_PATH = str(BASE_DIR / "mcp-server" / "insurance_broker.db")
+
+def _approval_db():
+    conn = _sqlite3.connect(_DB_PATH)
+    conn.row_factory = _sqlite3.Row
+    return conn
+
+
+@app.get("/api/approvals/stats")
+async def api_approval_stats():
+    """Get approval queue statistics."""
+    conn = _approval_db()
+    stats = {}
+    for status in ["pending", "sent", "rejected", "expired"]:
+        row = conn.execute("SELECT COUNT(*) as cnt FROM approval_queue WHERE status = ?", (status,)).fetchone()
+        stats[status] = row["cnt"]
+    conn.close()
+    return stats
+
+
+@app.get("/api/approvals")
+async def api_list_approvals(status: str = Query(default="pending"), limit: int = Query(default=50)):
+    """List approval queue items. Filter by status. Use status='all' for everything."""
+    conn = _approval_db()
+    if status == "all":
+        rows = conn.execute(
+            "SELECT * FROM approval_queue ORDER BY "
+            "CASE priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END, "
+            "created_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM approval_queue WHERE status = ? ORDER BY "
+            "CASE priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END, "
+            "created_at DESC LIMIT ?",
+            (status, limit),
+        ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+@app.get("/api/approvals/{approval_id}")
+async def api_get_approval(approval_id: str):
+    """Get details of a single approval item."""
+    conn = _approval_db()
+    row = conn.execute("SELECT * FROM approval_queue WHERE id = ?", (approval_id,)).fetchone()
+    conn.close()
+    if not row:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    return dict(row)
+
+
+@app.post("/api/approvals/{approval_id}/approve")
+async def api_approve_item(approval_id: str):
+    """Approve an item and send the email to the client."""
+    conn = _approval_db()
+    row = conn.execute("SELECT * FROM approval_queue WHERE id = ?", (approval_id,)).fetchone()
+    if not row:
+        conn.close()
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    if row["status"] != "pending":
+        conn.close()
+        return JSONResponse({"error": f"Item is {row['status']}, not pending"}, status_code=400)
+
+    # Send email
+    email_sent = False
+    tracking_id = None
+    recipient = row["client_email"]
+    if recipient:
+        try:
+            import smtplib
+            from email.mime.multipart import MIMEMultipart
+            from email.mime.text import MIMEText
+
+            smtp_user = os.environ.get("SMTP_USER", "")
+            smtp_pass = os.environ.get("SMTP_PASS", "")
+            smtp_host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
+            smtp_port = int(os.environ.get("SMTP_PORT", "587"))
+            from_name = os.environ.get("SMTP_FROM_NAME", "Alex Broker")
+
+            # Create tracking record
+            tracking_id = f"TRK-{os.urandom(4).hex().upper()}"
+            conn.execute(
+                "INSERT INTO email_tracking (id, approval_id, client_id, recipient, sent_at) "
+                "VALUES (?, ?, ?, ?, datetime('now'))",
+                (tracking_id, approval_id, row["client_id"], recipient),
+            )
+
+            # Add tracking pixel + response buttons to email body
+            base_url = os.environ.get("ALEX_API_URL", "https://insurance-broker-alex-elo6xae6nq-ey.a.run.app")
+            body_html = row["email_body_html"] or ""
+            tracking_footer = f"""
+            <br/><hr style="border:1px solid #eee; margin:20px 0"/>
+            <div style="text-align:center; font-family:sans-serif;">
+                <p style="color:#666; font-size:13px;">Sunteti interesat de aceasta oferta?</p>
+                <a href="{base_url}/api/respond/{tracking_id}/accept"
+                   style="display:inline-block; padding:10px 25px; background:#28a745; color:white;
+                          text-decoration:none; border-radius:5px; margin:5px; font-weight:bold;">
+                    Da, sunt interesat
+                </a>
+                <a href="{base_url}/api/respond/{tracking_id}/reject"
+                   style="display:inline-block; padding:10px 25px; background:#dc3545; color:white;
+                          text-decoration:none; border-radius:5px; margin:5px; font-weight:bold;">
+                    Nu, multumesc
+                </a>
+            </div>
+            <img src="{base_url}/api/track/open/{tracking_id}" width="1" height="1" style="display:none"/>
+            """
+            full_body = body_html + tracking_footer
+
+            if smtp_user and smtp_pass:
+                msg = MIMEMultipart("alternative")
+                msg["From"] = f"{from_name} <{smtp_user}>"
+                msg["To"] = recipient
+                msg["Subject"] = row["subject"] or "Oferta de asigurare"
+                msg.attach(MIMEText(full_body, "html", "utf-8"))
+
+                with smtplib.SMTP(smtp_host, smtp_port) as server:
+                    server.starttls()
+                    server.login(smtp_user, smtp_pass)
+                    server.send_message(msg)
+                email_sent = True
+            else:
+                # Dry run — just log
+                email_sent = True  # Consider it "sent" for status update
+        except Exception as e:
+            return JSONResponse({"error": f"Email failed: {e}"}, status_code=500)
+
+    # Update status
+    conn.execute(
+        "UPDATE approval_queue SET status = 'sent', approved_at = datetime('now'), "
+        "sent_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
+        (approval_id,),
+    )
+    conn.commit()
+    conn.close()
+
+    return {"ok": True, "email_sent": email_sent, "tracking_id": tracking_id,
+            "recipient": recipient}
+
+
+@app.post("/api/approvals/{approval_id}/reject")
+async def api_reject_item(approval_id: str, reason: str = Body(default="", embed=True)):
+    """Reject an approval item."""
+    conn = _approval_db()
+    conn.execute(
+        "UPDATE approval_queue SET status = 'rejected', rejected_reason = ?, "
+        "updated_at = datetime('now') WHERE id = ? AND status = 'pending'",
+        (reason, approval_id),
+    )
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
+@app.put("/api/approvals/{approval_id}/edit")
+async def api_edit_approval(approval_id: str, subject: str = Body(default=None),
+                             email_body_html: str = Body(default=None)):
+    """Edit email subject and/or body before approving."""
+    conn = _approval_db()
+    if subject is not None:
+        conn.execute("UPDATE approval_queue SET subject = ?, updated_at = datetime('now') WHERE id = ?",
+                     (subject, approval_id))
+    if email_body_html is not None:
+        conn.execute("UPDATE approval_queue SET email_body_html = ?, updated_at = datetime('now') WHERE id = ?",
+                     (email_body_html, approval_id))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
+# ── Email tracking & client response endpoints ──────────────────────────────
+
+@app.get("/api/track/open/{tracking_id}")
+async def track_email_open(tracking_id: str):
+    """1x1 tracking pixel — records email open."""
+    conn = _approval_db()
+    conn.execute(
+        "UPDATE email_tracking SET open_count = open_count + 1, "
+        "opened_at = COALESCE(opened_at, datetime('now')) WHERE id = ?",
+        (tracking_id,),
+    )
+    conn.commit()
+    conn.close()
+    # Return 1x1 transparent GIF
+    gif_bytes = b'\x47\x49\x46\x38\x39\x61\x01\x00\x01\x00\x80\x00\x00\xff\xff\xff\x00\x00\x00\x21\xf9\x04\x00\x00\x00\x00\x00\x2c\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02\x44\x01\x00\x3b'
+    return Response(content=gif_bytes, media_type="image/gif")
+
+
+@app.get("/api/respond/{tracking_id}/{response}")
+async def client_respond(tracking_id: str, response: str):
+    """Client clicks accept/reject link in email."""
+    if response not in ("accept", "reject"):
+        return HTMLResponse("<h2>Link invalid</h2>", status_code=400)
+
+    conn = _approval_db()
+    # Update tracking
+    conn.execute(
+        "UPDATE email_tracking SET responded = ?, responded_at = datetime('now') WHERE id = ?",
+        (response + "ed", tracking_id),  # "accepted" / "rejected"
+    )
+
+    # Find related approval and update offer status
+    tracking_row = conn.execute("SELECT * FROM email_tracking WHERE id = ?", (tracking_id,)).fetchone()
+    if tracking_row and tracking_row["approval_id"]:
+        approval_id = tracking_row["approval_id"]
+        if response == "accept":
+            conn.execute(
+                "UPDATE approval_queue SET status = 'accepted', updated_at = datetime('now') WHERE id = ?",
+                (approval_id,),
+            )
+        # Update offer if exists
+        approval_row = conn.execute("SELECT offer_id FROM approval_queue WHERE id = ?", (approval_id,)).fetchone()
+        if approval_row and approval_row["offer_id"]:
+            conn.execute(
+                "UPDATE offers SET client_response = ?, client_response_at = datetime('now') WHERE id = ?",
+                (response + "ed", approval_row["offer_id"]),
+            )
+
+    conn.commit()
+    conn.close()
+
+    # HTML response page
+    if response == "accept":
+        html = """<!DOCTYPE html><html><head><meta charset="UTF-8">
+        <style>body{font-family:sans-serif;display:flex;justify-content:center;align-items:center;
+        min-height:100vh;margin:0;background:#f0f8f0;}
+        .card{background:white;padding:40px;border-radius:10px;text-align:center;box-shadow:0 2px 20px rgba(0,0,0,0.1);}
+        h1{color:#28a745;}</style></head><body>
+        <div class="card"><h1>Multumim!</h1>
+        <p>Am primit raspunsul dumneavoastra. Va vom contacta in curand cu detalii.</p>
+        <p style="color:#666;">Alex - Broker de Asigurari</p></div></body></html>"""
+    else:
+        html = """<!DOCTYPE html><html><head><meta charset="UTF-8">
+        <style>body{font-family:sans-serif;display:flex;justify-content:center;align-items:center;
+        min-height:100vh;margin:0;background:#f8f8f8;}
+        .card{background:white;padding:40px;border-radius:10px;text-align:center;box-shadow:0 2px 20px rgba(0,0,0,0.1);}
+        h1{color:#666;}</style></head><body>
+        <div class="card"><h1>Intelegem</h1>
+        <p>Multumim pentru raspuns. Daca va razganditi, nu ezitati sa ne contactati.</p>
+        <p style="color:#666;">Alex - Broker de Asigurari</p></div></body></html>"""
+
+    return HTMLResponse(html)
+
+
+# ── Approval Dashboard HTML ─────────────────────────────────────────────────
+
+@app.get("/dashboard/approvals", response_class=HTMLResponse)
+async def dashboard_approvals():
+    """Web dashboard for broker to review and approve queued items."""
+    return HTMLResponse(_APPROVAL_DASHBOARD_HTML)
+
+
+_APPROVAL_DASHBOARD_HTML = """<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alex — Aprobari</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; }
+        .header { background: linear-gradient(135deg, #2c3e50, #3498db); color: white;
+                   padding: 20px 30px; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { font-size: 1.5em; font-weight: 300; }
+        .badge { background: #e74c3c; color: white; border-radius: 20px; padding: 4px 12px;
+                 font-size: 0.9em; font-weight: bold; }
+        .filters { padding: 15px 30px; background: white; border-bottom: 1px solid #e9ecef;
+                    display: flex; gap: 10px; flex-wrap: wrap; }
+        .filter-btn { padding: 6px 16px; border: 2px solid #ddd; background: white; border-radius: 20px;
+                      cursor: pointer; font-size: 0.9em; transition: all 0.2s; }
+        .filter-btn.active { border-color: #3498db; background: #e3f2fd; color: #1976d2; font-weight: 600; }
+        .filter-btn:hover { border-color: #3498db; }
+        .container { max-width: 1200px; margin: 20px auto; padding: 0 20px; }
+        .cards { display: grid; gap: 15px; }
+        .card { background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+                overflow: hidden; border-left: 5px solid #ccc; }
+        .card.urgent { border-left-color: #e74c3c; }
+        .card.high { border-left-color: #f39c12; }
+        .card.medium { border-left-color: #3498db; }
+        .card.low { border-left-color: #95a5a6; }
+        .card-header { padding: 15px 20px; display: flex; justify-content: space-between;
+                       align-items: center; cursor: pointer; }
+        .card-header:hover { background: #f8f9fa; }
+        .card-meta { display: flex; gap: 10px; align-items: center; }
+        .type-tag { padding: 3px 10px; border-radius: 12px; font-size: 0.8em; font-weight: 600; }
+        .type-tag.renewal { background: #fff3cd; color: #856404; }
+        .type-tag.cross_sell { background: #d4edda; color: #155724; }
+        .type-tag.claim_followup { background: #cce5ff; color: #004085; }
+        .type-tag.follow_up { background: #e2e3e5; color: #383d41; }
+        .priority-dot { width: 10px; height: 10px; border-radius: 50%; }
+        .priority-dot.urgent { background: #e74c3c; }
+        .priority-dot.high { background: #f39c12; }
+        .priority-dot.medium { background: #3498db; }
+        .priority-dot.low { background: #95a5a6; }
+        .card-body { padding: 0 20px 20px; display: none; }
+        .card-body.open { display: block; }
+        .email-preview { background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 5px;
+                         padding: 15px; margin: 10px 0; max-height: 300px; overflow-y: auto; }
+        .subject-input { width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 5px;
+                         font-size: 1em; margin: 5px 0; }
+        .actions { display: flex; gap: 10px; margin-top: 15px; }
+        .btn { padding: 8px 20px; border: none; border-radius: 5px; cursor: pointer;
+               font-size: 0.95em; font-weight: 600; transition: all 0.2s; }
+        .btn-approve { background: #28a745; color: white; }
+        .btn-approve:hover { background: #218838; }
+        .btn-reject { background: #dc3545; color: white; }
+        .btn-reject:hover { background: #c82333; }
+        .btn-edit { background: #ffc107; color: #333; }
+        .btn-edit:hover { background: #e0a800; }
+        .empty { text-align: center; padding: 60px; color: #999; }
+        .toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 24px; border-radius: 8px;
+                 color: white; font-weight: 600; z-index: 999; display: none; }
+        .toast.success { background: #28a745; }
+        .toast.error { background: #dc3545; }
+        .client-info { color: #666; font-size: 0.9em; }
+        .date-info { color: #999; font-size: 0.8em; }
+        .stats-bar { display: flex; gap: 20px; padding: 15px 30px; background: #f8f9fa; }
+        .stat { text-align: center; }
+        .stat-num { font-size: 1.5em; font-weight: bold; color: #2c3e50; }
+        .stat-label { font-size: 0.8em; color: #666; }
+        .editing textarea { width: 100%; min-height: 200px; font-family: monospace; font-size: 0.9em;
+                            padding: 10px; border: 1px solid #ddd; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Alex — Dashboard Aprobari</h1>
+        <span class="badge" id="pending-count">...</span>
+    </div>
+    <div class="stats-bar" id="stats-bar"></div>
+    <div class="filters">
+        <button class="filter-btn active" data-status="pending" onclick="filterBy('pending', this)">De aprobat</button>
+        <button class="filter-btn" data-status="sent" onclick="filterBy('sent', this)">Trimise</button>
+        <button class="filter-btn" data-status="rejected" onclick="filterBy('rejected', this)">Respinse</button>
+        <button class="filter-btn" data-status="all" onclick="filterBy('all', this)">Toate</button>
+    </div>
+    <div class="container">
+        <div class="cards" id="cards"></div>
+    </div>
+    <div class="toast" id="toast"></div>
+
+    <script>
+    let currentStatus = 'pending';
+
+    async function loadStats() {
+        const r = await fetch('/api/approvals/stats');
+        const stats = await r.json();
+        document.getElementById('pending-count').textContent = stats.pending || 0;
+        document.getElementById('stats-bar').innerHTML =
+            `<div class="stat"><div class="stat-num">${stats.pending||0}</div><div class="stat-label">De aprobat</div></div>
+             <div class="stat"><div class="stat-num">${stats.sent||0}</div><div class="stat-label">Trimise</div></div>
+             <div class="stat"><div class="stat-num">${stats.rejected||0}</div><div class="stat-label">Respinse</div></div>`;
+        document.title = stats.pending > 0 ? `Aprobari (${stats.pending})` : 'Alex — Aprobari';
+    }
+
+    async function loadItems(status) {
+        const url = `/api/approvals?status=${status}&limit=100`;
+        const r = await fetch(url);
+        const items = await r.json();
+        const container = document.getElementById('cards');
+
+        if (items.length === 0) {
+            container.innerHTML = '<div class="empty"><h2>Nimic aici</h2><p>Nu exista elemente cu acest status.</p></div>';
+            return;
+        }
+
+        container.innerHTML = items.map(item => `
+            <div class="card ${item.priority}" id="card-${item.id}">
+                <div class="card-header" onclick="toggleCard('${item.id}')">
+                    <div>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <span class="priority-dot ${item.priority}"></span>
+                            <strong>${item.client_name || 'Client'}</strong>
+                            <span class="type-tag ${item.type}">${item.type.replace('_',' ')}</span>
+                        </div>
+                        <div class="client-info">${item.subject || ''}</div>
+                    </div>
+                    <div style="text-align:right;">
+                        <div class="client-info">${item.client_email || 'fara email'}</div>
+                        <div class="date-info">${item.created_at || ''}</div>
+                    </div>
+                </div>
+                <div class="card-body" id="body-${item.id}">
+                    <label><strong>Subiect:</strong></label>
+                    <input class="subject-input" id="subj-${item.id}" value="${(item.subject||'').replace(/"/g,'&quot;')}" />
+                    <label><strong>Email preview:</strong></label>
+                    <div class="email-preview" id="preview-${item.id}">${item.email_body_html || '<em>Fara continut</em>'}</div>
+                    <div id="edit-area-${item.id}"></div>
+                    ${item.status === 'pending' ? `
+                    <div class="actions">
+                        <button class="btn btn-approve" onclick="approveItem('${item.id}')">Aproba si Trimite</button>
+                        <button class="btn btn-reject" onclick="rejectItem('${item.id}')">Respinge</button>
+                        <button class="btn btn-edit" onclick="editItem('${item.id}')">Editeaza</button>
+                    </div>` : `<div class="client-info" style="margin-top:10px;">Status: ${item.status}</div>`}
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function toggleCard(id) {
+        document.getElementById('body-' + id).classList.toggle('open');
+    }
+
+    function filterBy(status, btn) {
+        currentStatus = status;
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        loadItems(status);
+    }
+
+    function showToast(msg, type) {
+        const t = document.getElementById('toast');
+        t.textContent = msg;
+        t.className = 'toast ' + type;
+        t.style.display = 'block';
+        setTimeout(() => t.style.display = 'none', 3000);
+    }
+
+    async function approveItem(id) {
+        // Save any edits first
+        const subj = document.getElementById('subj-' + id).value;
+        await fetch(`/api/approvals/${id}/edit`, {
+            method: 'PUT', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({subject: subj})
+        });
+
+        const r = await fetch(`/api/approvals/${id}/approve`, {method:'POST'});
+        const data = await r.json();
+        if (data.ok) {
+            showToast('Email trimis cu succes!', 'success');
+            document.getElementById('card-' + id).style.opacity = '0.5';
+            loadStats();
+        } else {
+            showToast('Eroare: ' + (data.error||'necunoscuta'), 'error');
+        }
+    }
+
+    async function rejectItem(id) {
+        const reason = prompt('Motiv respingere (optional):');
+        if (reason === null) return;
+        await fetch(`/api/approvals/${id}/reject`, {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({reason: reason})
+        });
+        showToast('Respins', 'success');
+        document.getElementById('card-' + id).style.opacity = '0.5';
+        loadStats();
+    }
+
+    function editItem(id) {
+        const area = document.getElementById('edit-area-' + id);
+        const preview = document.getElementById('preview-' + id);
+        if (area.innerHTML) { area.innerHTML = ''; return; }
+        area.innerHTML = `<div class="editing">
+            <label><strong>Editeaza HTML-ul emailului:</strong></label>
+            <textarea id="html-edit-${id}">${preview.innerHTML}</textarea>
+            <button class="btn btn-edit" style="margin-top:8px" onclick="saveEdit('${id}')">Salveaza</button>
+        </div>`;
+    }
+
+    async function saveEdit(id) {
+        const html = document.getElementById('html-edit-' + id).value;
+        const subj = document.getElementById('subj-' + id).value;
+        await fetch(`/api/approvals/${id}/edit`, {
+            method: 'PUT', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({subject: subj, email_body_html: html})
+        });
+        document.getElementById('preview-' + id).innerHTML = html;
+        document.getElementById('edit-area-' + id).innerHTML = '';
+        showToast('Salvat!', 'success');
+    }
+
+    // Auto-refresh every 30s
+    setInterval(() => { loadStats(); loadItems(currentStatus); }, 30000);
+    loadStats();
+    loadItems('pending');
+    </script>
+</body>
+</html>"""
+
+
 # ── Chainlit at root — MUST be last ────────────────────────────────────────
 mount_chainlit(app=app, target="app.py", path="/")

@@ -131,7 +131,22 @@ def claude_analyze(prompt: str, data: dict, max_tokens: int = 2000) -> str:
         elif lines[0].startswith("```"):
             lines = lines[1:]
         result = "\n".join(lines)
-    return result.strip()
+    result = result.strip()
+
+    # Ensure UTF-8 charset is present in HTML output
+    if "<meta charset" not in result.lower() and ("<html" in result.lower() or "<body" in result.lower()):
+        charset_tag = '<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">'
+        if "<head>" in result:
+            result = result.replace("<head>", f"<head>\n{charset_tag}", 1)
+        elif "<html>" in result or "<html " in result:
+            # Insert head section after <html> tag
+            import re
+            result = re.sub(r'(<html[^>]*>)', rf'\1\n<head>{charset_tag}</head>', result, count=1)
+        else:
+            # Prepend charset meta before the content
+            result = f'<!DOCTYPE html>\n<html lang="ro">\n<head>{charset_tag}</head>\n<body>\n{result}\n</body></html>'
+
+    return result
 
 
 # ── Email Sending ────────────────────────────────────────────────────────────
@@ -388,10 +403,26 @@ GCS_BUCKET = os.environ.get("GCS_BUCKET", "")
 GCS_SA_KEY_JSON = os.environ.get("GCS_SA_KEY_JSON", "")
 
 
-def upload_to_gcs(filepath: Path) -> str:
-    """Upload a file to Google Cloud Storage. Returns public URL or error."""
+def _gcs_public_url(blob_name: str) -> str:
+    """Return the public HTTPS URL for a GCS blob."""
+    return f"https://storage.googleapis.com/{GCS_BUCKET}/{blob_name}"
+
+
+def upload_to_gcs(filepath: Path, subfolder: str = None) -> str:
+    """Upload a file to Google Cloud Storage. Returns public HTTPS URL or error.
+
+    Args:
+        filepath: Local file to upload.
+        subfolder: Optional subfolder override (e.g. 'clients/CLI001/offers').
+                   Default: '{today_date}/' (date-based).
+    """
     if not GCS_BUCKET:
         return "❌ GCS_BUCKET not configured"
+    today_str = date.today().isoformat()
+    prefix = subfolder or today_str
+    blob_name = f"{prefix}/{filepath.name}"
+    content_type = "text/html" if filepath.suffix == ".html" else "application/octet-stream"
+
     try:
         from google.cloud import storage as gcs_storage
         if GCS_SA_KEY_JSON:
@@ -404,31 +435,101 @@ def upload_to_gcs(filepath: Path) -> str:
         else:
             client = gcs_storage.Client()  # uses default credentials
         bucket = client.bucket(GCS_BUCKET)
-        today_str = date.today().isoformat()
-        blob_name = f"{today_str}/{filepath.name}"
         blob = bucket.blob(blob_name)
-        blob.upload_from_filename(str(filepath), content_type="text/html")
-        url = f"gs://{GCS_BUCKET}/{blob_name}"
+        blob.upload_from_filename(str(filepath), content_type=content_type)
+        url = _gcs_public_url(blob_name)
         log.info(f"[GCS] ✅ Uploaded {filepath.name} → {url}")
         return f"✅ {url}"
     except ImportError:
         # Fallback: use gsutil via subprocess
         import subprocess
-        today_str = date.today().isoformat()
-        dest = f"gs://{GCS_BUCKET}/{today_str}/{filepath.name}"
+        dest = f"gs://{GCS_BUCKET}/{blob_name}"
         result = subprocess.run(
             ["gcloud", "storage", "cp", str(filepath), dest],
             capture_output=True, text=True, timeout=30,
         )
         if result.returncode == 0:
-            log.info(f"[GCS] ✅ Uploaded {filepath.name} → {dest}")
-            return f"✅ {dest}"
+            url = _gcs_public_url(blob_name)
+            log.info(f"[GCS] ✅ Uploaded {filepath.name} → {url}")
+            return f"✅ {url}"
         else:
             log.error(f"[GCS] ❌ gsutil error: {result.stderr}")
             return f"❌ gsutil error: {result.stderr[:100]}"
     except Exception as e:
         log.error(f"[GCS] Upload error: {e}")
         return f"❌ Upload failed: {e}"
+
+
+def _upload_gcs_index(uploaded_files: list, today_str: str):
+    """Generate and upload an index.html page listing all uploaded reports."""
+    if not GCS_BUCKET or not uploaded_files:
+        return
+
+    links_html = ""
+    for f in uploaded_files:
+        url = _gcs_public_url(f"{today_str}/{f}")
+        # Pretty name from filename
+        pretty = f.replace(f"-{today_str}", "").replace(".html", "").replace("-", " ").title()
+        links_html += f'            <li><a href="{url}" target="_blank">{pretty}</a> <span class="fname">({f})</span></li>\n'
+
+    index_html = f"""<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alex Rapoarte — {today_str}</title>
+    <style>
+        body {{ font-family: 'Segoe UI', sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }}
+        .container {{ max-width: 800px; margin: 0 auto; background: white; border-radius: 8px;
+                      box-shadow: 0 2px 10px rgba(0,0,0,0.1); overflow: hidden; }}
+        .header {{ background: linear-gradient(135deg, #2c3e50, #3498db); color: white;
+                   padding: 30px; text-align: center; }}
+        .header h1 {{ margin: 0; font-size: 1.8em; font-weight: 300; }}
+        .header p {{ margin: 10px 0 0; opacity: 0.9; }}
+        .content {{ padding: 30px; }}
+        ul {{ list-style: none; padding: 0; }}
+        li {{ padding: 12px 15px; border-bottom: 1px solid #eee; }}
+        li:last-child {{ border-bottom: none; }}
+        a {{ color: #2980b9; text-decoration: none; font-size: 1.1em; font-weight: 500; }}
+        a:hover {{ text-decoration: underline; }}
+        .fname {{ color: #999; font-size: 0.85em; }}
+        .footer {{ padding: 15px 30px; background: #f8f9fa; color: #666; font-size: 0.85em; text-align: center; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Alex — Rapoarte Zilnice</h1>
+            <p>{today_str}</p>
+        </div>
+        <div class="content">
+            <ul>
+{links_html}            </ul>
+        </div>
+        <div class="footer">
+            Generat automat de Alex Agent SDK &bull; {len(uploaded_files)} rapoarte
+        </div>
+    </div>
+</body>
+</html>"""
+
+    # Write temp file and upload
+    import tempfile
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False, encoding="utf-8") as tmp:
+        tmp.write(index_html)
+        tmp_path = Path(tmp.name)
+    try:
+        upload_to_gcs(tmp_path.rename(tmp_path.parent / "index.html"))
+    except Exception:
+        # Fallback: upload with original temp name
+        result = upload_to_gcs(tmp_path)
+        log.info(f"[GCS] Index upload: {result}")
+    finally:
+        try:
+            (tmp_path.parent / "index.html").unlink(missing_ok=True)
+            tmp_path.unlink(missing_ok=True)
+        except Exception:
+            pass
 
 
 def upload_to_sharepoint(filepath: Path) -> str:
@@ -504,11 +605,18 @@ def task_upload_reports():
             sp_result = upload_to_sharepoint(report)
             sp_results.append({"file": report.name, "result": sp_result})
 
+    # Upload GCS index page (clickable directory listing)
+    if has_gcs and gcs_results:
+        uploaded_names = [r["file"] for r in gcs_results if "✅" in r.get("result", "")]
+        _upload_gcs_index(uploaded_names, today_str)
+        log.info(f"[GCS] Index page: {_gcs_public_url(today_str + '/index.html')}")
+
     # Generate upload summary
     summary_data = {
         "date": today_str,
         "files_uploaded": len(reports),
         "file_names": [r.name for r in reports],
+        "index_url": _gcs_public_url(f"{today_str}/index.html") if has_gcs else None,
         "google_cloud_storage": {
             "configured": has_gcs,
             "bucket": GCS_BUCKET,
@@ -836,6 +944,257 @@ def task_cross_sell():
     })
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# APPROVAL QUEUE — Generate pending items for broker review
+# ══════════════════════════════════════════════════════════════════════════════
+
+def create_approval_item(
+    item_type: str,
+    client_id: str,
+    client_name: str,
+    client_email: str,
+    priority: str,
+    trigger_data: dict,
+    subject: str,
+    email_body_html: str,
+    offer_id: str = None,
+) -> str:
+    """Insert a new item into the approval queue. Returns the item ID."""
+    import sqlite3 as _sqlite3
+    item_id = f"APR-{uuid.uuid4().hex[:8].upper()}"
+    db_path = str(Path(__file__).parent.parent / "mcp-server" / "insurance_broker.db")
+    conn = _sqlite3.connect(db_path)
+    conn.execute(
+        """INSERT INTO approval_queue
+           (id, type, client_id, client_name, client_email, priority, status,
+            trigger_data, subject, email_body_html, offer_id, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, datetime('now'), datetime('now'))""",
+        (item_id, item_type, client_id, client_name, client_email or "",
+         priority, json.dumps(trigger_data, default=str), subject, email_body_html, offer_id),
+    )
+    conn.commit()
+    conn.close()
+    log.info(f"[Approval] Created {item_type} item {item_id} for {client_name} (priority: {priority})")
+    n8n_notify("approval-created", {
+        "id": item_id, "type": item_type, "client": client_name, "priority": priority,
+    })
+    return item_id
+
+
+def task_generate_approvals():
+    """
+    Generate approval items for broker review.
+
+    Scans renewals, cross-sell opportunities, and overdue claims.
+    For each actionable item, Claude drafts a personalized email
+    and queues it for broker approval (no emails sent automatically).
+    """
+    log.info("=== TASK: Generate Approval Items ===")
+
+    items_created = 0
+
+    # ── 1. Urgent renewals → draft renewal reminder emails ──
+    renewals_data = api_get("/api/renewals", {"days": 30})
+    all_renewals = renewals_data.get("urgent", []) + renewals_data.get("upcoming", [])
+
+    for renewal in all_renewals:
+        client_name = renewal.get("client_name", "Client")
+        client_email = renewal.get("client_email", "")
+        client_id = renewal.get("client_id", "")
+        days_left = renewal.get("days_left", 999)
+        policy_type = renewal.get("policy_type", "")
+        premium = renewal.get("annual_premium", 0)
+        currency = renewal.get("currency", "RON")
+
+        if not client_email:
+            log.info(f"  Skip {client_name}: no email address")
+            continue
+
+        # Determine priority
+        if days_left <= 7:
+            priority = "urgent"
+        elif days_left <= 14:
+            priority = "high"
+        else:
+            priority = "medium"
+
+        # Claude drafts personalized email
+        country = renewal.get("country", "RO")
+        lang = "romana" if country == "RO" else "germana" if country == "DE" else "engleza"
+
+        draft = claude_analyze(
+            f"Scrie un email scurt (max 150 cuvinte) in {lang} catre clientul {client_name} "
+            f"prin care il informezi ca polita de tip {policy_type} expira in {days_left} zile. "
+            f"Prima anuala: {premium} {currency}. "
+            f"Tonul: profesional dar prietenos. Ofera ajutor pentru reinnoirea politei. "
+            f"NU include diacritice romanesti (foloseste a in loc de ă, i in loc de î, etc). "
+            f"Semneaza ca 'Alex - Broker de Asigurari'. "
+            f"Output: doar corpul emailului in HTML simplu (fara head/body tags). "
+            f"Incepe direct cu <p>.",
+            {"renewal": renewal},
+            max_tokens=500,
+        )
+
+        subject = f"Polita {policy_type} expira in {days_left} zile - {client_name}"
+        if country == "DE":
+            subject = f"Ihre {policy_type}-Police laeuft in {days_left} Tagen ab"
+
+        create_approval_item(
+            item_type="renewal",
+            client_id=client_id,
+            client_name=client_name,
+            client_email=client_email,
+            priority=priority,
+            trigger_data=renewal,
+            subject=subject,
+            email_body_html=draft,
+        )
+        items_created += 1
+
+    # ── 2. Cross-sell opportunities → draft offers ──
+    import sqlite3 as _sq
+    _db = str(Path(__file__).parent.parent / "mcp-server" / "insurance_broker.db")
+    _conn = _sq.connect(_db)
+    _conn.row_factory = _sq.Row
+
+    # Get all clients with their active policy types
+    client_rows = _conn.execute("""
+        SELECT c.id, c.name, c.email, c.country, c.client_type,
+               GROUP_CONCAT(DISTINCT p.policy_type) as policy_types
+        FROM clients c
+        LEFT JOIN policies p ON p.client_id = c.id AND p.status = 'active'
+        WHERE c.email IS NOT NULL AND c.email != ''
+        GROUP BY c.id
+    """).fetchall()
+
+    for crow in client_rows:
+        client_id = crow["id"]
+        client_name = crow["name"]
+        client_email = crow["email"]
+        country = crow["country"] or "RO"
+        client_type = crow["client_type"] or "individual"
+        policy_types_str = crow["policy_types"] or ""
+        policy_types = set(pt.strip() for pt in policy_types_str.split(",") if pt.strip())
+
+        if not policy_types:
+            continue
+
+        # Identify gaps
+        gaps = []
+        if "RCA" in policy_types and "CASCO" not in policy_types:
+            gaps.append("CASCO")
+        if any(t in policy_types for t in ("RCA", "CASCO", "KFZ")) and "PAD" not in policy_types:
+            gaps.append("PAD (asigurare locuinta)")
+        if client_type == "company":
+            if "CMR" not in policy_types:
+                gaps.append("CMR (transport)")
+            if "LIABILITY" not in policy_types:
+                gaps.append("Raspundere Civila Profesionala")
+
+        if not gaps:
+            continue
+
+        lang = "romana" if country == "RO" else "germana" if country == "DE" else "engleza"
+        gaps_str = ", ".join(gaps)
+
+        draft = claude_analyze(
+            f"Scrie un email scurt (max 120 cuvinte) in {lang} catre {client_name} "
+            f"prin care ii propui urmatoarele produse de asigurare: {gaps_str}. "
+            f"Explica pe scurt de ce sunt importante. Ofera o cotatie gratuita. "
+            f"NU include diacritice romanesti. "
+            f"Semneaza ca 'Alex - Broker de Asigurari'. "
+            f"Output: doar corpul emailului in HTML simplu (fara head/body tags).",
+            {"client": client_name, "gaps": gaps, "existing": list(policy_types)},
+            max_tokens=400,
+        )
+
+        subject = f"Propunere asigurare {gaps[0]} - {client_name}"
+        if country == "DE":
+            subject = f"Versicherungsangebot {gaps[0]} - {client_name}"
+
+        create_approval_item(
+            item_type="cross_sell",
+            client_id=client_id,
+            client_name=client_name,
+            client_email=client_email,
+            priority="medium",
+            trigger_data={"client": client_name, "gaps": gaps, "existing": list(policy_types)},
+            subject=subject,
+            email_body_html=draft,
+        )
+        items_created += 1
+
+    _conn.close()
+
+    log.info(f"=== Generated {items_created} approval items ===")
+
+    # Save summary report
+    report_file = LOG_DIR / f"approvals-generated-{date.today().isoformat()}.html"
+    report_file.write_text(
+        f"<html><head><meta charset='UTF-8'></head><body>"
+        f"<h2>Approval Items Generate</h2>"
+        f"<p>Data: {date.today().isoformat()}</p>"
+        f"<p>Total items create: <strong>{items_created}</strong></p>"
+        f"<p>Deschide <a href='/dashboard/approvals'>Dashboard Aprobari</a> pentru review.</p>"
+        f"</body></html>",
+        encoding="utf-8",
+    )
+    log.info(f"Approvals report saved: {report_file}")
+
+
+def task_follow_up_offers():
+    """Check sent offers with no client response after 7 days. Generate follow-up emails."""
+    log.info("=== TASK: Follow-up Offers ===")
+    import sqlite3 as _sqlite3
+
+    db_path = str(Path(__file__).parent.parent / "mcp-server" / "insurance_broker.db")
+    conn = _sqlite3.connect(db_path)
+    conn.row_factory = _sqlite3.Row
+
+    # Find sent approvals with no response after 7 days
+    rows = conn.execute("""
+        SELECT aq.*, et.responded, et.sent_at as email_sent_at
+        FROM approval_queue aq
+        LEFT JOIN email_tracking et ON et.approval_id = aq.id
+        WHERE aq.status = 'sent'
+          AND (et.responded IS NULL)
+          AND aq.sent_at < datetime('now', '-7 days')
+    """).fetchall()
+
+    items_created = 0
+    for row in rows:
+        client_name = row["client_name"]
+        client_email = row["client_email"]
+        original_subject = row["subject"] or ""
+
+        # Draft follow-up
+        draft = claude_analyze(
+            f"Scrie un email scurt de follow-up (max 80 cuvinte) catre {client_name}. "
+            f"Referinta la emailul anterior cu subiectul '{original_subject}'. "
+            f"Ton politicos, nu agresiv. Intreaba daca a avut timp sa analizeze propunerea. "
+            f"NU include diacritice romanesti. "
+            f"Semneaza ca 'Alex - Broker de Asigurari'. "
+            f"Output: doar HTML simplu.",
+            {"original_type": row["type"], "original_subject": original_subject},
+            max_tokens=300,
+        )
+
+        create_approval_item(
+            item_type="follow_up",
+            client_id=row["client_id"],
+            client_name=client_name,
+            client_email=client_email,
+            priority="low",
+            trigger_data={"original_approval_id": row["id"], "original_type": row["type"]},
+            subject=f"Re: {original_subject}",
+            email_body_html=draft,
+        )
+        items_created += 1
+
+    conn.close()
+    log.info(f"=== Generated {items_created} follow-up items ===")
+
+
 # ── Task Registry ────────────────────────────────────────────────────────────
 TASKS = {
     "renewals": task_renewals,
@@ -845,6 +1204,8 @@ TASKS = {
     "cross-sell": task_cross_sell,
     "local-agent-sync": task_local_agent_sync,
     "upload-reports": task_upload_reports,
+    "generate-approvals": task_generate_approvals,
+    "follow-up-offers": task_follow_up_offers,
 }
 
 
