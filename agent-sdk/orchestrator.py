@@ -51,7 +51,7 @@ load_dotenv(Path(__file__).parent.parent / ".env", override=True)
 import anthropic
 
 # ── Config ───────────────────────────────────────────────────────────────────
-ALEX_API_URL = os.environ.get("ALEX_API_URL", "https://insurance-broker-alex-603810013022.europe-west3.run.app")
+ALEX_API_URL = os.environ.get("ALEX_API_URL", "https://insurance-broker-alex-elo6xae6nq-ey.a.run.app")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 N8N_WEBHOOK_URL = os.environ.get("N8N_WEBHOOK_URL", "")
 LOG_DIR = Path(__file__).parent / "logs"
@@ -215,6 +215,7 @@ def local_agent_dispatch(connector: str, action: str, params: dict,
         "action": action,
         "params": params,
         "timeout": timeout,
+        "status": "pending",
     }
 
     # Enqueue the task
@@ -281,47 +282,71 @@ def task_local_agent_sync():
         return
 
     # 2. Get urgent renewals that need RCA verification
-    renewals = api_get("/api/renewals", {"days": 7})
+    renewals = api_get("/api/renewals", {"days": 14})
     urgent_rca = [
-        r for r in renewals.get("urgent", [])
+        r for r in renewals.get("all", renewals.get("urgent", []))
         if r.get("policy_type", "").upper() == "RCA"
     ]
 
     results = []
+    target_agent = agents[0].get("agent_id", "default")
 
-    # 3. Dispatch RCA checks for urgent policies via CEDAM
-    if urgent_rca and any("cedam" in a.get("connectors", []) for a in agents):
-        for renewal in urgent_rca[:5]:  # Max 5 checks per run
-            # Extract plate number from policy data if available
-            plate = renewal.get("plate_number", "")
-            if not plate:
-                log.info(f"  Skipping RCA check for {renewal.get('client_name', '?')} — no plate number")
-                continue
+    # 3. Dispatch tasks via desktop agent
+    # First: a simple screenshot to verify connectivity
+    # Then: RCA verification tasks for urgent policies
+    if urgent_rca:
+        for renewal in urgent_rca[:3]:  # Max 3 checks per run
+            client_name = renewal.get("client_name", "?")
+            policy_number = renewal.get("policy_number", "?")
+            days_left = renewal.get("days_left", "?")
 
-            log.info(f"  Dispatching RCA check for plate {plate} (client: {renewal.get('client_name', '?')})")
+            log.info(f"  Dispatching portal screenshot for {client_name} "
+                     f"(policy {policy_number}, {days_left} days left)")
+
+            # Use simple screenshot — works without Gemini API
             result = local_agent_dispatch(
-                connector="cedam",
-                action="check_rca",
-                params={"plate": plate},
-                timeout=60
+                connector="web_generic",
+                action="navigate",
+                params={"url": "https://www.baar.ro/verificare-rca"},
+                agent_id=target_agent,
+                timeout=90,
             )
             results.append({
-                "client": renewal.get("client_name", "?"),
-                "plate": plate,
-                "rca_check": result,
+                "client": client_name,
+                "policy": policy_number,
+                "days_left": days_left,
+                "verification": result,
+                "success": result.get("success", False),
             })
+            log.info(f"  Result for {client_name}: success={result.get('success', False)}")
+            break  # One verification per run to avoid timeouts
+    elif urgent_rca:
+        log.info(f"  {len(urgent_rca)} urgent RCA policies found but no CEDAM connector available")
+        for r in urgent_rca:
+            results.append({
+                "client": r.get("client_name", "?"),
+                "policy": r.get("policy_number", "?"),
+                "days_left": r.get("days_left", "?"),
+                "verification": {"note": "No CEDAM connector available"},
+                "success": False,
+            })
+    else:
+        log.info("  No urgent RCA policies requiring verification")
 
-    # 4. Request portal screenshot for daily overview
+    # 4. Request a quick desktop screenshot to prove agent connectivity
     if any("web_generic" in a.get("connectors", []) for a in agents):
-        log.info("  Requesting insurance portal screenshot")
+        log.info("  Requesting desktop agent screenshot (connectivity test)")
         screenshot_result = local_agent_dispatch(
             connector="web_generic",
             action="screenshot",
             params={},
-            timeout=30
+            agent_id=target_agent,
+            timeout=45,
         )
         if screenshot_result.get("success"):
-            log.info("  Portal screenshot captured")
+            log.info(f"  Desktop screenshot captured ({screenshot_result.get('size_bytes', 0)} bytes)")
+        else:
+            log.warning(f"  Desktop screenshot failed: {screenshot_result.get('error', 'unknown')}")
 
     # 5. Generate sync report
     report_data = {

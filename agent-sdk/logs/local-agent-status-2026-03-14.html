@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent System Status</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .status-offline { color: #e74c3c; font-weight: bold; }
+        .action-box { background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 5px; margin: 15px 0; }
+        .capabilities { background: #e8f5e9; padding: 15px; border-radius: 5px; margin: 15px 0; }
+        .command { background: #2c3e50; color: white; padding: 8px 12px; border-radius: 4px; font-family: monospace; display: inline-block; margin: 5px 0; }
+        ul { margin: 10px 0; }
+        li { margin: 5px 0; }
+        h2 { color: #2c3e50; margin-bottom: 10px; }
+        .date { color: #7f8c8d; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🖥️ Local Agent System Status</h1>
+        <p class="date">Report Date: March 14, 2026</p>
+        
+        <div class="status">
+            <h2>Current Status</h2>
+            <p class="status-offline">❌ No agents currently online (0/0)</p>
+            <p>📋 Total active tasks: 0</p>
+        </div>
+
+        <div class="action-box">
+            <h2>⚠️ Action Required</h2>
+            <p><strong>Please start the local agent on your desktop computer:</strong></p>
+            <div class="command">python main.py start</div>
+        </div>
+
+        <div class="capabilities">
+            <h2>🚀 Available Capabilities Once Started</h2>
+            <ul>
+                <li>🔍 <strong>CEDAM RCA Checks</strong> - Automated compliance verification</li>
+                <li>🌐 <strong>PAID Portal Access</strong> - Direct integration with payment systems</li>
+                <li>🤝 <strong>Allianz Integration</strong> - Real-time policy data synchronization</li>
+                <li>📊 <strong>Excel Export</strong> - Automated report generation</li>
+                <li>🤖 <strong>Desktop Automation</strong> - Streamlined workflow processing</li>
+            </ul>
+        </div>
+
+        <p><em>Start your local agent to enable full broker automation capabilities.</em></p>
+    </div>
+</body>
+</html>
