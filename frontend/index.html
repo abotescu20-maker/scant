@@ -1,0 +1,2724 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#000000" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="ScanArt" />
+  <title>ScanArt – Scanează. Creează. Uimește.</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <style>
+    :root {
+      --bg: #000;
+      --surface: #111;
+      --surface2: #1a1a1a;
+      --accent: #7c3aed;
+      --accent2: #06b6d4;
+      --text: #fff;
+      --text-muted: rgba(255,255,255,.5);
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      background: #000; color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+      height: 100dvh; overflow: hidden; overscroll-behavior: none;
+    }
+
+    /* ── SCREENS ── */
+    .screen { position: fixed; inset: 0; display: flex; flex-direction: column; transition: opacity .22s, visibility .22s; }
+    .screen.hidden { opacity: 0; pointer-events: none; visibility: hidden; }
+
+    /* ── BTN-ICON ── */
+    .btn-icon {
+      background: rgba(0,0,0,.5); backdrop-filter: blur(14px);
+      border: 1px solid rgba(255,255,255,.18); border-radius: 50%;
+      width: 48px; height: 48px; display: flex; align-items: center; justify-content: center;
+      cursor: pointer; color: white; font-size: 1.2rem; transition: transform .15s, opacity .15s;
+      flex-shrink: 0;
+    }
+    .btn-icon:active { transform: scale(.88); opacity: .7; }
+
+    /* ── LANDING ── */
+    #landing {
+      background: radial-gradient(ellipse at 50% 25%, #1a0840 0%, #000 65%);
+      align-items: center; justify-content: center; text-align: center;
+      padding: calc(var(--safe-top) + 2rem) 2rem calc(var(--safe-bottom) + 2rem);
+    }
+    #landing h1 { font-size: clamp(2.2rem, 9vw, 3.8rem); font-weight: 800; line-height: 1.05; margin-bottom: 1rem; letter-spacing: -.02em; }
+    #landing h1 span { background: linear-gradient(135deg, #a855f7, #06b6d4); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    #landing p { color: var(--text-muted); font-size: 1rem; max-width: 290px; margin: 0 auto 2rem; line-height: 1.65; }
+    .tagline { font-size: .8rem; color: rgba(255,255,255,.3); margin-bottom: 2.5rem; letter-spacing: .08em; text-transform: uppercase; }
+    .btn-primary {
+      background: #fff; color: #000; border: none; border-radius: 100px;
+      padding: .9rem 2.2rem; font-size: 1rem; font-weight: 700;
+      cursor: pointer; display: inline-flex; align-items: center; gap: .5rem;
+      transition: transform .15s, opacity .15s;
+    }
+    .btn-primary:active { transform: scale(.95); opacity: .85; }
+    .landing-filters { display: flex; gap: .5rem; margin-top: 2rem; justify-content: center; flex-wrap: wrap; }
+    .landing-chip {
+      background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1);
+      border-radius: 100px; padding: .3rem .9rem; font-size: .78rem; color: var(--text-muted);
+    }
+
+    /* ── CAMERA ── */
+    #camera { background: #000; overflow: hidden; }
+    #video { width: 100%; height: 100%; object-fit: cover; position: absolute; inset: 0; }
+    .cam-grad-top {
+      position: absolute; top: 0; left: 0; right: 0; height: 140px;
+      background: linear-gradient(to bottom, rgba(0,0,0,.7), transparent); pointer-events: none;
+    }
+    .cam-grad-bottom {
+      position: absolute; bottom: 0; left: 0; right: 0; height: 280px;
+      background: linear-gradient(to top, rgba(0,0,0,.9), transparent); pointer-events: none;
+    }
+    .camera-top {
+      position: absolute; top: 0; left: 0; right: 0;
+      display: flex; justify-content: space-between; align-items: center;
+      padding: calc(var(--safe-top) + .9rem) 1.2rem .9rem; z-index: 10;
+    }
+    .mode-toggle {
+      display: flex; background: rgba(0,0,0,.55); backdrop-filter: blur(14px);
+      border: 1px solid rgba(255,255,255,.18); border-radius: 100px; padding: 3px;
+    }
+    .mode-btn {
+      padding: .35rem .9rem; border-radius: 100px; border: none;
+      font-size: .78rem; font-weight: 600; cursor: pointer;
+      transition: background .2s, color .2s; color: rgba(255,255,255,.55); background: transparent;
+    }
+    .mode-btn.active { background: #fff; color: #000; }
+    .camera-bottom {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      display: flex; flex-direction: column; align-items: center; gap: 14px;
+      padding-bottom: calc(var(--safe-bottom) + 1.2rem); z-index: 10;
+    }
+    /* Filter gallery */
+    .filter-gallery {
+      display: flex; gap: 14px; overflow-x: auto; width: 100%;
+      padding: 4px 1.2rem; scrollbar-width: none; align-items: flex-end;
+      mask-image: linear-gradient(to right, black 80%, transparent 100%);
+      -webkit-mask-image: linear-gradient(to right, black 80%, transparent 100%);
+    }
+    .filter-gallery::-webkit-scrollbar { display: none; }
+    .filter-item { flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 5px; cursor: pointer; }
+    .filter-item:active { transform: scale(.88); }
+    .filter-circle {
+      width: 64px; height: 64px; border-radius: 50%;
+      border: 3px solid transparent; transition: border-color .2s, transform .22s;
+      display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden;
+    }
+    .filter-circle .circle-bg { position: absolute; inset: 0; border-radius: 50%; }
+    .filter-circle .circle-emoji { position: relative; z-index: 1; font-size: 1.65rem; line-height: 1; }
+    .filter-item.active .filter-circle { border-color: #fff; transform: scale(1.12); }
+    .filter-label { font-size: .68rem; font-weight: 600; color: rgba(255,255,255,.8); white-space: nowrap; }
+    .filter-item.active .filter-label { color: #fff; }
+    /* Shutter row */
+    .shutter-row {
+      display: flex; align-items: center; justify-content: center;
+      width: 100%; padding: 0 1.5rem; position: relative;
+    }
+    .quality-badge {
+      position: absolute; left: 1.5rem;
+      background: rgba(0,0,0,.55); backdrop-filter: blur(14px);
+      border: 1.5px solid rgba(255,255,255,.25); border-radius: 100px;
+      padding: .4rem .9rem; font-size: .76rem; font-weight: 700;
+      cursor: pointer; color: #fff; user-select: none; transition: transform .15s;
+    }
+    .quality-badge:active { transform: scale(.9); }
+    .quality-badge.q-standard { border-color: #22c55e; color: #86efac; }
+    .quality-badge.q-premium  { border-color: #f59e0b; color: #fcd34d; }
+    .gallery-icon-btn {
+      position: absolute; right: 1.5rem;
+      background: rgba(0,0,0,.55); backdrop-filter: blur(14px);
+      border: 1.5px solid rgba(255,255,255,.2); border-radius: 50%;
+      width: 42px; height: 42px; display: flex; align-items: center; justify-content: center;
+      cursor: pointer; font-size: 1.1rem; transition: transform .15s;
+    }
+    .gallery-icon-btn:active { transform: scale(.88); }
+    #shutter-btn {
+      width: 76px; height: 76px; border-radius: 50%;
+      border: 4px solid rgba(255,255,255,.5);
+      background: rgba(255,255,255,.15); backdrop-filter: blur(8px);
+      cursor: pointer; position: relative; transition: transform .12s;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #shutter-btn::after {
+      content: ''; position: absolute; inset: 5px; border-radius: 50%;
+      background: #fff; transition: transform .12s;
+    }
+    #shutter-btn:active { transform: scale(.86); }
+    #shutter-btn:active::after { transform: scale(.8); }
+    #flash { position: fixed; inset: 0; background: white; opacity: 0; pointer-events: none; z-index: 200; transition: opacity .12s; }
+
+    /* ── LOADING ── */
+    #loading { background: #000; overflow: hidden; }
+    #loading-thumb {
+      position: absolute; inset: 0; background-size: cover; background-position: center;
+      filter: blur(18px) brightness(.3) saturate(1.5); transform: scale(1.1);
+    }
+    .loading-inner {
+      position: absolute; inset: 0; z-index: 2;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem;
+    }
+    .loading-filter-name { font-size: 1rem; font-weight: 700; color: rgba(255,255,255,.6); text-transform: uppercase; letter-spacing: .12em; margin-bottom: 1.5rem; }
+    .progress-ring-wrap { position: relative; width: 128px; height: 128px; margin-bottom: 1.5rem; }
+    .progress-ring { transform: rotate(-90deg); }
+    .progress-ring-bg { fill: none; stroke: rgba(255,255,255,.1); stroke-width: 7; }
+    .progress-ring-fill {
+      fill: none; stroke: url(#ring-grad); stroke-width: 7;
+      stroke-linecap: round; transition: stroke-dashoffset .5s ease;
+    }
+    .progress-icon { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: 2.2rem; animation: pulse 1.8s ease-in-out infinite; }
+    @keyframes pulse { 0%,100% { transform: translate(-50%,-50%) scale(1); } 50% { transform: translate(-50%,-50%) scale(1.14); } }
+    #loading h2 { font-size: 1.4rem; font-weight: 700; margin-bottom: .4rem; }
+    .status-text { color: rgba(255,255,255,.5); font-size: .88rem; }
+    #progress-pct { color: #a78bfa; font-weight: 700; font-size: .95rem; margin-top: .4rem; }
+
+    /* ── RESULT ── */
+    #result { background: #000; overflow: hidden; }
+    #result-video, #result-gif-el {
+      position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+    }
+    #result-gif-el { object-fit: contain; background: #000; }
+    /* Reveal overlay: mostra originalul peste result, animat wipe */
+    #reveal-original {
+      position: absolute; inset: 0; z-index: 5;
+      background-size: cover; background-position: center;
+      animation: revealWipe .9s cubic-bezier(.6,.05,.15,.95) forwards;
+      pointer-events: none;
+    }
+    @keyframes revealWipe {
+      0%   { clip-path: inset(0 0 0 0); opacity: 1; }
+      60%  { clip-path: inset(0 0 0 0); opacity: 1; }
+      100% { clip-path: inset(0 100% 0 0); opacity: 1; }
+    }
+    .result-top {
+      position: absolute; top: 0; left: 0; right: 0;
+      display: flex; justify-content: space-between; align-items: center;
+      padding: calc(var(--safe-top) + .9rem) 1.2rem .9rem;
+      background: linear-gradient(to bottom, rgba(0,0,0,.7), transparent); z-index: 10;
+    }
+    .result-filter-name { font-size: 1rem; font-weight: 700; }
+
+    /* Share nudge banner */
+    #share-nudge {
+      position: absolute; top: calc(var(--safe-top) + 4.8rem); left: 1rem; right: 1rem; z-index: 12;
+      background: rgba(124,58,237,.82); backdrop-filter: blur(14px);
+      border-radius: 12px; padding: .6rem 1rem;
+      display: flex; align-items: center; justify-content: space-between;
+      font-size: .88rem; font-weight: 600;
+      animation: nudgeSlide .3s ease; pointer-events: auto;
+    }
+    #share-nudge span { color: #e9d5ff; text-decoration: underline; cursor: pointer; }
+    @keyframes nudgeSlide { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Camera first-use tooltip */
+    #cam-tip {
+      position: absolute; bottom: calc(var(--safe-bottom) + 9rem); left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,.75); backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,.2); border-radius: 10px;
+      padding: .5rem 1rem; font-size: .82rem; color: rgba(255,255,255,.9);
+      white-space: nowrap; z-index: 12; pointer-events: auto;
+      animation: nudgeSlide .3s ease;
+    }
+
+    .result-bottom {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      display: flex; flex-direction: column; gap: 12px;
+      padding-bottom: calc(var(--safe-bottom) + 1rem);
+      background: linear-gradient(to top, rgba(0,0,0,.88), transparent); z-index: 10;
+    }
+    /* Remix row */
+    .remix-row {
+      display: flex; gap: 8px; overflow-x: auto; padding: 0 1.2rem; scrollbar-width: none;
+      mask-image: linear-gradient(to right, black 80%, transparent 100%);
+      -webkit-mask-image: linear-gradient(to right, black 80%, transparent 100%);
+    }
+    .remix-row::-webkit-scrollbar { display: none; }
+    .remix-btn {
+      flex-shrink: 0; background: rgba(255,255,255,.1); backdrop-filter: blur(10px);
+      border: 1.5px solid rgba(255,255,255,.2); border-radius: 100px;
+      padding: .4rem .85rem; font-size: .78rem; font-weight: 600; color: #fff;
+      cursor: pointer; display: flex; align-items: center; gap: .3rem;
+      transition: transform .15s, background .15s;
+    }
+    .remix-btn:active { transform: scale(.9); background: rgba(255,255,255,.2); }
+    /* Result filter gallery */
+    .result-filter-gallery {
+      display: flex; gap: 12px; overflow-x: auto; padding: 0 1.2rem; scrollbar-width: none;
+      mask-image: linear-gradient(to right, black 80%, transparent 100%);
+      -webkit-mask-image: linear-gradient(to right, black 80%, transparent 100%);
+    }
+    .result-filter-gallery::-webkit-scrollbar { display: none; }
+    .result-filter-item {
+      flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 4px;
+      cursor: pointer; opacity: .65; transition: opacity .2s, transform .2s;
+    }
+    .result-filter-item.active { opacity: 1; }
+    .result-filter-circle {
+      width: 50px; height: 50px; border-radius: 50%;
+      border: 2.5px solid transparent; overflow: hidden;
+      display: flex; align-items: center; justify-content: center; position: relative;
+    }
+    .result-filter-item.active .result-filter-circle { border-color: #fff; }
+    .result-filter-label { font-size: .72rem; font-weight: 600; color: rgba(255,255,255,.7); }
+    /* Action buttons */
+    .result-actions-row { display: flex; gap: 10px; padding: 0 1.2rem; }
+    .result-action-btn {
+      flex: 1; background: rgba(255,255,255,.1); backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,.18); border-radius: 14px;
+      padding: .8rem .5rem; font-size: .82rem; font-weight: 600; color: #fff;
+      cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 5px;
+      transition: transform .14s, background .14s; min-width: 0;
+    }
+    .result-action-btn:active { transform: scale(.92); background: rgba(255,255,255,.2); }
+    .result-action-btn .btn-emoji { font-size: 1.35rem; line-height: 1; }
+    .result-action-btn.primary { background: rgba(255,255,255,.9); color: #000; }
+    .result-action-btn.primary:active { background: rgba(255,255,255,.7); }
+
+    /* ── GALLERY SCREEN ── */
+    #gallery { background: #000; }
+    .gallery-top {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: calc(var(--safe-top) + .9rem) 1.2rem .9rem;
+      background: var(--surface); flex-shrink: 0;
+    }
+    .gallery-title { font-size: 1.1rem; font-weight: 700; }
+    .gallery-grid {
+      flex: 1; overflow-y: auto; padding: 3px;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 3px;
+    }
+    .gallery-item {
+      position: relative; aspect-ratio: 1; overflow: hidden;
+      cursor: pointer; background: var(--surface2);
+    }
+    .gallery-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .gallery-item-overlay {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      background: linear-gradient(to top, rgba(0,0,0,.7), transparent);
+      padding: .4rem .5rem .3rem; display: flex; justify-content: space-between; align-items: flex-end;
+    }
+    .gallery-filter-badge {
+      font-size: .65rem; font-weight: 700; color: #fff;
+      background: rgba(124,58,237,.7); border-radius: 100px; padding: 2px 7px;
+    }
+    .gallery-date { font-size: .6rem; color: rgba(255,255,255,.6); }
+    .gallery-item.selected::after {
+      content: '✓'; position: absolute; top: 8px; right: 8px;
+      background: var(--accent); color: #fff; border-radius: 50%;
+      width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+      font-size: .75rem; font-weight: 700;
+    }
+    .gallery-empty { text-align: center; color: var(--text-muted); padding: 4rem 2rem; font-size: .95rem; line-height: 1.6; }
+
+    /* ── STUDIO PANEL (prompt drawer) ── */
+    #studio-panel {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;
+      background: rgba(10,10,16,.97); backdrop-filter: blur(24px);
+      border-radius: 22px 22px 0 0; border-top: 1px solid rgba(255,255,255,.1);
+      transform: translateY(100%); transition: transform .35s cubic-bezier(.25,.46,.45,.94);
+      max-height: 90dvh; display: flex; flex-direction: column;
+      padding-bottom: var(--safe-bottom);
+    }
+    #studio-panel.open { transform: translateY(0); }
+    .panel-handle { width: 36px; height: 4px; background: rgba(255,255,255,.2); border-radius: 2px; margin: 12px auto 0; flex-shrink: 0; }
+    .panel-tabs { display: flex; border-bottom: 1px solid rgba(255,255,255,.08); flex-shrink: 0; margin-top: 8px; }
+    .panel-tab {
+      flex: 1; padding: .65rem; text-align: center; font-size: .82rem; font-weight: 600;
+      color: rgba(255,255,255,.45); cursor: pointer; border-bottom: 2px solid transparent;
+      transition: color .2s, border-color .2s;
+    }
+    .panel-tab.active { color: #fff; border-color: var(--accent); }
+    .panel-body { overflow-y: auto; flex: 1; padding: 1rem 1.2rem 1.5rem; }
+    .panel-section-title { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: rgba(255,255,255,.4); margin-bottom: .6rem; }
+
+    /* Prompt Chips */
+    .prompt-chips-area { display: flex; flex-direction: column; gap: 8px; margin-bottom: .85rem; }
+    .prompt-chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+    .prompt-chip {
+      display: inline-flex; align-items: center; gap: 5px;
+      border-radius: 8px; padding: .4rem .7rem;
+      font-size: .82rem; line-height: 1.3; cursor: text;
+      transition: box-shadow .15s;
+      min-width: 40px; max-width: 100%; word-break: break-word;
+    }
+    .prompt-chip:focus { outline: none; box-shadow: 0 0 0 2px rgba(255,255,255,.4); }
+    .prompt-chip[data-cat="subject"]   { background: rgba(124,58,237,.22); border: 1.5px solid rgba(124,58,237,.5); color: #c4b5fd; }
+    .prompt-chip[data-cat="artist"]    { background: rgba(6,182,212,.18); border: 1.5px solid rgba(6,182,212,.45); color: #67e8f9; }
+    .prompt-chip[data-cat="technique"] { background: rgba(180,120,20,.2); border: 1.5px solid rgba(200,155,30,.4); color: #fcd34d; }
+    .prompt-chip[data-cat="mood"]      { background: rgba(236,72,153,.18); border: 1.5px solid rgba(236,72,153,.4); color: #f9a8d4; }
+    .prompt-chip[data-cat="medium"]    { background: rgba(255,255,255,.07); border: 1.5px solid rgba(255,255,255,.18); color: rgba(255,255,255,.75); }
+    .chip-cat-label { font-size: .62rem; opacity: .5; text-transform: uppercase; letter-spacing: .05em; flex-shrink: 0; align-self: center; }
+
+    /* Inspire Me */
+    .inspire-row { display: flex; gap: 8px; margin-bottom: .85rem; }
+    .inspire-btn, .spice-btn {
+      flex: 1; padding: .6rem; border-radius: 12px; border: none;
+      font-size: .82rem; font-weight: 600; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: .35rem;
+      transition: transform .15s, opacity .15s;
+    }
+    .inspire-btn { background: rgba(124,58,237,.25); border: 1.5px solid rgba(124,58,237,.4); color: #c4b5fd; }
+    .spice-btn   { background: rgba(245,158,11,.18); border: 1.5px solid rgba(245,158,11,.35); color: #fcd34d; }
+    .inspire-btn:active, .spice-btn:active { transform: scale(.94); opacity: .8; }
+    .inspire-loading { color: rgba(255,255,255,.5); font-size: .8rem; text-align: center; padding: .5rem; }
+    .inspire-variations { display: flex; flex-direction: column; gap: 7px; margin-bottom: .85rem; }
+    .inspire-card {
+      background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.12); border-radius: 10px;
+      padding: .65rem .8rem; font-size: .82rem; line-height: 1.45; color: rgba(255,255,255,.85);
+      cursor: pointer; transition: background .15s, border-color .15s;
+    }
+    .inspire-card:active { background: rgba(124,58,237,.2); border-color: rgba(124,58,237,.5); }
+
+    /* Studio Remix Row */
+    .remix-studio { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: .85rem; }
+    .remix-studio-btn {
+      background: rgba(255,255,255,.07); border: 1.5px solid rgba(255,255,255,.14);
+      border-radius: 100px; padding: .35rem .75rem; cursor: pointer;
+      font-size: .78rem; font-weight: 600; color: rgba(255,255,255,.7);
+      transition: transform .14s, background .14s; display: flex; align-items: center; gap: .25rem;
+    }
+    .remix-studio-btn:active { transform: scale(.9); background: rgba(255,255,255,.15); }
+
+    /* Speed slider */
+    .speed-row { display: flex; align-items: center; gap: .85rem; margin-bottom: .85rem; }
+    .speed-label { font-size: .78rem; color: rgba(255,255,255,.5); white-space: nowrap; }
+    .speed-options { display: flex; gap: 6px; }
+    .speed-opt {
+      padding: .32rem .65rem; border-radius: 100px; border: 1.5px solid rgba(255,255,255,.15);
+      background: transparent; color: rgba(255,255,255,.5); font-size: .76rem; font-weight: 600;
+      cursor: pointer; transition: border-color .2s, color .2s, background .2s;
+    }
+    .speed-opt.active { border-color: #a78bfa; color: #c4b5fd; background: rgba(124,58,237,.15); }
+
+    /* Filter/quality/mode chips */
+    .rerun-opts { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: .75rem; }
+    .rerun-chip {
+      background: rgba(255,255,255,.06); border: 1.5px solid rgba(255,255,255,.13);
+      border-radius: 100px; padding: .3rem .7rem; cursor: pointer;
+      font-size: .75rem; font-weight: 600; color: rgba(255,255,255,.6);
+      transition: border-color .2s, color .2s, background .2s;
+    }
+    .rerun-chip.active { border-color: #a78bfa; color: #c4b5fd; background: rgba(124,58,237,.15); }
+
+    /* Details tab */
+    .details-row { padding: .6rem 0; border-bottom: 1px solid rgba(255,255,255,.06); }
+    .details-label { font-size: .7rem; color: rgba(255,255,255,.4); text-transform: uppercase; letter-spacing: .06em; margin-bottom: .3rem; }
+    .details-value { font-size: .85rem; color: rgba(255,255,255,.85); line-height: 1.5; word-break: break-word; }
+    .copy-prompt-btn {
+      margin-top: .6rem; padding: .45rem 1rem; border-radius: 100px;
+      background: rgba(255,255,255,.07); border: 1.5px solid rgba(255,255,255,.14);
+      color: rgba(255,255,255,.6); font-size: .76rem; font-weight: 600; cursor: pointer;
+    }
+
+    /* Regenerate button */
+    .btn-rerun {
+      width: 100%; margin-top: .85rem;
+      background: linear-gradient(135deg, #7c3aed, #06b6d4);
+      border: none; border-radius: 14px;
+      padding: .88rem; font-size: 1rem; font-weight: 700; color: #fff;
+      cursor: pointer; display: flex; align-items: center; justify-content: center; gap: .5rem;
+      transition: transform .15s, opacity .15s;
+    }
+    .btn-rerun:active { transform: scale(.97); opacity: .85; }
+
+    /* ── PERMISSION ERROR ── */
+    #permission-error {
+      background: #000; align-items: center; justify-content: center;
+      text-align: center; padding: 2rem;
+    }
+    #permission-error h2 { font-size: 1.4rem; margin-bottom: 1rem; }
+    #permission-error p { color: var(--text-muted); margin-bottom: 2rem; line-height: 1.6; max-width: 300px; }
+
+    /* ── TOAST ── */
+    #toast {
+      position: fixed; bottom: calc(var(--safe-bottom) + 88px); left: 50%;
+      transform: translateX(-50%) translateY(14px);
+      background: rgba(255,255,255,.13); backdrop-filter: blur(16px);
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 100px; padding: .58rem 1.4rem; font-size: .86rem; font-weight: 600;
+      opacity: 0; transition: opacity .22s, transform .22s; z-index: 999; white-space: nowrap;
+      pointer-events: none;
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ── STUDIO PANEL sticky footer ── */
+    #studio-panel {
+      display: flex; flex-direction: column;
+    }
+    .panel-body {
+      overflow-y: auto; flex: 1; padding: 1rem 1.2rem .5rem;
+    }
+    .panel-sticky-footer {
+      flex-shrink: 0; padding: .75rem 1.2rem calc(var(--safe-bottom) + .75rem);
+      border-top: 1px solid rgba(255,255,255,.07);
+      background: rgba(10,10,16,.97);
+    }
+    /* Textarea prompt raw */
+    .prompt-raw-area {
+      position: relative; margin-bottom: .75rem;
+    }
+    .prompt-raw-label {
+      font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;
+      color: rgba(255,255,255,.4); margin-bottom: .35rem; display: flex; justify-content: space-between; align-items: center;
+    }
+    .prompt-raw-toggle {
+      font-size: .7rem; color: rgba(124,58,237,.8); cursor: pointer; text-transform: none;
+      letter-spacing: 0; font-weight: 600;
+    }
+    #prompt-raw-textarea {
+      width: 100%; background: rgba(255,255,255,.05); border: 1.5px solid rgba(255,255,255,.15);
+      border-radius: 10px; padding: .65rem .8rem; font-size: .82rem; color: #fff;
+      line-height: 1.5; resize: none; font-family: inherit; min-height: 72px;
+      transition: border-color .2s;
+    }
+    #prompt-raw-textarea:focus { outline: none; border-color: rgba(124,58,237,.6); }
+    #prompt-raw-textarea::placeholder { color: rgba(255,255,255,.25); }
+    /* Chips compact view */
+    .chips-collapsed { display: none; }
+
+    /* ── PANEL BACKDROP ── */
+    #panel-backdrop {
+      position: fixed; inset: 0; z-index: 49;
+      background: rgba(0,0,0,.55); display: none;
+    }
+    .svg-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+    /* ── HELP / FAQ SCREEN ── */
+    #help { background: #000; }
+    .help-top {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: calc(var(--safe-top) + .9rem) 1.2rem .9rem;
+      background: var(--surface); flex-shrink: 0;
+    }
+    .help-title { font-size: 1.1rem; font-weight: 700; }
+    .help-body { flex: 1; overflow-y: auto; padding: .75rem 1.2rem calc(var(--safe-bottom) + 1rem); }
+    .help-section {
+      border-bottom: 1px solid rgba(255,255,255,.07); margin-bottom: 0;
+    }
+    .help-section-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: .9rem 0; cursor: pointer; user-select: none;
+    }
+    .help-section-header:active { opacity: .7; }
+    .help-section-title { font-size: .95rem; font-weight: 700; }
+    .help-chevron { font-size: .8rem; color: rgba(255,255,255,.4); transition: transform .22s; }
+    .help-section.open .help-chevron { transform: rotate(180deg); }
+    .help-section-body {
+      display: none; padding-bottom: 1rem;
+      font-size: .85rem; color: rgba(255,255,255,.7); line-height: 1.65;
+    }
+    .help-section.open .help-section-body { display: block; }
+    .help-step { display: flex; gap: .75rem; align-items: flex-start; margin-bottom: .65rem; }
+    .help-step-num {
+      background: var(--accent); border-radius: 50%;
+      width: 22px; height: 22px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: .72rem; font-weight: 800; color: #fff;
+    }
+    .help-filter-row { display: flex; align-items: center; gap: .5rem; padding: .3rem 0; }
+    .help-filter-emoji { font-size: 1.2rem; width: 28px; text-align: center; }
+    .help-filter-name { font-weight: 700; color: #fff; min-width: 70px; }
+    .help-filter-desc { color: rgba(255,255,255,.55); font-size: .8rem; }
+    .help-qa-q { font-weight: 700; color: #fff; margin-top: .75rem; margin-bottom: .25rem; }
+    .help-qa-a { color: rgba(255,255,255,.65); padding-left: .75rem; border-left: 2px solid rgba(124,58,237,.4); }
+    .help-tier-row { display: flex; align-items: center; gap: .6rem; padding: .4rem 0; }
+    .help-tier-badge {
+      font-size: .72rem; font-weight: 800; border-radius: 100px; padding: .2rem .65rem;
+    }
+    .help-footer {
+      text-align: center; color: rgba(255,255,255,.25); font-size: .75rem;
+      padding: 1.5rem 0 .5rem; line-height: 1.7;
+    }
+
+    /* ── CHALLENGE BANNER ── */
+    .challenge-banner {
+      background: linear-gradient(135deg, rgba(124,58,237,.3), rgba(6,182,212,.2));
+      border: 1px solid rgba(124,58,237,.35); border-radius: 14px;
+      padding: .8rem 1rem; margin-bottom: 1.2rem;
+      display: flex; align-items: center; gap: .75rem; cursor: pointer;
+      transition: transform .14s;
+    }
+    .challenge-banner:active { transform: scale(.98); }
+    .challenge-icon { font-size: 1.8rem; flex-shrink: 0; }
+    .challenge-text { flex: 1; }
+    .challenge-label { font-size: .65rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: rgba(124,58,237,.9); margin-bottom: 2px; }
+    .challenge-name { font-size: .92rem; font-weight: 700; color: #fff; }
+    .challenge-sub { font-size: .75rem; color: rgba(255,255,255,.5); margin-top: 2px; }
+    .challenge-arrow { color: rgba(255,255,255,.4); font-size: .9rem; flex-shrink: 0; }
+
+    /* Banner mic pe camera screen */
+    .cam-challenge-badge {
+      position: absolute; top: calc(var(--safe-top) + 3.8rem); left: 50%; transform: translateX(-50%);
+      background: rgba(124,58,237,.75); backdrop-filter: blur(10px);
+      border: 1px solid rgba(124,58,237,.5); border-radius: 100px;
+      padding: .25rem .85rem; font-size: .72rem; font-weight: 700; color: #fff;
+      white-space: nowrap; z-index: 11; pointer-events: none;
+    }
+
+    /* ── STREAK BADGE ── */
+    #streak-badge {
+      display: none; align-items: center; justify-content: center;
+      margin: .6rem auto 0; padding: .3rem .9rem;
+      background: rgba(251,146,60,.15); border: 1px solid rgba(251,146,60,.4);
+      border-radius: 100px; font-size: .82rem; font-weight: 700;
+      color: #fb923c; width: fit-content;
+    }
+
+    /* ── REFERRAL BANNER ── */
+    #referral-banner {
+      display: none; align-items: center; justify-content: center; gap: .5rem;
+      margin: .8rem 1.2rem 0; padding: .65rem 1rem;
+      background: rgba(6,182,212,.12); border: 1px solid rgba(6,182,212,.35);
+      border-radius: 12px; font-size: .85rem; color: rgba(255,255,255,.85);
+      text-align: center; line-height: 1.35;
+    }
+    #referral-banner .ref-emoji { font-size: 1.2rem; }
+
+    /* ── WATERMARK UPGRADE CTA ── */
+    .watermark-cta {
+      margin: 0 1.2rem;
+      background: rgba(124,58,237,.15);
+      border: 1px solid rgba(124,58,237,.4);
+      border-radius: 12px;
+      padding: .65rem 1rem;
+      font-size: .82rem; color: rgba(255,255,255,.75);
+      cursor: pointer; text-align: center;
+      transition: background .15s;
+    }
+    .watermark-cta:active { background: rgba(124,58,237,.28); }
+    .watermark-cta span { color: #c4b5fd; font-weight: 700; }
+
+    /* ── MULTI-VARIANT STRIP ── */
+    .variants-strip {
+      display: flex; gap: 8px; overflow-x: auto; padding: 0 1.2rem; scrollbar-width: none;
+      align-items: center;
+    }
+    .variants-strip::-webkit-scrollbar { display: none; }
+    .variants-strip-label {
+      flex-shrink: 0; font-size: .7rem; font-weight: 700; color: rgba(255,255,255,.45);
+      text-transform: uppercase; letter-spacing: .07em;
+    }
+    .variant-thumb {
+      flex-shrink: 0; width: 54px; height: 54px; border-radius: 10px;
+      overflow: hidden; cursor: pointer; position: relative;
+      border: 2.5px solid transparent; transition: border-color .18s, transform .15s;
+    }
+    .variant-thumb.active { border-color: #fff; }
+    .variant-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .variant-thumb-loading {
+      width: 100%; height: 100%; background: rgba(255,255,255,.07);
+      display: flex; align-items: center; justify-content: center; font-size: 1.2rem;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+    .variant-new-btn {
+      flex-shrink: 0; width: 54px; height: 54px; border-radius: 10px;
+      background: rgba(124,58,237,.2); border: 1.5px dashed rgba(124,58,237,.5);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; font-size: 1.3rem; color: #a78bfa;
+      transition: background .15s, transform .15s;
+    }
+    .variant-new-btn:active { transform: scale(.88); background: rgba(124,58,237,.35); }
+
+    /* ── ONBOARDING ── */
+    #onboarding {
+      background: #000; z-index: 200;
+      align-items: stretch; justify-content: stretch; overflow: hidden;
+    }
+    .onb-slides {
+      display: flex; width: 300%; height: 100%;
+      transition: transform .38s cubic-bezier(.25,.46,.45,.94);
+    }
+    .onb-slide {
+      width: 33.333%; flex-shrink: 0; height: 100%;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 3rem 2.5rem; text-align: center;
+    }
+    .onb-slide:nth-child(1) { background: radial-gradient(ellipse at 50% 30%, #1a0840 0%, #000 70%); }
+    .onb-slide:nth-child(2) { background: radial-gradient(ellipse at 50% 30%, #0a2040 0%, #000 70%); }
+    .onb-slide:nth-child(3) { background: radial-gradient(ellipse at 50% 30%, #0d2010 0%, #000 70%); }
+    .onb-icon { font-size: 5rem; margin-bottom: 1.8rem; animation: onb-float 2.8s ease-in-out infinite; }
+    @keyframes onb-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+    .onb-title { font-size: 1.85rem; font-weight: 800; line-height: 1.15; margin-bottom: 1rem; letter-spacing: -.02em; }
+    .onb-title span { background: linear-gradient(135deg, #a855f7, #06b6d4); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .onb-desc { color: rgba(255,255,255,.62); font-size: 1rem; line-height: 1.65; max-width: 300px; margin-bottom: 0; }
+    .onb-bottom {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      display: flex; flex-direction: column; align-items: center; gap: 1.2rem;
+      padding: 1.5rem 2rem calc(var(--safe-bottom) + 1.8rem);
+    }
+    .onb-dots { display: flex; gap: 8px; }
+    .onb-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: rgba(255,255,255,.25); transition: background .25s, width .25s;
+    }
+    .onb-dot.active { background: #fff; width: 22px; border-radius: 4px; }
+    .onb-next-btn {
+      width: 100%; max-width: 320px;
+      background: #fff; color: #000; border: none; border-radius: 100px;
+      padding: .95rem 2rem; font-size: 1rem; font-weight: 700; cursor: pointer;
+      transition: transform .14s, opacity .14s;
+    }
+    .onb-next-btn:active { transform: scale(.96); opacity: .85; }
+    .onb-skip {
+      font-size: .82rem; color: rgba(255,255,255,.35); cursor: pointer;
+      background: none; border: none; padding: .3rem;
+    }
+
+    /* ── TRENDING SCREEN ── */
+    #trending { background: #000; }
+    .trending-top {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: calc(var(--safe-top) + .9rem) 1.2rem .9rem;
+      background: var(--surface); flex-shrink: 0;
+    }
+    .trending-title { font-size: 1.1rem; font-weight: 700; }
+    .trending-tabs {
+      display: flex; gap: 6px; padding: .65rem 1.2rem;
+      border-bottom: 1px solid rgba(255,255,255,.07); flex-shrink: 0;
+    }
+    .trending-tab {
+      padding: .35rem .85rem; border-radius: 100px; border: none;
+      font-size: .78rem; font-weight: 600; cursor: pointer;
+      background: rgba(255,255,255,.07); color: rgba(255,255,255,.5);
+      transition: background .2s, color .2s;
+    }
+    .trending-tab.active { background: rgba(124,58,237,.25); color: #c4b5fd; border: 1.5px solid rgba(124,58,237,.4); }
+    .trending-grid {
+      flex: 1; overflow-y: auto; padding: 3px;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 3px;
+    }
+    .trending-item {
+      position: relative; aspect-ratio: 1; overflow: hidden; cursor: pointer;
+      background: var(--surface2);
+    }
+    .trending-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .trending-item-overlay {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      background: linear-gradient(to top, rgba(0,0,0,.75), transparent);
+      padding: .5rem .5rem .35rem;
+    }
+    .trending-badge {
+      font-size: .62rem; font-weight: 700; color: #fff;
+      background: rgba(124,58,237,.65); border-radius: 100px; padding: 2px 7px;
+      display: inline-block; margin-bottom: 2px;
+    }
+    .trending-rank {
+      position: absolute; top: 8px; left: 8px;
+      background: rgba(0,0,0,.7); color: #fcd34d;
+      font-size: .7rem; font-weight: 800; border-radius: 6px; padding: 2px 6px;
+    }
+    .trending-empty { text-align: center; color: var(--text-muted); padding: 4rem 2rem; font-size: .95rem; line-height: 1.6; grid-column: 1/-1; }
+
+    /* ── PROMPT HISTORY (undo stack) ── */
+    .prompt-history-row {
+      display: flex; align-items: center; gap: 8px; margin-bottom: .75rem;
+    }
+    .history-undo-btn {
+      background: rgba(255,255,255,.07); border: 1.5px solid rgba(255,255,255,.14);
+      border-radius: 100px; padding: .3rem .75rem; cursor: pointer;
+      font-size: .76rem; font-weight: 600; color: rgba(255,255,255,.5);
+      transition: transform .14s, background .14s; display: flex; align-items: center; gap: .3rem;
+      white-space: nowrap; flex-shrink: 0;
+    }
+    .history-undo-btn:active { transform: scale(.9); background: rgba(255,255,255,.15); }
+    .history-undo-btn:disabled { opacity: .3; cursor: not-allowed; }
+    .history-counter { font-size: .7rem; color: rgba(255,255,255,.3); }
+
+    /* ── FILTER PACKS (lock UI) ── */
+    .packs-banner {
+      background: linear-gradient(135deg, rgba(124,58,237,.2), rgba(6,182,212,.2));
+      border: 1px solid rgba(124,58,237,.3); border-radius: 14px;
+      padding: 1rem 1.2rem; margin: .5rem 0; text-align: center;
+    }
+    .packs-banner h3 { font-size: .95rem; font-weight: 700; margin-bottom: .4rem; }
+    .packs-banner p { font-size: .78rem; color: rgba(255,255,255,.55); margin-bottom: .8rem; line-height: 1.5; }
+    .packs-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: .85rem; }
+    .pack-item {
+      background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); border-radius: 12px;
+      padding: .75rem 1rem; display: flex; justify-content: space-between; align-items: center;
+      cursor: pointer; transition: background .15s;
+    }
+    .pack-item:active { background: rgba(255,255,255,.1); }
+    .pack-item-left { display: flex; align-items: center; gap: .75rem; }
+    .pack-item-icon { font-size: 1.5rem; }
+    .pack-item-name { font-size: .85rem; font-weight: 700; }
+    .pack-item-desc { font-size: .72rem; color: rgba(255,255,255,.45); margin-top: 2px; }
+    .pack-item-price {
+      font-size: .78rem; font-weight: 700; color: #fcd34d;
+      background: rgba(245,158,11,.15); border: 1px solid rgba(245,158,11,.3);
+      border-radius: 100px; padding: .25rem .65rem;
+    }
+    .pack-lock-icon { font-size: 1.1rem; opacity: .5; }
+  </style>
+</head>
+<body>
+
+<div class="svg-defs">
+  <svg><defs>
+    <linearGradient id="ring-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7c3aed"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
+    </linearGradient>
+  </defs></svg>
+</div>
+
+<div id="flash"></div>
+<div id="toast"></div>
+<div id="panel-backdrop" onclick="closeStudioPanel()"></div>
+
+<!-- SCREEN: Onboarding (shown on first ever open) -->
+<div id="onboarding" class="screen hidden">
+  <div class="onb-slides" id="onb-slides">
+    <!-- Slide 1 -->
+    <div class="onb-slide">
+      <div class="onb-icon">🎨</div>
+      <div class="onb-title">Scanează.<br><span>Transformă.</span></div>
+      <div class="onb-desc">Îndreaptă camera spre orice obiect, față sau scenă — AI-ul generează o operă de artă animată în stilul marilor maeștri.</div>
+    </div>
+    <!-- Slide 2 -->
+    <div class="onb-slide">
+      <div class="onb-icon">✏️</div>
+      <div class="onb-title">Tu controlezi<br><span>Arta.</span></div>
+      <div class="onb-desc">Spre deosebire de orice alt app — promptul artistic e complet editabil. Schimbă subiectul, stilul, tehnica și regenerează instant.</div>
+    </div>
+    <!-- Slide 3 -->
+    <div class="onb-slide">
+      <div class="onb-icon">🌟</div>
+      <div class="onb-title">10 stiluri.<br><span>Infinit de idei.</span></div>
+      <div class="onb-desc">Warhol, Klimt, Van Gogh, Ghibli și 6 alte filtre artistice. Remix rapid cu Noir, Dreamy, Cyber sau Golden — fiecare schimbare e o operă nouă.</div>
+    </div>
+  </div>
+  <div class="onb-bottom">
+    <div class="onb-dots">
+      <div class="onb-dot active" id="onb-dot-0"></div>
+      <div class="onb-dot" id="onb-dot-1"></div>
+      <div class="onb-dot" id="onb-dot-2"></div>
+    </div>
+    <button class="onb-next-btn" id="onb-next-btn" onclick="onbNext()">Continuă →</button>
+    <button class="onb-skip" onclick="finishOnboarding()">Sari peste</button>
+  </div>
+</div>
+
+<!-- SCREEN: Landing -->
+<div id="landing" class="screen">
+  <!-- Buton Help colț dreapta sus -->
+  <button class="btn-icon" onclick="goToHelp()" title="Ajutor"
+    style="position:absolute;top:calc(var(--safe-top)+.8rem);right:1.2rem;z-index:10">❓</button>
+  <div>
+    <div style="font-size:2.8rem;margin-bottom:1.2rem">🎨</div>
+    <h1>Scanează.<br><span>Creează.</span><br>Uimește.</h1>
+    <p>Îndreaptă camera spre orice. AI-ul generează o operă de artă animată cu promptul complet editabil.</p>
+    <div class="tagline">Tu controlezi interpretarea artistică</div>
+    <!-- Challenge Banner săptămânal -->
+    <div class="challenge-banner" id="landing-challenge-banner" onclick="startChallenge()">
+      <div class="challenge-icon" id="challenge-icon-landing">🍃</div>
+      <div class="challenge-text">
+        <div class="challenge-label">🌟 Challenge săptămâna aceasta</div>
+        <div class="challenge-name" id="challenge-name-landing">Ghibli Portrait</div>
+        <div class="challenge-sub" id="challenge-sub-landing">#GhibliScanArt · Participă acum</div>
+      </div>
+      <div class="challenge-arrow">→</div>
+    </div>
+    <!-- Referral welcome banner (apare când ?ref= prezent în URL) -->
+    <div id="referral-banner">
+      <span class="ref-emoji">🎨</span>
+      <span>Prietenul tău a creat o operă de artă · Încearcă și tu!</span>
+    </div>
+    <!-- Streak badge (apare când streak ≥ 2) -->
+    <div id="streak-badge"></div>
+    <button class="btn-primary" onclick="goToCamera()">📷 Începe să Creezi</button>
+    <div class="landing-filters">
+      <span class="landing-chip">🎭 Warhol</span>
+      <span class="landing-chip">🌊 Hokusai</span>
+      <span class="landing-chip">✨ Klimt</span>
+      <span class="landing-chip">🍃 Ghibli</span>
+      <span class="landing-chip">✏️ Prompt editabil</span>
+    </div>
+  </div>
+</div>
+
+<!-- SCREEN: Camera -->
+<div id="camera" class="screen hidden">
+  <video id="video" autoplay playsinline muted></video>
+  <div class="cam-grad-top"></div>
+  <div class="cam-grad-bottom"></div>
+  <!-- Challenge badge mic (apare doar în challenge mode) -->
+  <div class="cam-challenge-badge" id="cam-challenge-badge" style="display:none">
+    🌟 <span id="cam-challenge-label">Challenge Ghibli</span>
+  </div>
+  <!-- First-use tooltip -->
+  <div id="cam-tip" style="display:none" onclick="this.style.display='none'">
+    📷 Alege un filtru jos → apasă shutter
+  </div>
+  <div class="camera-top">
+    <button class="btn-icon" onclick="goToLanding()">←</button>
+    <div class="mode-toggle">
+      <button class="mode-btn active" id="mode-life-btn" onclick="setAnimMode('life')">Animat</button>
+      <button class="mode-btn" id="mode-cine-btn" onclick="setAnimMode('cinemagraph')">Cinemagraph</button>
+    </div>
+    <button class="btn-icon" onclick="flipCamera()">🔄</button>
+  </div>
+  <div class="camera-bottom">
+    <div class="filter-gallery" id="filter-gallery"></div>
+    <div class="shutter-row">
+      <button class="quality-badge q-free" id="quality-badge" onclick="cycleQuality()">🎨 Gratuit</button>
+      <button id="shutter-btn" onclick="captureAndGenerate()" aria-label="Capturează"></button>
+      <button class="gallery-icon-btn" onclick="goToGallery()" title="Galerie">🗂️</button>
+    </div>
+  </div>
+</div>
+
+<!-- SCREEN: Permission error -->
+<div id="permission-error" class="screen hidden">
+  <div>
+    <div style="font-size:3rem;margin-bottom:1rem">🚫</div>
+    <h2>Camera blocată</h2>
+    <p>ScanArt are nevoie de acces la cameră. Activează-o în setările browserului.</p>
+    <button class="btn-primary" onclick="goToLanding()">← Înapoi</button>
+  </div>
+</div>
+
+<!-- SCREEN: Loading -->
+<div id="loading" class="screen hidden">
+  <div id="loading-thumb"></div>
+  <div class="loading-inner">
+    <div class="loading-filter-name" id="loading-filter-name">WARHOL</div>
+    <div class="progress-ring-wrap">
+      <svg class="progress-ring" width="128" height="128" viewBox="0 0 128 128">
+        <circle class="progress-ring-bg" cx="64" cy="64" r="54"/>
+        <circle class="progress-ring-fill" id="ring-fill" cx="64" cy="64" r="54"/>
+      </svg>
+      <div class="progress-icon" id="loading-emoji">🎭</div>
+    </div>
+    <h2 id="loading-title">Se generează...</h2>
+    <div class="status-text" id="loading-status">Gemini analizează imaginea</div>
+    <div id="progress-pct">0%</div>
+  </div>
+</div>
+
+<!-- SCREEN: Result -->
+<div id="result" class="screen hidden">
+  <video id="result-video" autoplay loop muted playsinline style="display:none"></video>
+  <img id="result-gif-el" style="display:none" alt="result" />
+
+  <div class="result-top">
+    <button class="btn-icon" onclick="goToCamera()">←</button>
+    <span class="result-filter-name" id="result-filter-name">Warhol</span>
+    <div style="width:48px"></div>
+  </div>
+
+  <!-- Share nudge (apare 4s după generare) -->
+  <div id="share-nudge" style="display:none">
+    🎉 Opera ta e gata! <span onclick="shareResult()">Share-uiește →</span>
+  </div>
+
+  <div class="result-bottom">
+    <!-- Multi-variant strip (apare după generate-multi) -->
+    <div class="variants-strip" id="variants-strip" style="display:none"></div>
+    <!-- Quick filter rerun gallery -->
+    <div class="result-filter-gallery" id="result-filter-gallery"></div>
+    <!-- Remix row -->
+    <div class="remix-row" id="remix-row"></div>
+    <!-- Watermark upgrade CTA (vizibil pe tier free) -->
+    <div class="watermark-cta" id="watermark-cta" onclick="upgradeFromWatermark()" style="display:none">
+      🔒 Watermark activ · <span>Upgrade la Standard ($0.60) →</span>
+    </div>
+    <!-- Actions -->
+    <div class="result-actions-row">
+      <button class="result-action-btn" onclick="downloadVideo()">
+        <span class="btn-emoji">⬇️</span><span>Descarcă</span>
+      </button>
+      <button class="result-action-btn" onclick="shareResult()">
+        <span class="btn-emoji">🔗</span><span>Share</span>
+      </button>
+      <button class="result-action-btn primary" onclick="goToCamera()">
+        <span class="btn-emoji">📷</span><span>Nou</span>
+      </button>
+      <button class="result-action-btn" onclick="shareStoryCard()">
+        <span class="btn-emoji">📱</span><span>Story</span>
+      </button>
+      <button class="result-action-btn" onclick="openStudioPanel()">
+        <span class="btn-emoji">✏️</span><span>Studio</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- SCREEN: Gallery -->
+<div id="gallery" class="screen hidden">
+  <div class="gallery-top">
+    <button class="btn-icon" onclick="goToCamera()">←</button>
+    <span class="gallery-title">🗂️ Galeria Mea</span>
+    <div style="display:flex;gap:6px">
+      <button class="btn-icon" onclick="goToHelp()" title="Ajutor">❓</button>
+      <button class="btn-icon" onclick="goToTrending()" title="Trending">🔥</button>
+      <button class="btn-icon" id="gallery-refresh-btn" onclick="refreshGallery()" title="Refresh">↻</button>
+    </div>
+  </div>
+  <div class="gallery-grid" id="gallery-grid">
+    <div class="gallery-empty" style="grid-column: 1/-1">
+      Se încarcă galeria...
+    </div>
+  </div>
+</div>
+
+<!-- SCREEN: Help / FAQ -->
+<div id="help" class="screen hidden">
+  <div class="help-top">
+    <button class="btn-icon" onclick="history.back(); showScreen(_prevScreen || 'landing')">←</button>
+    <span class="help-title">❓ Ajutor & FAQ</span>
+    <div style="width:42px"></div>
+  </div>
+  <div class="help-body" id="help-body">
+    <!-- populat de JS -->
+  </div>
+</div>
+
+<!-- SCREEN: Trending -->
+<div id="trending" class="screen hidden">
+  <div class="trending-top">
+    <button class="btn-icon" onclick="goToGallery()">←</button>
+    <span class="trending-title">🔥 Trending</span>
+    <button class="btn-icon" onclick="refreshTrending()" title="Refresh">↻</button>
+  </div>
+  <div class="trending-tabs">
+    <button class="trending-tab active" id="ttab-week" onclick="setTrendingPeriod('week')">Săptămâna</button>
+    <button class="trending-tab" id="ttab-month" onclick="setTrendingPeriod('month')">Luna</button>
+    <button class="trending-tab" id="ttab-all" onclick="setTrendingPeriod('all')">Tot timpul</button>
+  </div>
+  <div class="trending-grid" id="trending-grid">
+    <div class="trending-empty">Se încarcă trending...</div>
+  </div>
+</div>
+
+<!-- STUDIO PANEL (prompt drawer) -->
+<div id="studio-panel">
+  <div class="panel-handle"></div>
+  <div class="panel-tabs">
+    <div class="panel-tab active" id="tab-studio" onclick="switchTab('studio')">🎨 Studio</div>
+    <div class="panel-tab" id="tab-details" onclick="switchTab('details')">📋 Detalii</div>
+    <div class="panel-tab" id="tab-packs" onclick="switchTab('packs')">🔓 Pack-uri</div>
+  </div>
+  <div class="panel-body" id="panel-body">
+    <!-- populated by JS -->
+  </div>
+  <!-- Sticky footer cu butonul Regenerează — vizibil mereu în Studio -->
+  <div class="panel-sticky-footer" id="panel-sticky-footer" style="display:none">
+    <button class="btn-rerun" onclick="rerunFromStudio()">🔄 Regenerează cu prompt-ul editat</button>
+  </div>
+</div>
+
+<script>
+// ── CONFIG ──────────────────────────────────────────────────────────────────
+const API_BASE = window.location.hostname === 'localhost'
+  ? 'http://localhost:8080/api'
+  : 'https://scanart-backend-603810013022.us-central1.run.app/api';
+
+const FILTERS = [
+  // Original 10 — redesigned (no iconic motif references)
+  { id: 'warhol',         emoji: '🎭', label: 'Warhol',         grad: ['#ff0080','#ffff00'] },
+  { id: 'hokusai',        emoji: '🏯', label: 'Hokusai',        grad: ['#0a3d6b','#c8e8f8'] },
+  { id: 'klimt',          emoji: '✨', label: 'Klimt',          grad: ['#b8860b','#ffd700'] },
+  { id: 'ghibli',         emoji: '🍃', label: 'Ghibli',         grad: ['#2d8a4e','#87ceeb'] },
+  { id: 'banksy',         emoji: '🖤', label: 'Banksy',         grad: ['#1a1a1a','#555555'] },
+  { id: 'dali',           emoji: '🌀', label: 'Dalí',           grad: ['#c8a060','#f0e070'] },
+  { id: 'vangogh',        emoji: '🌻', label: 'Van Gogh',       grad: ['#1a3a6b','#f4a900'] },
+  { id: 'baroque',        emoji: '🕯️', label: 'Baroque',        grad: ['#1a0a00','#8b4513'] },
+  { id: 'mondrian',       emoji: '🟦', label: 'Mondrian',       grad: ['#cc0000','#0033cc'] },
+  { id: 'mucha',          emoji: '🌹', label: 'Mucha',          grad: ['#d4a0b0','#f5e0c0'] },
+  // 20 new styles
+  { id: 'meiji_print',    emoji: '🪭', label: 'Meiji Print',    grad: ['#c0392b','#f7e0c0'] },
+  { id: 'persian_mini',   emoji: '🏺', label: 'Persian',        grad: ['#1a4a8a','#c8960a'] },
+  { id: 'mughal_mini',    emoji: '🕌', label: 'Mughal',         grad: ['#8b4513','#f5c842'] },
+  { id: 'byzantine',      emoji: '⛪', label: 'Byzantine',      grad: ['#1a3a1a','#c8a800'] },
+  { id: 'preraphaelite',  emoji: '🌺', label: 'Pre-Raphaelite', grad: ['#2d6a2d','#c87878'] },
+  { id: 'expressionism',  emoji: '😱', label: 'Expressionist',  grad: ['#8b0000','#ff6600'] },
+  { id: 'futurism',       emoji: '⚡', label: 'Futurist',       grad: ['#ff4400','#110066'] },
+  { id: 'constructivism', emoji: '🔺', label: 'Konstrukt',      grad: ['#cc0000','#1a1a1a'] },
+  { id: 'swiss_poster',   emoji: '🔲', label: 'Swiss Grid',     grad: ['#000000','#e0e0e0'] },
+  { id: 'pointillism',    emoji: '🔵', label: 'Pointillist',    grad: ['#1a6aaa','#e8c840'] },
+  { id: 'risograph',      emoji: '🖨️', label: 'Risograph',      grad: ['#e85d8a','#f5c800'] },
+  { id: 'woodcut',        emoji: '🪵', label: 'Woodcut',        grad: ['#3a1a00','#f5e8c0'] },
+  { id: 'ligne_claire',   emoji: '📘', label: 'Ligne Claire',   grad: ['#1a8acc','#f5e040'] },
+  { id: 'daguerreotype',  emoji: '🪞', label: 'Daguerreotype',  grad: ['#8a7860','#d4c8a8'] },
+  { id: 'infrared',       emoji: '🌿', label: 'Infrared',       grad: ['#f5f0e0','#800040'] },
+  { id: 'lomography',     emoji: '📷', label: 'Lomo',           grad: ['#cc3300','#3300aa'] },
+  { id: 'cyberpunk',      emoji: '🌆', label: 'Cyberpunk',      grad: ['#0a0a1a','#ff0099'] },
+  { id: 'brutalist',      emoji: '🏗️', label: 'Brutalist',      grad: ['#2a2a2a','#c8c8c8'] },
+  { id: 'wpa_poster',     emoji: '🦅', label: 'WPA Poster',     grad: ['#8b2500','#2a4a8a'] },
+  { id: 'zine_collage',   emoji: '✂️', label: 'Zine',           grad: ['#1a1a1a','#ff4477'] },
+];
+const FILTER_MAP = Object.fromEntries(FILTERS.map(f => [f.id, f]));
+
+const QUALITIES = [
+  { id: 'free',     emoji: '🎨', label: 'Gratuit',  cost: '$0',     cls: 'q-free' },
+  { id: 'standard', emoji: '⚡', label: 'Standard', cost: '~$0.60', cls: 'q-standard' },
+  { id: 'premium',  emoji: '👑', label: 'Premium',  cost: '~$4',    cls: 'q-premium' },
+];
+
+const FILTER_LOADING_MSGS = {
+  // Original 10
+  warhol:         ['Warhol ia penelul...', 'CMYK în culori bold...', 'Silkscreen gata!'],
+  hokusai:        ['Cerneală de maeștri...', 'Contururi ukiyo-e...', 'Imprimat pe washi!'],
+  klimt:          ['Aur aplicat...', 'Mozaic ornamental...', 'Gustav aprobă!'],
+  ghibli:         ['Aquarel ud pe hârtie...', 'Contur de pensulit...', 'Animat cu suflet!'],
+  banksy:         ['Stencil pe perete...', 'Spray negru-alb...', 'Street art live!'],
+  dali:           ['Realitate imposibilă...', 'Precizie hiperrealistă...', 'Dalí aprobă!'],
+  vangogh:        ['Pensulă groasă...', 'Culori complementare...', 'Impasto viu!'],
+  baroque:        ['Lumânare aprinsă...', 'Lumină și umbră...', 'Chiaroscuro gata!'],
+  mondrian:       ['Grid geometric...', 'Roșu-albastru-galben...', 'De Stijl animat!'],
+  mucha:          ['Linie sinuoasă...', 'Halou botanic...', 'Mucha zâmbește!'],
+  // 20 new
+  meiji_print:    ['Bokashi se scurge...', 'Pigment pe washi...', 'Shin-hanga animat!'],
+  persian_mini:   ['Lazurit măcinat...', 'Fără umbre, fără profunzime...', 'Miniatură safavidă!'],
+  mughal_mini:    ['Pigment pe bumbac polizat...', 'Detaliu botanic...', 'Miniatură imperială!'],
+  byzantine:      ['Aur tessera...', 'Mozaic de sticlă...', 'Bizanț animat!'],
+  preraphaelite:  ['Grund alb ud...', 'Detaliu botanic obsesiv...', 'Pre-Raphaelite gata!'],
+  expressionism:  ['Distorsiune intenționată...', 'Culoare psihologică...', 'Expresionism viu!'],
+  futurism:       ['Imagini stroboscopice...', 'Linii de forță...', 'Futurism animat!'],
+  constructivism: ['Roșu și negru...', 'Geometrie rasă...', 'Konstrukt gata!'],
+  swiss_poster:   ['Grid modular...', 'Halftone pe ecran...', 'Swiss Grid animat!'],
+  pointillism:    ['Puncte pure de pigment...', 'Mixaj optic...', 'Seurat animat!'],
+  risograph:      ['Canale de culoare separate...', 'Mis-registration deliberat...', 'Riso imprimat!'],
+  woodcut:        ['Dalta în lemn...', 'Negru și alb pur...', 'Xilogravură animată!'],
+  ligne_claire:   ['Linie uniformă...', 'Culori plate egale...', 'Ligne Claire animat!'],
+  daguerreotype:  ['Plăcuță de argint...', 'Haloscopie metalică...', 'Daguerrotip animat!'],
+  infrared:       ['Clorofilă luminoasă...', 'Cer întunecat...', 'Infraroșu animat!'],
+  lomography:     ['Vigneta respiră...', 'Cross-process chimic...', 'Lomo animat!'],
+  cyberpunk:      ['Neon în ploaie...', 'HUD scanlines...', 'Cyberpunk animat!'],
+  brutalist:      ['Beton brut turnat...', 'Masă și greutate...', 'Brutalist animat!'],
+  wpa_poster:     ['Silkscreen federal...', 'Culori flat patriotice...', 'WPA animat!'],
+  zine_collage:   ['Fotocopia se degradează...', 'Hârtie ruptă și lipită...', 'Zine animat!'],
+};
+
+// Remix row transforms
+const REMIX_TRANSFORMS = [
+  { id: 'noir',     emoji: '🌙', label: 'Noir',     append: ', noir atmosphere, deep shadows, chiaroscuro, black void background', rm: ['soft','pastel','gentle','warm'] },
+  { id: 'dramatic', emoji: '🔥', label: 'Dramatic', append: ', extreme high contrast, cinematic drama, storm lightning, dynamic tension' },
+  { id: 'dreamy',   emoji: '🌸', label: 'Dreamy',   append: ', soft focus bokeh, pastel watercolor wash, ethereal glow, misty diffusion', rm: ['bold','sharp','stark'] },
+  { id: 'cyber',    emoji: '⚡', label: 'Cyber',    append: ', neon RGB lighting, holographic glitch, cyberpunk neon, electric energy' },
+  { id: 'golden',   emoji: '👑', label: 'Golden',   append: ', 24k gold leaf, warm amber glow, gilded baroque luxury, opulent shimmer' },
+];
+
+// Known artists for chip parsing
+const KNOWN_ARTISTS = ['Warhol','Hokusai','Klimt','Ghibli','Banksy','Dali','Van Gogh','Rembrandt',
+  'Caravaggio','Mondrian','Mucha','Hiroshige','Miyazaki','Picasso','Monet','Kandinsky',
+  'Vermeer','Michelangelo','Da Vinci','Raphael','Turner','Constable','Manet','Cézanne'];
+const TECHNIQUE_WORDS = ['impasto','brushstroke','stencil','silkscreen','woodblock','mosaic','fresco',
+  'watercolor','oil','canvas','print','gouache','ink','charcoal','engraving','lithograph',
+  'gold leaf','Byzantine','geometric','chiaroscuro'];
+const MEDIUM_WORDS = ['oil on canvas','watercolor on paper','ink print','spray paint','stencil on wall',
+  'digital art','gouache painting','acrylic','oil painting'];
+
+// ── STATE ───────────────────────────────────────────────────────────────────
+let activeFilter = 'warhol';
+let activeQuality = 'free';
+let animationMode = 'life';
+let rerunFilter = 'warhol';
+let rerunQuality = 'free';
+let rerunAnimMode = 'life';
+let rerunFrameDelay = 60; // 40 fast | 60 normal | 100 slow
+let stream = null;
+let facingMode = 'environment';
+let currentResult = null;
+let captureDataURL = null;
+let _galleryItems = [];
+let _currentTab = 'studio';
+let sessionId = localStorage.getItem('scanart_session') || crypto.randomUUID();
+localStorage.setItem('scanart_session', sessionId);
+
+// Prompt History per creatie: { [creation_id]: [prompt1, prompt2, ...] }
+let _promptHistory = JSON.parse(localStorage.getItem('scanart_prompt_history') || '{}');
+let _onbSlide = 0;
+let _trendingPeriod = 'week';
+let _trendingItems = [];
+
+// ── INIT ────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  buildFilterGallery();
+  buildResultFilterGallery();
+  buildRemixRow();
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+
+  // Inițializare challenge săptămânal
+  initChallenge();
+
+  // Long-press pe shutter → multi-variant (3 variante)
+  (() => {
+    const btn = document.getElementById('shutter-btn');
+    if (!btn) return;
+    let _lpTimer = null;
+    btn.addEventListener('touchstart', () => {
+      _lpTimer = setTimeout(() => {
+        _lpTimer = null;
+        if (navigator.vibrate) navigator.vibrate([30, 40, 60]);
+        showToast('✨ Generez 3 variante!');
+        captureAndGenerateMulti();
+      }, 700);
+    }, { passive: true });
+    btn.addEventListener('touchend', () => { if (_lpTimer) { clearTimeout(_lpTimer); _lpTimer = null; } });
+    btn.addEventListener('touchmove', () => { if (_lpTimer) { clearTimeout(_lpTimer); _lpTimer = null; } });
+  })();
+
+  // Du direct la landing — fără onboarding friction
+  localStorage.setItem('scanart_onboarding_done', '1');
+
+  // Viral loop v17: parse URL params (ref, challenge)
+  _parseUrlParams();
+
+  // Afișează streak badge dacă există
+  _renderStreakBadge(parseInt(localStorage.getItem('scanart_streak') || '0', 10));
+
+  // Afișează tooltip pe camera la prima deschidere a camerei
+  // (declanșat din goToCamera, nu here)
+});
+
+// ── FILTER GALLERY ──────────────────────────────────────────────────────────
+function buildFilterGallery() {
+  document.getElementById('filter-gallery').innerHTML = FILTERS.map(f => `
+    <div class="filter-item ${f.id === activeFilter ? 'active' : ''}" onclick="setFilter('${f.id}')" data-filter="${f.id}">
+      <div class="filter-circle">
+        <div class="circle-bg" style="background:linear-gradient(135deg,${f.grad[0]},${f.grad[1]})"></div>
+        <span class="circle-emoji">${f.emoji}</span>
+      </div>
+      <span class="filter-label">${f.label}</span>
+    </div>`).join('');
+}
+
+function buildResultFilterGallery() {
+  document.getElementById('result-filter-gallery').innerHTML = FILTERS.map(f => `
+    <div class="result-filter-item ${f.id === activeFilter ? 'active' : ''}" onclick="rerunWithFilter('${f.id}')" data-rfilter="${f.id}">
+      <div class="result-filter-circle">
+        <div style="position:absolute;inset:0;border-radius:50%;background:linear-gradient(135deg,${f.grad[0]},${f.grad[1]})"></div>
+        <span style="position:relative;z-index:1;font-size:1.2rem">${f.emoji}</span>
+      </div>
+      <span class="result-filter-label">${f.label}</span>
+    </div>`).join('');
+}
+
+function buildRemixRow() {
+  document.getElementById('remix-row').innerHTML = REMIX_TRANSFORMS.map(r => `
+    <button class="remix-btn" onclick="applyRemix('${r.id}')">${r.emoji} ${r.label}</button>`).join('');
+}
+
+function setFilter(id) {
+  activeFilter = id;
+  document.querySelectorAll('.filter-item').forEach(el => el.classList.toggle('active', el.dataset.filter === id));
+  const f = FILTER_MAP[id];
+  document.getElementById('loading-emoji').textContent = f.emoji;
+  document.getElementById('loading-filter-name').textContent = f.label.toUpperCase();
+  if (navigator.vibrate) navigator.vibrate(22);
+}
+
+function updateResultFilterGallery(activeId) {
+  document.querySelectorAll('.result-filter-item').forEach(el =>
+    el.classList.toggle('active', el.dataset.rfilter === activeId));
+}
+
+// ── QUALITY BADGE ───────────────────────────────────────────────────────────
+function cycleQuality() {
+  const ids = QUALITIES.map(q => q.id);
+  activeQuality = ids[(ids.indexOf(activeQuality) + 1) % ids.length];
+  updateQualityBadge();
+  if (navigator.vibrate) navigator.vibrate(22);
+}
+
+function updateQualityBadge() {
+  const q = QUALITIES.find(q => q.id === activeQuality);
+  const badge = document.getElementById('quality-badge');
+  badge.textContent = `${q.emoji} ${q.label}`;
+  badge.className = `quality-badge ${q.cls}`;
+}
+
+// ── ANIMATION MODE ──────────────────────────────────────────────────────────
+function setAnimMode(mode) {
+  animationMode = mode;
+  document.getElementById('mode-life-btn').classList.toggle('active', mode === 'life');
+  document.getElementById('mode-cine-btn').classList.toggle('active', mode === 'cinemagraph');
+}
+
+// ── NAVIGATION ──────────────────────────────────────────────────────────────
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+  document.getElementById(id).classList.remove('hidden');
+}
+
+// ── VIRAL LOOP v17 ──────────────────────────────────────────────────────────
+
+function _updateStreak() {
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const lastDate = localStorage.getItem('scanart_last_active_date');
+  let streak = parseInt(localStorage.getItem('scanart_streak') || '0', 10);
+
+  if (!lastDate) {
+    streak = 1;
+  } else if (lastDate === today) {
+    // Aceeași zi — nu modificăm streak-ul
+  } else {
+    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    if (lastDate === yesterday) {
+      streak += 1; // zi consecutivă
+    } else {
+      streak = 1; // pauză — resetăm
+    }
+  }
+
+  localStorage.setItem('scanart_streak', String(streak));
+  localStorage.setItem('scanart_last_active_date', today);
+
+  // Actualizăm badge-ul de streak pe landing
+  _renderStreakBadge(streak);
+
+  // Milestone toasts
+  const milestones = { 3: '🔥 3 zile consecutive!', 7: '🔥 7 zile! Ești pe val!', 14: '🔥 2 săptămâni la rând!', 30: '🔥 30 de zile! Legendă!' };
+  if (milestones[streak] && lastDate !== today) {
+    setTimeout(() => showToast(milestones[streak]), 500);
+  }
+}
+
+function _renderStreakBadge(streak) {
+  const badge = document.getElementById('streak-badge');
+  if (!badge) return;
+  if (streak >= 2) {
+    badge.textContent = `🔥 ${streak} zile consecutive`;
+    badge.style.display = 'inline-flex';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function _parseUrlParams() {
+  const params = new URLSearchParams(window.location.search);
+
+  // Referral tracking
+  const ref = params.get('ref');
+  if (ref && /^[0-9a-f]{8}$/.test(ref)) {
+    localStorage.setItem('scanart_ref_source', ref);
+    // Arată referral welcome banner pe landing
+    const banner = document.getElementById('referral-banner');
+    if (banner) {
+      banner.style.display = 'flex';
+      setTimeout(() => { banner.style.display = 'none'; }, 6000);
+    }
+  }
+
+  // Challenge deep-link: ?challenge=hokusai → pre-select filtru
+  const challenge = params.get('challenge');
+  if (challenge && FILTER_MAP[challenge]) {
+    // Stocăm pentru a pre-selecta după ce camera se deschide
+    window._pendingChallenge = challenge;
+  }
+}
+
+function _applyPendingChallenge() {
+  if (!window._pendingChallenge) return;
+  const cId = window._pendingChallenge;
+  window._pendingChallenge = null;
+  if (FILTER_MAP[cId]) {
+    setFilter(cId);
+    const badge = document.getElementById('cam-challenge-badge');
+    if (badge) {
+      badge.textContent = `🎯 Challenge: ${FILTER_MAP[cId].label}`;
+      badge.style.display = 'block';
+      setTimeout(() => { badge.style.display = 'none'; }, 5000);
+    }
+  }
+}
+
+function goToLanding() { stopCamera(); showScreen('landing'); _renderStreakBadge(parseInt(localStorage.getItem('scanart_streak') || '0', 10)); }
+
+async function goToCamera() {
+  closeStudioPanel();
+  showScreen('camera');
+  // Reset animation mode to life when returning to camera
+  setAnimMode('life');
+  await startCamera();
+  // Aplică challenge pending (din ?challenge= URL param)
+  _applyPendingChallenge();
+  // Tooltip first-use pe cameră
+  const tip = document.getElementById('cam-tip');
+  if (tip && !localStorage.getItem('scanart_cam_tip_shown')) {
+    localStorage.setItem('scanart_cam_tip_shown', '1');
+    tip.style.display = 'block';
+    setTimeout(() => { if (tip) tip.style.display = 'none'; }, 3500);
+  }
+}
+
+async function goToGallery() {
+  showScreen('gallery');
+  await loadGallery();
+}
+
+// ── CAMERA ──────────────────────────────────────────────────────────────────
+async function startCamera() {
+  try {
+    if (stream) stopCamera();
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: facingMode }, width: { ideal: 1920 }, height: { ideal: 1920 } },
+      audio: false,
+    });
+    document.getElementById('video').srcObject = stream;
+  } catch (err) {
+    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') showScreen('permission-error');
+    else showToast('Eroare cameră: ' + err.message);
+  }
+}
+
+function stopCamera() {
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+}
+
+function flipCamera() {
+  facingMode = facingMode === 'environment' ? 'user' : 'environment';
+  startCamera();
+}
+
+// ── CAPTURE ──────────────────────────────────────────────────────────────────
+async function captureAndGenerate() {
+  const video = document.getElementById('video');
+  if (!video.videoWidth) { showToast('Camera nu e gata'); return; }
+
+  const flash = document.getElementById('flash');
+  flash.style.opacity = '1';
+  setTimeout(() => { flash.style.opacity = '0'; }, 130);
+  if (navigator.vibrate) navigator.vibrate(45);
+
+  const size = 640;
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const vw = video.videoWidth, vh = video.videoHeight;
+  const sq = Math.min(vw, vh);
+  const ox = (vw - sq) / 2, oy = (vh - sq) / 2;
+  ctx.drawImage(video, ox, oy, sq, sq, 0, 0, size, size);
+  captureDataURL = canvas.toDataURL('image/jpeg', 0.7);
+
+  canvas.toBlob(async (blob) => {
+    stopCamera();
+    _resetVariants();  // resetează variantele anterioare
+    const f = FILTER_MAP[activeFilter];
+    document.getElementById('loading-thumb').style.backgroundImage = `url(${captureDataURL})`;
+    document.getElementById('loading-emoji').textContent = f.emoji;
+    document.getElementById('loading-filter-name').textContent = f.label.toUpperCase();
+    document.getElementById('loading-title').textContent = 'Se generează...';
+    showScreen('loading');
+    setProgress(0);
+    startLoadingMessages();
+
+    try {
+      const fd = new FormData();
+      fd.append('image', blob, 'capture.jpg');
+      fd.append('style_id', activeFilter);
+      fd.append('quality', activeQuality);
+      fd.append('session_id', sessionId);
+      fd.append('animation_mode', animationMode);
+      fd.append('frame_delay', String(rerunFrameDelay));
+      // Referral viral tracking
+      const _refSrc = localStorage.getItem('scanart_ref_source');
+      if (_refSrc) fd.append('ref_source', _refSrc);
+
+      const r = await fetch(`${API_BASE}/generate`, { method: 'POST', body: fd });
+      if (!r.ok) throw new Error(await r.text());
+      const { job_id } = await r.json();
+      await pollStatus(job_id);
+    } catch (err) {
+      stopLoadingMessages();
+      showToast('Eroare: ' + err.message);
+      goToCamera();
+    }
+  }, 'image/jpeg', 0.92);
+}
+
+// ── POLLING ──────────────────────────────────────────────────────────────────
+let _loadingMsgInterval = null;
+
+function startLoadingMessages() {
+  const msgs = FILTER_LOADING_MSGS[activeFilter] || ['Se procesează...', 'Aproape gata...', 'Finalizez!'];
+  let idx = 0;
+  clearInterval(_loadingMsgInterval);
+  document.getElementById('loading-status').textContent = msgs[0];
+  _loadingMsgInterval = setInterval(() => {
+    idx = (idx + 1) % msgs.length;
+    document.getElementById('loading-status').textContent = msgs[idx];
+  }, 3000);
+}
+
+function stopLoadingMessages() { clearInterval(_loadingMsgInterval); }
+
+async function pollStatus(jobId) {
+  let attempts = 0;
+  while (attempts < 160) {
+    await sleep(1500);
+    const r = await fetch(`${API_BASE}/status/${jobId}`);
+    if (!r.ok) throw new Error('Eroare polling');
+    const data = await r.json();
+    setProgress(data.progress || 0);
+    if (data.status === 'done') {
+      stopLoadingMessages();
+      currentResult = data.result;
+      showResult(data.result);
+      return;
+    }
+    if (data.status === 'error') {
+      stopLoadingMessages();
+      throw new Error(data.error || 'Generare eșuată');
+    }
+    attempts++;
+  }
+  stopLoadingMessages();
+  throw new Error('Timeout – încearcă din nou');
+}
+
+function setProgress(pct) {
+  const r = 54, circ = 2 * Math.PI * r;
+  const offset = circ - (pct / 100) * circ;
+  const fill = document.getElementById('ring-fill');
+  fill.style.strokeDasharray = circ;
+  fill.style.strokeDashoffset = offset;
+  document.getElementById('progress-pct').textContent = pct + '%';
+}
+
+// ── RESULT ──────────────────────────────────────────────────────────────────
+function mediaProxyUrl(url) { return `${API_BASE}/media?url=${encodeURIComponent(url)}`; }
+
+async function showResult(result) {
+  const videoEl = document.getElementById('result-video');
+  const gifEl = document.getElementById('result-gif-el');
+  const isGif = result.video_url.endsWith('.gif');
+  const proxyUrl = mediaProxyUrl(result.video_url);
+  const f = FILTER_MAP[result.style_id] || FILTER_MAP[activeFilter];
+
+  showScreen('result');
+  document.getElementById('result-filter-name').textContent = f.label;
+  updateResultFilterGallery(result.style_id);
+
+  // Before/After reveal: mostra originalul ~0.8s, apoi wipe catre artistic
+  if (captureDataURL) {
+    const rev = document.createElement('div');
+    rev.id = 'reveal-original';
+    rev.style.backgroundImage = `url(${captureDataURL})`;
+    document.getElementById('result').appendChild(rev);
+    setTimeout(() => { rev.remove(); }, 1400);
+  }
+
+  if (isGif) {
+    videoEl.style.display = 'none'; videoEl.src = '';
+    gifEl.style.display = 'block'; gifEl.src = proxyUrl;
+  } else {
+    gifEl.style.display = 'none'; gifEl.src = '';
+    videoEl.style.display = 'block'; videoEl.src = proxyUrl;
+    videoEl.load(); videoEl.play().catch(()=>{});
+  }
+
+  // Sync rerun state
+  rerunFilter = result.style_id || activeFilter;
+  rerunQuality = result.quality || activeQuality;
+  rerunAnimMode = animationMode;
+
+  // Salvează promptul în history
+  if (result.creation_id && result.prompt_used) {
+    savePromptToHistory(result.creation_id, result.prompt_used);
+  }
+
+  // Afișează watermark CTA doar pe tier free (GIF)
+  const wmCta = document.getElementById('watermark-cta');
+  if (wmCta) wmCta.style.display = (result.quality === 'free') ? 'block' : 'none';
+
+  // Share nudge — apare 4s după generare, dispare automat
+  const nudge = document.getElementById('share-nudge');
+  if (nudge) {
+    nudge.style.display = 'flex';
+    setTimeout(() => { nudge.style.display = 'none'; }, 4000);
+  }
+
+  // Streak logic: actualizăm streak-ul zilnic
+  _updateStreak();
+
+  // Afișează strip multi-variant dacă există variante
+  renderVariantsStrip();
+}
+
+// ── ACTIONS ──────────────────────────────────────────────────────────────────
+async function shareResult() {
+  if (!currentResult) return;
+  // URL viral: share page + ref tracking
+  const shareCode = currentResult.share_code || '';
+  const shareUrl = shareCode
+    ? `${API_BASE}/share/${shareCode}?ref=${shareCode}`
+    : currentResult.video_url;
+  // Text viral cu stilul și emoji
+  const f = FILTER_MAP[currentResult.style_id] || FILTER_MAP[activeFilter] || {};
+  const filterEmoji = f.emoji || '🎨';
+  const filterLabel = f.label || currentResult.style_id || 'artistic';
+  const shareText = `Am transformat o poză în ${filterEmoji} ${filterLabel} cu ScanArt ✨`;
+  if (navigator.share) {
+    try { await navigator.share({ title: 'ScanArt – Creația mea!', text: shareText, url: shareUrl }); } catch (_) {}
+  } else {
+    await navigator.clipboard.writeText(`${shareText}\n${shareUrl}`).catch(()=>{});
+    showToast('🔗 Link copiat!');
+  }
+}
+
+async function downloadVideo() {
+  if (!currentResult) return;
+  showToast('Se descarcă...');
+  try {
+    const url = currentResult.video_url;
+    const ext = url.endsWith('.gif') ? 'gif' : 'mp4';
+    const res = await fetch(mediaProxyUrl(url));
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl; a.download = `scanart-${currentResult.share_code}.${ext}`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+    showToast('✅ Descărcat!');
+  } catch { window.open(mediaProxyUrl(currentResult.video_url), '_blank'); }
+}
+
+async function shareStoryCard() {
+  if (!currentResult) return;
+  showToast('Generez Story Card...');
+  try {
+    const r = await fetch(`${API_BASE}/storycard`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        result_url: currentResult.video_url,
+        filter_label: (FILTER_MAP[currentResult.style_id] || {}).label || currentResult.style_id,
+        prompt_used: currentResult.prompt_used || '',
+      }),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    const blob = await r.blob();
+    const file = new File([blob], 'scanart-story.jpg', { type: 'image/jpeg' });
+    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: 'ScanArt Story' });
+    } else {
+      // Fallback: download JPEG
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl; a.download = 'scanart-story.jpg';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+      showToast('📱 Story Card descărcat!');
+    }
+  } catch (e) { showToast('Eroare Story: ' + e.message); }
+}
+
+// ── REMIX ────────────────────────────────────────────────────────────────────
+function applyRemix(remixId) {
+  if (!currentResult) return;
+  const t = REMIX_TRANSFORMS.find(r => r.id === remixId);
+  if (!t) return;
+  let prompt = currentResult.prompt_used || '';
+  if (t.rm) t.rm.forEach(w => { prompt = prompt.replace(new RegExp('\\b' + w + '\\b', 'gi'), ''); });
+  prompt = prompt.replace(/,\s*,/g, ',').trim() + t.append;
+  _startRerun(prompt, rerunFilter, rerunQuality, rerunAnimMode, rerunFrameDelay, currentResult.thumbnail_url || '');
+}
+
+async function rerunWithFilter(filterId) {
+  if (!currentResult) return;
+  rerunFilter = filterId;
+  updateResultFilterGallery(filterId);
+  const prompt = currentResult.prompt_used || '';
+  await _startRerun(prompt, filterId, rerunQuality, rerunAnimMode, rerunFrameDelay, currentResult.thumbnail_url || '');
+}
+
+async function _startRerun(prompt, filterId, quality, animMode, frameDelay, thumbnailUrl) {
+  const f = FILTER_MAP[filterId] || FILTER_MAP['warhol'];
+  document.getElementById('loading-thumb').style.backgroundImage = captureDataURL ? `url(${captureDataURL})` : '';
+  document.getElementById('loading-emoji').textContent = f.emoji;
+  document.getElementById('loading-filter-name').textContent = f.label.toUpperCase();
+  document.getElementById('loading-title').textContent = 'Regenerez...';
+
+  const savedFilter = activeFilter;
+  activeFilter = filterId;
+  closeStudioPanel();
+  showScreen('loading');
+  setProgress(0);
+  startLoadingMessages();
+  activeFilter = savedFilter;
+
+  try {
+    const r = await fetch(`${API_BASE}/regenerate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt, style_id: filterId, quality,
+        session_id: sessionId, thumbnail_url: thumbnailUrl,
+        animation_mode: animMode, frame_delay: frameDelay,
+      }),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    const { job_id } = await r.json();
+    await pollStatus(job_id);
+  } catch (err) {
+    stopLoadingMessages();
+    showToast('Eroare: ' + err.message);
+    showScreen('result');
+  }
+}
+
+// ── MULTI-VARIANT GENERATION ─────────────────────────────────────────────────
+let _variantResults = [];    // array de {result, thumb} pentru variantele generate
+let _activeVariantIdx = 0;   // index-ul variantei curente afișate
+
+async function captureAndGenerateMulti() {
+  const video = document.getElementById('video');
+  if (!video.videoWidth) { showToast('Camera nu e gata'); return; }
+
+  // Aceeași logică de captură ca captureAndGenerate
+  const flash = document.getElementById('flash');
+  flash.style.opacity = '1';
+  setTimeout(() => { flash.style.opacity = '0'; }, 130);
+  if (navigator.vibrate) navigator.vibrate(45);
+
+  const size = 640;
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const vw = video.videoWidth, vh = video.videoHeight;
+  const sq = Math.min(vw, vh);
+  ctx.drawImage(video, (vw - sq) / 2, (vh - sq) / 2, sq, sq, 0, 0, size, size);
+  captureDataURL = canvas.toDataURL('image/jpeg', 0.7);
+
+  canvas.toBlob(async (blob) => {
+    stopCamera();
+    const f = FILTER_MAP[activeFilter];
+    document.getElementById('loading-thumb').style.backgroundImage = `url(${captureDataURL})`;
+    document.getElementById('loading-emoji').textContent = f.emoji;
+    document.getElementById('loading-filter-name').textContent = f.label.toUpperCase();
+    document.getElementById('loading-title').textContent = '3 Variante se generează...';
+    showScreen('loading');
+    setProgress(0);
+    startLoadingMessages();
+
+    try {
+      const fd = new FormData();
+      fd.append('image', blob, 'capture.jpg');
+      fd.append('style_id', activeFilter);
+      fd.append('quality', 'free');  // multi-variant e free only
+      fd.append('session_id', sessionId);
+      fd.append('animation_mode', animationMode);
+      fd.append('frame_delay', String(rerunFrameDelay));
+      fd.append('variants', '3');
+
+      const r = await fetch(`${API_BASE}/generate-multi`, { method: 'POST', body: fd });
+      if (!r.ok) throw new Error(await r.text());
+      const { job_ids } = await r.json();
+
+      // Poll toate 3 job-uri în paralel, afișează prima care termină
+      _variantResults = new Array(job_ids.length).fill(null);
+      _activeVariantIdx = 0;
+      let firstShown = false;
+
+      const polls = job_ids.map(async (jobId, idx) => {
+        let attempts = 0;
+        while (attempts < 160) {
+          await sleep(1500);
+          const res = await fetch(`${API_BASE}/status/${jobId}`);
+          if (!res.ok) break;
+          const data = await res.json();
+          setProgress(Math.max(
+            parseInt(document.getElementById('progress-pct').textContent) || 0,
+            data.progress || 0
+          ));
+          if (data.status === 'done') {
+            _variantResults[idx] = data.result;
+            if (!firstShown) {
+              firstShown = true;
+              stopLoadingMessages();
+              currentResult = data.result;
+              _activeVariantIdx = idx;
+              showResult(data.result);
+            } else {
+              // Aggiorna strip senza rifar il show screen
+              renderVariantsStrip();
+            }
+            return;
+          }
+          if (data.status === 'error') break;
+          attempts++;
+        }
+      });
+
+      await Promise.allSettled(polls);
+      renderVariantsStrip();
+
+    } catch (err) {
+      stopLoadingMessages();
+      showToast('Eroare: ' + err.message);
+      goToCamera();
+    }
+  }, 'image/jpeg', 0.92);
+}
+
+function renderVariantsStrip() {
+  const strip = document.getElementById('variants-strip');
+  if (!strip) return;
+
+  // Afișăm strip-ul doar dacă avem mai mult de 1 variantă
+  const hasVariants = _variantResults.length > 1;
+  strip.style.display = hasVariants ? 'flex' : 'none';
+  if (!hasVariants) return;
+
+  strip.innerHTML = '<div class="variants-strip-label">Variante</div>' +
+    _variantResults.map((v, i) => {
+      if (!v) {
+        return `<div class="variant-thumb"><div class="variant-thumb-loading">⏳</div></div>`;
+      }
+      const thumb = v.thumbnail_url || v.video_url;
+      return `
+        <div class="variant-thumb ${i === _activeVariantIdx ? 'active' : ''}" onclick="selectVariant(${i})">
+          <img src="${mediaProxyUrl(thumb)}" alt="Varianta ${i + 1}" loading="lazy" />
+        </div>`;
+    }).join('');
+}
+
+function selectVariant(idx) {
+  const v = _variantResults[idx];
+  if (!v) return;
+  _activeVariantIdx = idx;
+  currentResult = v;
+  rerunFilter = v.style_id || activeFilter;
+  rerunQuality = v.quality || activeQuality;
+
+  // Update media
+  const videoEl = document.getElementById('result-video');
+  const gifEl = document.getElementById('result-gif-el');
+  const isGif = v.video_url.endsWith('.gif');
+  const proxyUrl = mediaProxyUrl(v.video_url);
+  if (isGif) {
+    videoEl.style.display = 'none'; videoEl.src = '';
+    gifEl.style.display = 'block'; gifEl.src = proxyUrl;
+  } else {
+    gifEl.style.display = 'none'; gifEl.src = '';
+    videoEl.style.display = 'block'; videoEl.src = proxyUrl;
+    videoEl.load(); videoEl.play().catch(()=>{});
+  }
+
+  // Watermark CTA
+  const wmCta = document.getElementById('watermark-cta');
+  if (wmCta) wmCta.style.display = (v.quality === 'free') ? 'block' : 'none';
+
+  // Rebuild strip pentru a actualiza active
+  renderVariantsStrip();
+  if (navigator.vibrate) navigator.vibrate(22);
+}
+
+// Reset variante la fiecare captură nouă
+function _resetVariants() {
+  _variantResults = [];
+  _activeVariantIdx = 0;
+  const strip = document.getElementById('variants-strip');
+  if (strip) strip.style.display = 'none';
+}
+
+// ── STUDIO PANEL ─────────────────────────────────────────────────────────────
+// Swipe-down pe panel handle sau header → close
+(() => {
+  let _ty0 = 0;
+  document.addEventListener('DOMContentLoaded', () => {
+    const panel = document.getElementById('studio-panel');
+    if (!panel) return;
+    panel.addEventListener('touchstart', e => { _ty0 = e.touches[0].clientY; }, { passive: true });
+    panel.addEventListener('touchend', e => {
+      const dy = e.changedTouches[0].clientY - _ty0;
+      if (dy > 80) closeStudioPanel();
+    }, { passive: true });
+  });
+})();
+
+function openStudioPanel() {
+  _currentTab = 'studio';
+  // Reset tab active classes
+  document.getElementById('tab-studio').classList.add('active');
+  document.getElementById('tab-details').classList.remove('active');
+  document.getElementById('tab-packs').classList.remove('active');
+  renderPanelBody();
+  document.getElementById('studio-panel').classList.add('open');
+  document.getElementById('panel-backdrop').style.display = 'block';
+}
+
+function closeStudioPanel() {
+  document.getElementById('studio-panel').classList.remove('open');
+  document.getElementById('panel-backdrop').style.display = 'none';
+}
+
+function switchTab(tab) {
+  _currentTab = tab;
+  document.getElementById('tab-studio').classList.toggle('active', tab === 'studio');
+  document.getElementById('tab-details').classList.toggle('active', tab === 'details');
+  document.getElementById('tab-packs').classList.toggle('active', tab === 'packs');
+  renderPanelBody();
+}
+
+function renderPanelBody() {
+  const body = document.getElementById('panel-body');
+  const footer = document.getElementById('panel-sticky-footer');
+  if (_currentTab === 'studio') {
+    body.innerHTML = renderStudioTab();
+    // footer este afișat de renderStudioTab
+  } else if (_currentTab === 'packs') {
+    if (footer) footer.style.display = 'none';
+    body.innerHTML = renderPacksTab();
+  } else {
+    if (footer) footer.style.display = 'none';
+    body.innerHTML = renderDetailsTab();
+  }
+}
+
+// ── STUDIO TAB ────────────────────────────────────────────────────────────────
+function renderStudioTab() {
+  const prompt = currentResult ? currentResult.prompt_used || '' : '';
+  const chips = parsePromptToChips(prompt, rerunFilter);
+
+  // Afișează footer-ul sticky cu butonul Regenerează
+  const footer = document.getElementById('panel-sticky-footer');
+  if (footer) footer.style.display = 'block';
+
+  return `
+    <!-- ① PROMPT direct editabil — textarea raw -->
+    <div class="prompt-raw-area">
+      <div class="prompt-raw-label">
+        <span>✏️ Prompt Artistic</span>
+        <span class="prompt-raw-toggle" onclick="toggleChipsView()">🧩 Chips</span>
+      </div>
+      <textarea id="prompt-raw-textarea"
+        placeholder="Descrie cum vrei să arate opera de artă..."
+        oninput="syncRawToChips()"
+      >${prompt}</textarea>
+    </div>
+
+    <!-- ② Chips vizualizare — colapsabilă -->
+    <div id="chips-wrapper" style="display:none">
+      <div class="prompt-chips-area" id="chips-area">
+        ${chips.map(c => `
+          <div class="prompt-chip-row">
+            <span class="chip-cat-label" data-cat="${c.cat}">${c.catLabel}</span>
+            <span class="prompt-chip" data-cat="${c.cat}" contenteditable="true"
+                  spellcheck="false" oninput="syncChipsToRaw()"
+            >${c.text}</span>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+
+    ${renderHistoryRow()}
+
+    <div class="inspire-row">
+      <button class="inspire-btn" onclick="fetchInspireVariations()">✨ Inspire Me</button>
+      <button class="spice-btn" onclick="randomizeSpice()">🎲 Surprise</button>
+    </div>
+    <div id="inspire-container"></div>
+
+    <div class="panel-section-title">Remix Rapid</div>
+    <div class="remix-studio">
+      ${REMIX_TRANSFORMS.map(r => `
+        <button class="remix-studio-btn" onclick="applyRemixFromStudio('${r.id}')">${r.emoji} ${r.label}</button>`).join('')}
+    </div>
+
+    ${rerunQuality === 'free' ? `
+    <div class="panel-section-title">Viteză Animație</div>
+    <div class="speed-row">
+      <span class="speed-label">⏱</span>
+      <div class="speed-options">
+        <button class="speed-opt ${rerunFrameDelay === 40 ? 'active' : ''}" onclick="setFrameDelay(40)">Rapid</button>
+        <button class="speed-opt ${rerunFrameDelay === 60 ? 'active' : ''}" onclick="setFrameDelay(60)">Normal</button>
+        <button class="speed-opt ${rerunFrameDelay === 100 ? 'active' : ''}" onclick="setFrameDelay(100)">Lent</button>
+      </div>
+    </div>` : ''}
+
+    <div class="panel-section-title">Stil</div>
+    <div class="rerun-opts" id="rerun-style-opts">
+      ${FILTERS.map(f => `
+        <button class="rerun-chip ${f.id === rerunFilter ? 'active' : ''}"
+                onclick="setRerunFilter('${f.id}')" data-rf="${f.id}">
+          ${f.emoji} ${f.label}
+        </button>`).join('')}
+    </div>
+
+    <div class="panel-section-title">Calitate</div>
+    <div class="rerun-opts" id="rerun-quality-opts">
+      ${QUALITIES.map(q => `
+        <button class="rerun-chip ${q.id === rerunQuality ? 'active' : ''}"
+                onclick="setRerunQuality('${q.id}')" data-rq="${q.id}">
+          ${q.emoji} ${q.label} <span style="opacity:.5;font-size:.7rem">${q.cost}</span>
+        </button>`).join('')}
+    </div>
+
+    <div class="panel-section-title">Mod Animație</div>
+    <div class="rerun-opts" id="rerun-mode-opts">
+      <button class="rerun-chip ${rerunAnimMode === 'life' ? 'active' : ''}" onclick="setRerunMode('life')" data-rm="life">🎬 Animat</button>
+      <button class="rerun-chip ${rerunAnimMode === 'cinemagraph' ? 'active' : ''}" onclick="setRerunMode('cinemagraph')" data-rm="cinemagraph">🎞️ Cinemagraph</button>
+    </div>
+
+    <div style="height:.5rem"></div>
+  `;
+}
+
+// ── TEXTAREA ↔ CHIPS sync ─────────────────────────────────────────────────────
+function syncRawToChips() {
+  // Când user editează textarea → actualizăm chips dacă sunt vizibile
+  const wrapper = document.getElementById('chips-wrapper');
+  if (!wrapper || wrapper.style.display === 'none') return;
+  const raw = document.getElementById('prompt-raw-textarea');
+  if (!raw) return;
+  const chips = parsePromptToChips(raw.value, rerunFilter);
+  const area = document.getElementById('chips-area');
+  if (area) {
+    area.innerHTML = chips.map(c => `
+      <div class="prompt-chip-row">
+        <span class="chip-cat-label" data-cat="${c.cat}">${c.catLabel}</span>
+        <span class="prompt-chip" data-cat="${c.cat}" contenteditable="true"
+              spellcheck="false" oninput="syncChipsToRaw()">${c.text}</span>
+      </div>`).join('');
+  }
+}
+
+function syncChipsToRaw() {
+  // Când user editează chips → actualizăm textarea
+  const raw = document.getElementById('prompt-raw-textarea');
+  if (!raw) return;
+  raw.value = chipsToPrompt();
+}
+
+function toggleChipsView() {
+  const wrapper = document.getElementById('chips-wrapper');
+  if (!wrapper) return;
+  const isVisible = wrapper.style.display !== 'none';
+  wrapper.style.display = isVisible ? 'none' : 'block';
+  // Sync dacă îl deschidem
+  if (!isVisible) syncRawToChips();
+  // Actualizează label toggle
+  document.querySelectorAll('.prompt-raw-toggle').forEach(el => {
+    el.textContent = isVisible ? '🧩 Chips' : '✕ Ascunde';
+  });
+}
+
+function renderDetailsTab() {
+  if (!currentResult) return '<div style="padding:2rem;color:var(--text-muted);text-align:center">Nicio creație selectată</div>';
+  const f = FILTER_MAP[currentResult.style_id] || {};
+  const date = currentResult.created_at ? new Date(currentResult.created_at).toLocaleString('ro-RO') : '—';
+  return `
+    <div class="details-row">
+      <div class="details-label">Filtru</div>
+      <div class="details-value">${f.emoji || ''} ${f.label || currentResult.style_id}</div>
+    </div>
+    <div class="details-row">
+      <div class="details-label">Calitate</div>
+      <div class="details-value">${currentResult.quality}</div>
+    </div>
+    <div class="details-row">
+      <div class="details-label">Prompt complet</div>
+      <div class="details-value">${currentResult.prompt_used || '—'}</div>
+      <button class="copy-prompt-btn" onclick="copyPrompt()">📋 Copiază Promptul</button>
+    </div>
+    <div class="details-row">
+      <div class="details-label">Share Code</div>
+      <div class="details-value">${currentResult.share_code || '—'}</div>
+    </div>
+    <div class="details-row">
+      <div class="details-label">Data</div>
+      <div class="details-value">${date}</div>
+    </div>
+  `;
+}
+
+async function copyPrompt() {
+  const p = currentResult ? currentResult.prompt_used || '' : '';
+  await navigator.clipboard.writeText(p).catch(()=>{});
+  showToast('📋 Prompt copiat!');
+}
+
+// ── PROMPT CHIPS ─────────────────────────────────────────────────────────────
+function parsePromptToChips(prompt, styleId) {
+  if (!prompt) return [{ cat: 'subject', catLabel: 'Subiect', text: 'obiect' }];
+
+  const chips = [];
+  let remaining = prompt;
+
+  // 1. Subject: tot ce e înainte de "reimagined" sau prima virgulă
+  let subjectEnd = remaining.search(/reimagined|reinterpreted|depicted|portrayed/i);
+  if (subjectEnd === -1) subjectEnd = remaining.indexOf(',');
+  if (subjectEnd === -1) subjectEnd = Math.min(50, remaining.length);
+  const subject = remaining.slice(0, subjectEnd).trim().replace(/,\s*$/, '');
+  if (subject) chips.push({ cat: 'subject', catLabel: 'Subiect', text: subject });
+  remaining = remaining.slice(subjectEnd).replace(/^[^a-z]*/i, '');
+
+  // 2. Artist: caută numele cunoscut
+  let artistText = '';
+  for (const a of KNOWN_ARTISTS) {
+    const regex = new RegExp(`\\b${a}\\b`, 'i');
+    if (regex.test(remaining)) {
+      const match = remaining.match(new RegExp(`[^,]*${a}[^,]*`, 'i'));
+      if (match) { artistText = match[0].trim(); remaining = remaining.replace(match[0], ''); break; }
+    }
+  }
+  if (!artistText) {
+    // Fallback: caută "as a X" sau "in the style of X"
+    const styleMatch = remaining.match(/(?:as a?n? |in the style of )[^,]+/i);
+    if (styleMatch) { artistText = styleMatch[0].trim(); remaining = remaining.replace(styleMatch[0], ''); }
+  }
+  if (artistText) chips.push({ cat: 'artist', catLabel: 'Artist', text: artistText });
+
+  // 3. Technique: cuvinte tehnice
+  let techParts = [];
+  for (const t of TECHNIQUE_WORDS) {
+    const regex = new RegExp(`[^,]*\\b${t}\\b[^,]*`, 'i');
+    const m = remaining.match(regex);
+    if (m) { techParts.push(m[0].trim()); remaining = remaining.replace(m[0], ''); }
+  }
+  const techText = techParts.join(', ').replace(/,\s*,/g, ',').trim();
+  if (techText) chips.push({ cat: 'technique', catLabel: 'Tehnică', text: techText });
+
+  // 4. Rămâne ca Mood
+  remaining = remaining.replace(/^[\s,]+|[\s,]+$/g, '');
+  if (remaining.length > 3) chips.push({ cat: 'mood', catLabel: 'Atmosferă', text: remaining });
+
+  return chips.filter(c => c.text.trim().length > 0);
+}
+
+function chipsToPrompt() {
+  const chips = document.querySelectorAll('#chips-area .prompt-chip');
+  const parts = [];
+  chips.forEach(chip => {
+    // Label is now outside the chip span, so textContent is pure text
+    const text = chip.textContent.trim();
+    if (text) parts.push(text);
+  });
+  return parts.join(', ');
+}
+
+function onChipEdit() {
+  // No-op: chips update happens on rerun
+}
+
+async function fetchInspireVariations() {
+  const container = document.getElementById('inspire-container');
+  container.innerHTML = '<div class="inspire-loading">✨ Gemini generează variante...</div>';
+
+  const textarea = document.getElementById('prompt-raw-textarea');
+  const prompt = (textarea ? textarea.value.trim() : '') || chipsToPrompt() || (currentResult ? currentResult.prompt_used : '');
+  try {
+    const r = await fetch(`${API_BASE}/inspire`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, style_id: rerunFilter }),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    const { variations } = await r.json();
+    container.innerHTML = `
+      <div class="inspire-variations">
+        ${variations.map((v, i) => `
+          <div class="inspire-card" onclick="applyVariation(${i})" data-variation="${v.replace(/"/g,'&quot;')}">
+            ${v}
+          </div>`).join('')}
+      </div>`;
+  } catch (e) {
+    container.innerHTML = `<div class="inspire-loading" style="color:#f87171">Eroare: ${e.message}</div>`;
+  }
+}
+
+function applyVariation(idx) {
+  const cards = document.querySelectorAll('.inspire-card');
+  const variation = cards[idx].dataset.variation;
+  if (!variation) return;
+  // Actualizează textarea direct (sursa de adevăr)
+  const textarea = document.getElementById('prompt-raw-textarea');
+  if (textarea) textarea.value = variation;
+  // Rebuild chips dacă sunt vizibile
+  const chipsArea = document.getElementById('chips-area');
+  if (chipsArea) {
+    const chips = parsePromptToChips(variation, rerunFilter);
+    chipsArea.innerHTML = chips.map(c => `
+      <div class="prompt-chip-row">
+        <span class="chip-cat-label" data-cat="${c.cat}">${c.catLabel}</span>
+        <span class="prompt-chip" data-cat="${c.cat}" contenteditable="true" spellcheck="false" oninput="syncChipsToRaw()">${c.text}</span>
+      </div>`).join('');
+  }
+  // Auto-regenerate
+  rerunFromStudio();
+}
+
+const SPICE_DICT = {
+  mood: ['ethereal dreamscape', 'dark noir atmosphere', 'explosive vivid energy', 'melancholic twilight', 'golden hour radiance'],
+  technique: ['visible loose brushwork', 'precise flat color fills', 'heavy impasto texture', 'delicate fine linework', 'bold graphic contours'],
+  artist: ['in the manner of Rembrandt', 'inspired by Frida Kahlo', 'recalling Turner\'s storms', 'evoking Modigliani'],
+};
+
+function randomizeSpice() {
+  const keys = Object.keys(SPICE_DICT);
+  const cat = keys[Math.floor(Math.random() * keys.length)];
+  const words = SPICE_DICT[cat];
+  const word = words[Math.floor(Math.random() * words.length)];
+
+  // Adaugă la textarea (sursa de adevăr)
+  const textarea = document.getElementById('prompt-raw-textarea');
+  if (textarea) {
+    const existing = textarea.value.trim().replace(/,\s*$/, '');
+    textarea.value = existing ? `${existing}, ${word}` : word;
+    syncRawToChips();
+  } else {
+    // Fallback: adaugă la chips dacă textarea nu e disponibilă
+    const chips = document.querySelectorAll(`#chips-area .prompt-chip[data-cat="${cat}"]`);
+    if (chips.length > 0) {
+      const chip = chips[0];
+      chip.textContent = `${chip.textContent.trim()}, ${word}`;
+    } else {
+      const chipsArea = document.getElementById('chips-area');
+      if (chipsArea) {
+        const row = document.createElement('div');
+        row.className = 'prompt-chip-row';
+        row.innerHTML = `<span class="chip-cat-label" data-cat="mood">Atmosferă</span><span class="prompt-chip" data-cat="mood" contenteditable="true" spellcheck="false" oninput="syncChipsToRaw()">${word}</span>`;
+        chipsArea.appendChild(row);
+      }
+    }
+  }
+  showToast('🎲 Spice adăugat!');
+}
+
+function setFrameDelay(ms) {
+  rerunFrameDelay = ms;
+  document.querySelectorAll('.speed-opt').forEach(b => {
+    b.classList.toggle('active', parseInt(b.textContent === 'Rapid' ? '40' : b.textContent === 'Normal' ? '60' : '100') === ms);
+  });
+  // Re-render speed buttons (simpler approach)
+  document.querySelectorAll('.speed-opt').forEach(b => {
+    const map = { 'Rapid': 40, 'Normal': 60, 'Lent': 100 };
+    b.classList.toggle('active', map[b.textContent] === ms);
+  });
+}
+
+function setRerunFilter(id) {
+  rerunFilter = id;
+  document.querySelectorAll('#rerun-style-opts .rerun-chip').forEach(b => b.classList.toggle('active', b.dataset.rf === id));
+}
+
+function setRerunQuality(id) {
+  rerunQuality = id;
+  document.querySelectorAll('#rerun-quality-opts .rerun-chip').forEach(b => b.classList.toggle('active', b.dataset.rq === id));
+  // Show/hide speed options
+  renderPanelBody();
+}
+
+function setRerunMode(mode) {
+  rerunAnimMode = mode;
+  document.querySelectorAll('#rerun-mode-opts .rerun-chip').forEach(b => b.classList.toggle('active', b.dataset.rm === mode));
+}
+
+function applyRemixFromStudio(remixId) {
+  closeStudioPanel();
+  applyRemix(remixId);
+}
+
+function rerunFromStudio() {
+  // Citește din textarea (sursa de adevăr) sau fallback la chips
+  const textarea = document.getElementById('prompt-raw-textarea');
+  let prompt = textarea ? textarea.value.trim() : chipsToPrompt();
+  if (!prompt) prompt = chipsToPrompt();
+  if (!prompt) prompt = currentResult ? currentResult.prompt_used || '' : '';
+  if (!prompt.trim()) { showToast('Promptul e gol! Scrie ceva.'); return; }
+  // Salvează în history înainte de rerun
+  if (currentResult?.creation_id) savePromptToHistory(currentResult.creation_id, prompt);
+  _startRerun(prompt, rerunFilter, rerunQuality, rerunAnimMode, rerunFrameDelay, currentResult ? currentResult.thumbnail_url || '' : '');
+}
+
+// ── GALLERY ──────────────────────────────────────────────────────────────────
+async function loadGallery() {
+  document.getElementById('gallery-grid').innerHTML = '<div class="gallery-empty" style="grid-column:1/-1">Se încarcă...</div>';
+  try {
+    const r = await fetch(`${API_BASE}/history/${sessionId}`);
+    if (!r.ok) throw new Error('History unavailable');
+    const { history } = await r.json();
+    _galleryItems = history || [];
+    renderGallery();
+  } catch (e) {
+    document.getElementById('gallery-grid').innerHTML = '<div class="gallery-empty" style="grid-column:1/-1">Nicio creație încă. Fă prima ta operă de artă! 🎨</div>';
+  }
+}
+
+async function refreshGallery() { await loadGallery(); }
+
+function renderGallery() {
+  const grid = document.getElementById('gallery-grid');
+  if (!_galleryItems.length) {
+    grid.innerHTML = '<div class="gallery-empty" style="grid-column:1/-1">Nicio creație încă.<br>Fă prima ta operă de artă! 🎨</div>';
+    return;
+  }
+  grid.innerHTML = _galleryItems.map((item, idx) => {
+    const f = FILTER_MAP[item.style_id] || {};
+    const date = item.created_at ? timeAgo(item.created_at) : '';
+    const thumb = item.thumbnail_url || '';
+    return `
+      <div class="gallery-item" data-idx="${idx}" onclick="openFromGallery(${idx})"
+           data-longpress="0">
+        ${thumb ? `<img data-src="${thumb}" alt="${f.label || ''}" />` : '<div style="width:100%;height:100%;background:#222"></div>'}
+        <div class="gallery-item-overlay">
+          <span class="gallery-filter-badge">${f.emoji || ''} ${f.label || item.style_id}</span>
+          <span class="gallery-date">${date}</span>
+        </div>
+      </div>`;
+  }).join('');
+
+  // Progressive loading cu IntersectionObserver
+  setupLazyImages(grid);
+
+  // Long-press for delete
+  document.querySelectorAll('.gallery-item').forEach(el => {
+    let timer;
+    el.addEventListener('touchstart', () => { timer = setTimeout(() => confirmDeleteGalleryItem(parseInt(el.dataset.idx)), 600); });
+    el.addEventListener('touchend', () => clearTimeout(timer));
+    el.addEventListener('touchmove', () => clearTimeout(timer));
+  });
+}
+
+function openFromGallery(idx) {
+  const item = _galleryItems[idx];
+  if (!item) return;
+  currentResult = item;
+  rerunFilter = item.style_id || activeFilter;
+  rerunQuality = item.quality || activeQuality;
+  showResult(item);
+}
+
+function confirmDeleteGalleryItem(idx) {
+  const item = _galleryItems[idx];
+  if (!item) return;
+  const f = FILTER_MAP[item.style_id] || {};
+  if (confirm(`Ștergi creația "${f.label || item.style_id}"?`)) {
+    deleteGalleryItem(item.creation_id, idx);
+  }
+}
+
+async function deleteGalleryItem(creationId, idx) {
+  try {
+    const r = await fetch(`${API_BASE}/creation/${creationId}?session_id=${sessionId}`, { method: 'DELETE' });
+    if (!r.ok) throw new Error('Nu s-a putut șterge');
+    _galleryItems.splice(idx, 1);
+    renderGallery();
+    showToast('🗑️ Șters!');
+  } catch (e) { showToast('Eroare: ' + e.message); }
+}
+
+// ── WEEKLY CHALLENGE ─────────────────────────────────────────────────────────
+const WEEKLY_CHALLENGES = [
+  { filter: 'ghibli',   emoji: '🍃', name: 'Ghibli Portrait',    hashtag: '#GhibliScanArt',   desc: 'Transformă-te în personaj Ghibli' },
+  { filter: 'warhol',   emoji: '🎭', name: 'Warhol Pop Art',     hashtag: '#WarholScanArt',   desc: 'Devin-o icoana pop art' },
+  { filter: 'vangogh',  emoji: '🌻', name: 'Van Gogh Alive',     hashtag: '#VanGoghScanArt',  desc: 'Pictură cu pensulă în viată' },
+  { filter: 'banksy',   emoji: '🖤', name: 'Banksy Nightmare',   hashtag: '#BankSyScanArt',   desc: 'Street art întunecat & rebel' },
+  { filter: 'klimt',    emoji: '✨', name: 'Klimt Gold',         hashtag: '#KlimtScanArt',    desc: 'Portret cu foiță de aur' },
+  { filter: 'hokusai',  emoji: '🌊', name: 'Hokusai Wave',       hashtag: '#HokusaiScanArt',  desc: 'Artă japoneză ukiyo-e' },
+  { filter: 'dali',     emoji: '🌀', name: 'Dalí Surreal',       hashtag: '#DaliScanArt',     desc: 'Transformare suprarealistă' },
+  { filter: 'baroque',  emoji: '🕯️', name: 'Baroque Master',    hashtag: '#BaroqueScanArt',  desc: 'Portret în stil Caravaggio' },
+  { filter: 'mondrian', emoji: '🟦', name: 'Mondrian Grid',      hashtag: '#MondrianScanArt', desc: 'Geometrie și culori primare' },
+  { filter: 'mucha',    emoji: '🌹', name: 'Mucha Nouveau',      hashtag: '#MuchaScanArt',    desc: 'Art Nouveau floral elegant' },
+];
+
+function getCurrentChallenge() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), 0, 1);
+  const weekOfYear = Math.floor((now - start) / (7 * 24 * 3600 * 1000));
+  return WEEKLY_CHALLENGES[weekOfYear % WEEKLY_CHALLENGES.length];
+}
+
+function initChallenge() {
+  const ch = getCurrentChallenge();
+  // Update landing banner
+  const icon = document.getElementById('challenge-icon-landing');
+  const name = document.getElementById('challenge-name-landing');
+  const sub  = document.getElementById('challenge-sub-landing');
+  if (icon) icon.textContent = ch.emoji;
+  if (name) name.textContent = ch.name;
+  if (sub)  sub.textContent  = `${ch.hashtag} · ${ch.desc}`;
+}
+
+function startChallenge() {
+  const ch = getCurrentChallenge();
+  // Pre-selectează filtrul challenge-ului și activează badge-ul pe cameră
+  activeFilter = ch.filter;
+  const badge = document.getElementById('cam-challenge-badge');
+  const label = document.getElementById('cam-challenge-label');
+  if (badge) badge.style.display = 'block';
+  if (label) label.textContent = `Challenge ${ch.name}`;
+  goToCamera();
+}
+
+// ── HELP / FAQ ────────────────────────────────────────────────────────────────
+let _prevScreen = 'landing';
+
+function goToHelp() {
+  _prevScreen = document.querySelector('.screen:not(.hidden)')?.id || 'landing';
+  renderHelpScreen();
+  showScreen('help');
+}
+
+function renderHelpScreen() {
+  const body = document.getElementById('help-body');
+  if (!body) return;
+
+  const sections = [
+    {
+      title: '🚀 Cum funcționează',
+      content: `
+        <div class="help-step"><div class="help-step-num">1</div><div>Deschide camera și selectează un <b>filtru artistic</b> din galeria de jos (Warhol, Ghibli, Klimt etc.)</div></div>
+        <div class="help-step"><div class="help-step-num">2</div><div>Apasă <b>butonul shutter</b> (cercul alb). AI-ul analizează scena și generează o operă de artă animată în ~30-60 sec.</div></div>
+        <div class="help-step"><div class="help-step-num">3</div><div>Vizualizezi rezultatul. Apasă <b>✏️ Studio</b> pentru a edita promptul și regenera oricât de des vrei.</div></div>
+        <div style="margin-top:.5rem;padding:.6rem .8rem;background:rgba(124,58,237,.12);border-radius:10px;border:1px solid rgba(124,58,237,.25)">
+          💡 <b>Spre deosebire de alte app-uri</b> — promptul AI este complet vizibil și editabil. Tu controlezi interpretarea artistică.
+        </div>`,
+    },
+    {
+      title: '🎨 Cele 10 filtre artistice',
+      content: FILTERS.map(f => `
+        <div class="help-filter-row">
+          <div class="help-filter-emoji">${f.emoji}</div>
+          <div class="help-filter-name">${f.label}</div>
+          <div class="help-filter-desc">${_filterDesc(f.id)}</div>
+        </div>`).join(''),
+    },
+    {
+      title: '✏️ Editare prompt & Studio',
+      content: `
+        <p>După generare, apasă <b>✏️ Studio</b> pentru a accesa panoul de editare.</p>
+        <br>
+        <b>Textarea directă</b> — promptul complet e vizibil și editabil instant.<br><br>
+        <b>🧩 Chips</b> — vezi promptul descompus pe categorii (Subiect, Artist, Tehnică, Atmosferă) și editezi fiecare separat.<br><br>
+        <b>✨ Inspire Me</b> — Gemini generează 3 variante creative ale aceluiași subiect.<br><br>
+        <b>🎲 Surprise</b> — adaugă aleator un cuvânt de mood sau tehnică.<br><br>
+        <b>Remix Rapid</b> — 5 butoane (Noir, Dramatic, Dreamy, Cyber, Golden) care transformă instant atmosfera.<br><br>
+        Apasă <b>🔄 Regenerează cu prompt-ul editat</b> (sticky jos) oricând ești gata.`,
+    },
+    {
+      title: '💎 Niveluri de calitate',
+      content: `
+        <div class="help-tier-row">
+          <span class="help-tier-badge" style="background:rgba(124,58,237,.2);color:#c4b5fd;border:1px solid rgba(124,58,237,.4)">🎨 Gratuit</span>
+          <div>GIF animat 400×400px, ~30-60 sec · Imagen 3 + animație Python</div>
+        </div>
+        <div class="help-tier-row">
+          <span class="help-tier-badge" style="background:rgba(34,197,94,.15);color:#86efac;border:1px solid rgba(34,197,94,.3)">⚡ Standard ~$0.60</span>
+          <div>Video MP4 HD 4 sec · Google Veo 3 Fast · fără watermark</div>
+        </div>
+        <div class="help-tier-row">
+          <span class="help-tier-badge" style="background:rgba(245,158,11,.15);color:#fcd34d;border:1px solid rgba(245,158,11,.35)">👑 Premium ~$4</span>
+          <div>Video MP4 Full HD 8 sec · Google Veo 3 · calitate maximă</div>
+        </div>
+        <br><i style="color:rgba(255,255,255,.4)">Schimbă calitatea cu butonul din stânga-jos a camerei.</i>`,
+    },
+    {
+      title: '🗂️ Galerie, Share & Download',
+      content: `
+        <b>Galeria</b> — butonul 🗂️ din dreapta-jos a camerei. Toate creațiile tale, tap pentru a redeschide în Studio.<br><br>
+        <b>Long-press 600ms</b> pe un item din galerie → confirmare ștergere.<br><br>
+        <b>⬇️ Descarcă</b> — salvează GIF/video local pe dispozitiv.<br><br>
+        <b>📱 Story</b> — generează o imagine 9:16 pentru Instagram Stories cu watermark "Made with ScanArt".<br><br>
+        <b>📤 Share</b> — copiază link-ul creației (sau share nativ pe mobil).`,
+    },
+    {
+      title: '❓ Întrebări frecvente',
+      content: `
+        <div class="help-qa-q">Cât durează generarea?</div>
+        <div class="help-qa-a">Gratuit: 30-90 sec · Standard: 2-5 min · Premium: 5-10 min</div>
+        <div class="help-qa-q">Se pierd creațiile dacă închid browserul?</div>
+        <div class="help-qa-a">Nu — sunt salvate în cloud și se restaurează din Galerie pe același dispozitiv.</div>
+        <div class="help-qa-q">Ce e Cinemagraph vs Animat?</div>
+        <div class="help-qa-a"><b>Animat</b>: întreaga imagine are mișcare. <b>Cinemagraph</b>: fond static, un singur element se mișcă — efect cinematic elegant.</div>
+        <div class="help-qa-q">Pot instala ca aplicație?</div>
+        <div class="help-qa-a">Da, e PWA! Safari iOS: Share → Add to Home Screen. Chrome Android: meniu browser → Install App.</div>
+        <div class="help-qa-q">De ce watermark pe tier Gratuit?</div>
+        <div class="help-qa-a">Watermark-ul apare pe GIF-urile gratuite. Upgrade la Standard ($0.60) sau Premium ($4) pentru a-l elimina și a obține video HD.</div>`,
+    },
+  ];
+
+  body.innerHTML = sections.map((s, i) => `
+    <div class="help-section" id="help-sec-${i}">
+      <div class="help-section-header" onclick="toggleHelpSection(${i})">
+        <span class="help-section-title">${s.title}</span>
+        <span class="help-chevron">▼</span>
+      </div>
+      <div class="help-section-body">${s.content}</div>
+    </div>`).join('') + `
+    <div class="help-footer">
+      ScanArt · v14 · Made with ❤️ + AI<br>
+      <a href="https://storage.googleapis.com/scanart-frontend-1772986018/index.html"
+         style="color:rgba(124,58,237,.7)" target="_blank">scanart-frontend-1772986018</a>
+    </div>`;
+
+  // Deschide prima secțiune automat
+  toggleHelpSection(0);
+}
+
+function _filterDesc(id) {
+  const d = { warhol:'Pop Art CMYK, culori bold', hokusai:'Ukiyo-e japonez, valuri', klimt:'Art Nouveau, foiță de aur', ghibli:'Acuarelă animată Miyazaki', banksy:'Street art stencil noir', dali:'Suprarealism, forme topite', vangogh:'Impasto, spirale vii', baroque:'Chiaroscuro Caravaggio', mondrian:'Geometric De Stijl', mucha:'Floral Art Nouveau' };
+  return d[id] || '';
+}
+
+function toggleHelpSection(idx) {
+  const sec = document.getElementById(`help-sec-${idx}`);
+  if (!sec) return;
+  sec.classList.toggle('open');
+}
+
+// ── WATERMARK CTA ─────────────────────────────────────────────────────────────
+function upgradeFromWatermark() {
+  rerunQuality = 'standard';
+  openStudioPanel();
+  showToast('⚡ Standard selectat — regenerează pentru fără watermark!');
+}
+
+// ── ONBOARDING ───────────────────────────────────────────────────────────────
+function onbNext() {
+  if (_onbSlide < 2) {
+    _onbSlide++;
+    document.getElementById('onb-slides').style.transform = `translateX(-${_onbSlide * 33.333}%)`;
+    document.querySelectorAll('.onb-dot').forEach((d, i) => d.classList.toggle('active', i === _onbSlide));
+    if (_onbSlide === 2) {
+      document.getElementById('onb-next-btn').textContent = '🎨 Începe să Creezi';
+    }
+  } else {
+    finishOnboarding();
+  }
+}
+
+function finishOnboarding() {
+  localStorage.setItem('scanart_onboarding_done', '1');
+  showScreen('landing');
+}
+
+// Swipe support for onboarding
+(function setupOnbSwipe() {
+  let startX = 0;
+  document.addEventListener('DOMContentLoaded', () => {
+    const el = document.getElementById('onboarding');
+    if (!el) return;
+    el.addEventListener('touchstart', e => { startX = e.touches[0].clientX; }, { passive: true });
+    el.addEventListener('touchend', e => {
+      const dx = e.changedTouches[0].clientX - startX;
+      if (Math.abs(dx) > 50) {
+        if (dx < 0) onbNext();
+        else if (_onbSlide > 0) {
+          _onbSlide--;
+          document.getElementById('onb-slides').style.transform = `translateX(-${_onbSlide * 33.333}%)`;
+          document.querySelectorAll('.onb-dot').forEach((d, i) => d.classList.toggle('active', i === _onbSlide));
+          document.getElementById('onb-next-btn').textContent = 'Continuă →';
+        }
+      }
+    }, { passive: true });
+  });
+})();
+
+// ── PROMPT HISTORY ────────────────────────────────────────────────────────────
+function savePromptToHistory(creationId, prompt) {
+  if (!creationId || !prompt) return;
+  if (!_promptHistory[creationId]) _promptHistory[creationId] = [];
+  const hist = _promptHistory[creationId];
+  // Evită duplicate consecutive
+  if (hist.length === 0 || hist[hist.length - 1] !== prompt) {
+    hist.push(prompt);
+    // Păstrează max 20 intrări per creație
+    if (hist.length > 20) hist.shift();
+    try { localStorage.setItem('scanart_prompt_history', JSON.stringify(_promptHistory)); } catch (_) {}
+  }
+}
+
+function undoPrompt() {
+  if (!currentResult) return;
+  const hist = _promptHistory[currentResult.creation_id] || [];
+  if (hist.length < 2) { showToast('Nicio versiune anterioară'); return; }
+  // Scoate ultima (curentă) și revino la penultima
+  hist.pop();
+  const prevPrompt = hist[hist.length - 1];
+  try { localStorage.setItem('scanart_prompt_history', JSON.stringify(_promptHistory)); } catch (_) {}
+  _startRerun(prevPrompt, rerunFilter, rerunQuality, rerunAnimMode, rerunFrameDelay, currentResult.thumbnail_url || '');
+  showToast('↩️ Revenit la promptul anterior');
+}
+
+function renderHistoryRow() {
+  if (!currentResult) return '';
+  const hist = _promptHistory[currentResult.creation_id] || [];
+  const canUndo = hist.length >= 2;
+  return `
+    <div class="prompt-history-row">
+      <button class="history-undo-btn" onclick="undoPrompt()" ${canUndo ? '' : 'disabled'}>
+        ↩️ Undo Prompt
+      </button>
+      ${hist.length > 0 ? `<span class="history-counter">${hist.length} versiune${hist.length > 1 ? 'i' : ''}</span>` : ''}
+    </div>`;
+}
+
+// ── NAVIGATION (completat cu trending) ───────────────────────────────────────
+function goToTrending() {
+  showScreen('trending');
+  loadTrending();
+}
+
+// ── TRENDING ──────────────────────────────────────────────────────────────────
+function setTrendingPeriod(p) {
+  _trendingPeriod = p;
+  document.querySelectorAll('.trending-tab').forEach(t => {
+    t.classList.toggle('active', t.id === `ttab-${p}`);
+  });
+  loadTrending();
+}
+
+async function refreshTrending() { await loadTrending(); }
+
+async function loadTrending() {
+  const grid = document.getElementById('trending-grid');
+  grid.innerHTML = '<div class="trending-empty">Se încarcă...</div>';
+  try {
+    const r = await fetch(`${API_BASE}/trending?period=${_trendingPeriod}&limit=20`);
+    if (!r.ok) throw new Error('Trending unavailable');
+    const { items } = await r.json();
+    _trendingItems = items || [];
+    renderTrending();
+  } catch (e) {
+    // Fallback: arată creațiile din galeria proprie ca "trending demo"
+    _trendingItems = _galleryItems.slice(0, 10);
+    if (_trendingItems.length === 0) {
+      grid.innerHTML = '<div class="trending-empty">🔥 Trending vine în curând!<br>Fii primul care creează și distribuie.</div>';
+    } else {
+      renderTrending();
+    }
+  }
+}
+
+function renderTrending() {
+  const grid = document.getElementById('trending-grid');
+  if (!_trendingItems.length) {
+    grid.innerHTML = '<div class="trending-empty">🔥 Nicio creație trending încă.<br>Fii primul!</div>';
+    return;
+  }
+  grid.innerHTML = _trendingItems.map((item, idx) => {
+    const f = FILTER_MAP[item.style_id] || {};
+    const thumb = item.thumbnail_url || '';
+    return `
+      <div class="trending-item" onclick="openFromTrending(${idx})">
+        ${idx < 3 ? `<div class="trending-rank">#${idx + 1}</div>` : ''}
+        ${thumb ? `<img data-src="${thumb}" loading="lazy" alt="${f.label || ''}" />` : '<div style="width:100%;height:100%;background:#222"></div>'}
+        <div class="trending-item-overlay">
+          <span class="trending-badge">${f.emoji || ''} ${f.label || item.style_id}</span>
+        </div>
+      </div>`;
+  }).join('');
+  // Progressive load cu IntersectionObserver
+  setupLazyImages(grid);
+}
+
+function openFromTrending(idx) {
+  const item = _trendingItems[idx];
+  if (!item) return;
+  currentResult = item;
+  rerunFilter = item.style_id || activeFilter;
+  rerunQuality = item.quality || activeQuality;
+  showResult(item);
+}
+
+// ── PROGRESSIVE LOADING cu IntersectionObserver ───────────────────────────────
+function setupLazyImages(container) {
+  if (!('IntersectionObserver' in window)) {
+    // Fallback: încarcă toate imaginile direct
+    container.querySelectorAll('img[data-src]').forEach(img => {
+      img.src = img.dataset.src;
+    });
+    return;
+  }
+  const observer = new IntersectionObserver((entries, obs) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const img = entry.target;
+        if (img.dataset.src) {
+          img.src = img.dataset.src;
+          delete img.dataset.src;
+          obs.unobserve(img);
+        }
+      }
+    });
+  }, { rootMargin: '100px' });
+
+  container.querySelectorAll('img[data-src]').forEach(img => observer.observe(img));
+}
+
+// ── FILTER PACKS (UI în Studio - tab nou) ─────────────────────────────────────
+const FILTER_PACKS = [
+  {
+    id: 'film_noir', emoji: '🎬', name: 'Film Noir Pack', price: '$1.99',
+    desc: '5 filtre noir: Hitchcock, Kubrick, Lynch, Tarkovsky, Bergman',
+    filters: ['hitchcock', 'kubrick', 'lynch', 'tarkovsky', 'bergman'],
+  },
+  {
+    id: 'anime', emoji: '🌸', name: 'Anime Pack', price: '$1.99',
+    desc: '5 stiluri anime: Akira, Evangelion, Spirited Away, Naruto, One Piece',
+    filters: ['akira', 'evangelion', 'spirited', 'naruto', 'onepiece'],
+  },
+  {
+    id: 'renaissance', emoji: '🏛️', name: 'Renaissance Pack', price: '$1.99',
+    desc: '5 maeștri: da Vinci, Michelangelo, Raphael, Botticelli, Titian',
+    filters: ['davinci', 'michelangelo', 'raphael', 'botticelli', 'titian'],
+  },
+];
+
+function renderPacksTab() {
+  return `
+    <div class="packs-banner">
+      <h3>🔓 Deblochează Filtre Premium</h3>
+      <p>Pack-uri tematice cu filtre artistice exclusive. Cumpără o dată, folosești pentru totdeauna.</p>
+    </div>
+    <div class="packs-list">
+      ${FILTER_PACKS.map(pack => `
+        <div class="pack-item" onclick="showPackInfo('${pack.id}')">
+          <div class="pack-item-left">
+            <div class="pack-item-icon">${pack.emoji}</div>
+            <div>
+              <div class="pack-item-name">${pack.name}</div>
+              <div class="pack-item-desc">${pack.desc}</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="pack-item-price">${pack.price}</span>
+            <span class="pack-lock-icon">🔒</span>
+          </div>
+        </div>`).join('')}
+    </div>
+    <div style="text-align:center;color:rgba(255,255,255,.3);font-size:.75rem;margin-top:.5rem">
+      Plăți sigure • Fără abonament • Filtru disponibil imediat
+    </div>
+  `;
+}
+
+function showPackInfo(packId) {
+  const pack = FILTER_PACKS.find(p => p.id === packId);
+  if (!pack) return;
+  showToast(`${pack.emoji} ${pack.name} — în curând!`);
+}
+
+// ── UTILS ────────────────────────────────────────────────────────────────────
+function timeAgo(isoStr) {
+  const diff = (Date.now() - new Date(isoStr).getTime()) / 1000;
+  if (diff < 60) return 'acum';
+  if (diff < 3600) return Math.floor(diff / 60) + 'm';
+  if (diff < 86400) return Math.floor(diff / 3600) + 'h';
+  return Math.floor(diff / 86400) + 'z';
+}
+
+function showToast(msg, duration = 2800) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), duration);
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+</script>
+</body>
+</html>

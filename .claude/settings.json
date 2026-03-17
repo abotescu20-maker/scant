@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gcloud*)",
+      "Bash(gsutil*)",
+      "Bash(python*)",
+      "Bash(pip*)",
+      "Bash(curl*)",
+      "Read",
+      "Write",
+      "Edit",
+      "Glob",
+      "Grep"
+    ],
+    "deny": [
+      "Bash(rm -rf /Users/andreibotescu/Projects/scanart/*)",
+      "Bash(sudo*)"
+    ]
+  }
+}

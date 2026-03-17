@@ -1,0 +1,49 @@
+# Cloud Build - deploy automat pe Cloud Run
+# Ruleaza cu: gcloud builds submit --config deploy/cloudbuild.yaml
+
+steps:
+  # 1. Build Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/scanart-backend:$COMMIT_SHA'
+      - './backend'
+
+  # 2. Push pe Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/scanart-backend:$COMMIT_SHA'
+
+  # 3. Deploy pe Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'scanart-backend'
+      - '--image=gcr.io/$PROJECT_ID/scanart-backend:$COMMIT_SHA'
+      - '--region=us-central1'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--memory=1Gi'
+      - '--cpu=2'
+      - '--concurrency=10'
+      - '--timeout=300'
+      - '--set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID'
+      - '--set-env-vars=GCS_BUCKET_NAME=scanart-results'
+
+  # 4. Deploy frontend static pe Cloud Storage + CDN
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gsutil
+    args:
+      - '-m'
+      - 'rsync'
+      - '-r'
+      - '-d'
+      - './frontend'
+      - 'gs://scanart-frontend'
+
+images:
+  - 'gcr.io/$PROJECT_ID/scanart-backend:$COMMIT_SHA'
