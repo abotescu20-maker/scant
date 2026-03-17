@@ -4,7 +4,7 @@
     {
       "name": "frontend",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8765", "-d", "frontend"],
+      "runtimeArgs": ["-m", "http.server", "8765", "-d", "/Users/andreibotescu/Projects/scanart/frontend"],
       "port": 8765
     }
   ]

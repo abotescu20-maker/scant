@@ -3,7 +3,7 @@ Tier FREE: Gemini descrie → Imagen 3 Fast transformă artistic → NumPy anime
 10 filtre artistice: warhol, hokusai, klimt, ghibli, banksy, dali, vangogh, baroque, mondrian, mucha
 2 moduri animatie: life (natural - clipit fata, shimmer cana, sway planta) | cinemagraph (o zona animata)
 MediaPipe FaceMesh pentru detecție față → blink realist.
-GIF 400x400px, 24 frame-uri, 60ms/frame.
+GIF 400x400px, 16 frame-uri, 80ms/frame (optimizat v18).
 """
 import asyncio
 import io
@@ -12,6 +12,8 @@ import numpy as np
 from PIL import Image, ImageFilter, ImageDraw, ImageFont
 import google.generativeai as genai
 from app.config import settings
+
+N_FRAMES = 16  # Optimized: 16 frames × 80ms = 1.28s playback (was 24 × 60ms = 1.44s)
 
 
 # ─── Mapare filtru → direcție artistică pentru Gemini ────────────────────────
@@ -50,7 +52,7 @@ async def generate_video_free(
     custom_prompt: str = None,
     progress_cb=None,
     animation_mode: str = "life",
-    frame_delay: int = 60,
+    frame_delay: int = 80,
 ) -> tuple:
     """Returns (gif_bytes, prompt_used)."""
     loop = asyncio.get_event_loop()
@@ -65,7 +67,7 @@ def _generate_free_sync(
     custom_prompt: str = None,
     progress_cb=None,
     animation_mode: str = "life",
-    frame_delay: int = 60,
+    frame_delay: int = 80,
 ) -> tuple:
     """Returns (gif_bytes, full_prompt_used)."""
     # Pas 1: Gemini construiește promptul artistic complet + detectează subject_type
@@ -247,9 +249,9 @@ def _animate_artistic(
     style_id: str,
     subject_type: str = "object",
     animation_mode: str = "life",
-    frame_delay: int = 60,
+    frame_delay: int = 80,
 ) -> bytes:
-    """Animație cinematică - 400px, 24 frame-uri, frame_delay ms/fr."""
+    """Animație cinematică - 400px, N_FRAMES frame-uri, frame_delay ms/fr."""
     img = img.resize((400, 400), Image.LANCZOS)
 
     if animation_mode == "cinemagraph":
@@ -263,7 +265,7 @@ def _animate_artistic(
     output = io.BytesIO()
     frames[0].save(
         output, format="GIF", save_all=True,
-        append_images=frames[1:], loop=0, duration=frame_delay, optimize=True,
+        append_images=frames[1:], loop=0, duration=frame_delay, optimize=False,
     )
     return output.getvalue()
 
@@ -323,7 +325,7 @@ def _frames_life(img: Image.Image, subject_type: str, style_id: str) -> list:
 
 
 def _frames_blink(img: Image.Image, style_id: str) -> list:
-    """MediaPipe FaceMesh → clipit realist 24 frame-uri.
+    """MediaPipe FaceMesh → clipit realist N_FRAMES frame-uri.
     Fallback la _frames_style_visual dacă nu detectează față."""
     arr = np.array(img, dtype=np.float32)
     h, w = arr.shape[:2]
@@ -334,14 +336,13 @@ def _frames_blink(img: Image.Image, style_id: str) -> list:
         print("FaceMesh: no face detected, fallback to style visual")
         return _frames_style_visual(img, style_id)
 
-    # 24 frame-uri: 9 open + 2 closing + 2 closed + 2 opening + 9 open
-    # blink_alpha[i] = 0.0 (ochi deschisi) → 1.0 (ochi inchisi)
+    # 16 frame-uri: 6 open + 1 closing + 2 closed + 1 opening + 6 open
     blink_curve = (
-        [0.0] * 9 +          # open
-        [0.5, 1.0] +         # closing
+        [0.0] * 6 +          # open
+        [0.7] +              # closing
         [1.0, 1.0] +         # closed
-        [0.5, 0.0] +         # opening
-        [0.0] * 7            # open
+        [0.7] +              # opening
+        [0.0] * 6            # open
     )
     # Culoarea pleoapelor = media fruntii (top 15% din imagine)
     forehead = arr[:int(h * 0.15)]
@@ -415,12 +416,12 @@ def _detect_eye_mask(arr: np.ndarray, h: int, w: int) -> np.ndarray | None:
 
 
 def _frames_shimmer(img: Image.Image, style_id: str) -> list:
-    """Shimmer + abur pentru cup/drink - 24 frame-uri."""
+    """Shimmer + abur pentru cup/drink - 16 frame-uri."""
     arr = np.array(img, dtype=np.float32)
     h, w = arr.shape[:2]
     frames = []
-    for i in range(24):
-        t = i / 24
+    for i in range(N_FRAMES):
+        t = i / N_FRAMES
         phase = t * 2 * math.pi
         f = arr.copy()
         # Highlight circular pe suprafata (shimmer)
@@ -447,12 +448,12 @@ def _frames_shimmer(img: Image.Image, style_id: str) -> list:
 
 
 def _frames_animal(img: Image.Image, style_id: str) -> list:
-    """Urechi + coada animate - 24 frame-uri."""
+    """Urechi + coada animate - 16 frame-uri."""
     arr = np.array(img, dtype=np.float32)
     h, w = arr.shape[:2]
     frames = []
-    for i in range(24):
-        t = i / 24
+    for i in range(N_FRAMES):
+        t = i / N_FRAMES
         phase = t * 2 * math.pi
         f = arr.copy()
         # Zona superioara 20% (urechi) - warp sinusoidal
@@ -471,7 +472,7 @@ def _frames_animal(img: Image.Image, style_id: str) -> list:
 
 
 def _frames_sway(img: Image.Image, style_id: str) -> list:
-    """Legănat natural pentru plante - 24 frame-uri cu scipy."""
+    """Legănat natural pentru plante - 16 frame-uri cu scipy."""
     arr = np.array(img, dtype=np.float32)
     h, w = arr.shape[:2]
     try:
@@ -481,8 +482,8 @@ def _frames_sway(img: Image.Image, style_id: str) -> list:
 
     yc, xc = np.mgrid[0:h, 0:w].astype(np.float32)
     frames = []
-    for i in range(24):
-        t = i / 24
+    for i in range(N_FRAMES):
+        t = i / N_FRAMES
         phase = t * 2 * math.pi
         # Amplitudine scade de sus (varf ±10px) la baza (0px)
         amplitude = 10.0 * (1 - yc / h)
@@ -497,15 +498,15 @@ def _frames_sway(img: Image.Image, style_id: str) -> list:
 
 
 def _frames_glow_pulse(img: Image.Image, style_id: str) -> list:
-    """Glow pulse radial pentru food - 24 frame-uri."""
+    """Glow pulse radial pentru food - 16 frame-uri."""
     arr = np.array(img, dtype=np.float32)
     h, w = arr.shape[:2]
     yc, xc = np.mgrid[0:h, 0:w].astype(np.float32)
     dist = np.sqrt((xc - w / 2) ** 2 + (yc - h / 2) ** 2)
     max_dist = math.sqrt((w / 2) ** 2 + (h / 2) ** 2)
     frames = []
-    for i in range(24):
-        t = i / 24
+    for i in range(N_FRAMES):
+        t = i / N_FRAMES
         phase = t * 2 * math.pi
         f = arr.copy()
         # Radial glow pulse
@@ -521,7 +522,7 @@ def _frames_glow_pulse(img: Image.Image, style_id: str) -> list:
 
 # ─── Animații vizuale per filtru (mod "life" fallback + style flavor) ─────────
 def _frames_style_visual(img: Image.Image, style_id: str) -> list:
-    """Animație vizuală specifică filtrului - 24 frame-uri."""
+    """Animație vizuală specifică filtrului - 16 frame-uri."""
     dispatch = {
         "warhol":   _frames_warhol,
         "hokusai":  _frames_hokusai,
@@ -551,8 +552,8 @@ def _frames_warhol(img: Image.Image) -> list:
         [(255, 50, 0),  (0, 100, 255)],   # red/blue
     ]
     frames = []
-    for i in range(24):
-        t = i / 24
+    for i in range(N_FRAMES):
+        t = i / N_FRAMES
         f = arr.copy()
         quadrant_palette = palettes[i % 4]
         # Flash pe un cadran la rand
@@ -585,8 +586,8 @@ def _frames_hokusai(img: Image.Image) -> list:
     h, w = arr.shape[:2]
     yc, xc = np.mgrid[0:h, 0:w].astype(np.float32)
     frames = []
-    for i in range(24):
-        t = i / 24
+    for i in range(N_FRAMES):
+        t = i / N_FRAMES
         phase = t * 2 * math.pi
         # Unda dinspre baza catre varf
         wave_amp = 12.0 * (yc / h)  # amplitudine creste spre baza
@@ -607,8 +608,8 @@ def _frames_klimt(img: Image.Image) -> list:
     gold = np.array([212, 175, 55], dtype=np.float32)  # gold color
     yc, xc = np.mgrid[0:h, 0:w].astype(np.float32)
     frames = []
-    for i in range(24):
-        t = i / 24
+    for i in range(N_FRAMES):
+        t = i / N_FRAMES
         phase = t * 2 * math.pi
         f = arr.copy()
         # Shimmer diagonal care se deplasează
@@ -631,8 +632,8 @@ def _frames_ghibli(img: Image.Image) -> list:
     xg, yg = np.meshgrid(vx, vy)
     vignette = np.clip(1.0 - 0.4 * (xg ** 2 + yg ** 2), 0.4, 1.0)[:, :, np.newaxis]
     frames = []
-    for i in range(24):
-        t = i / 24
+    for i in range(N_FRAMES):
+        t = i / N_FRAMES
         # Ken Burns lent
         zoom = 1.0 + 0.08 * t
         pan_x = int(w * 0.04 * math.sin(t * math.pi))
@@ -660,8 +661,8 @@ def _frames_banksy(img: Image.Image) -> list:
     h, w = arr.shape[:2]
     frames = []
     rng = np.random.default_rng(42)
-    for i in range(24):
-        t = i / 24
+    for i in range(N_FRAMES):
+        t = i / N_FRAMES
         phase = t * 2 * math.pi
         f = arr.copy()
         # High contrast B&W flicker
@@ -686,8 +687,8 @@ def _frames_dali(img: Image.Image) -> list:
     h, w = arr.shape[:2]
     yc, xc = np.mgrid[0:h, 0:w].astype(np.float32)
     frames = []
-    for i in range(24):
-        t = i / 24
+    for i in range(N_FRAMES):
+        t = i / N_FRAMES
         phase = t * 2 * math.pi
         # Distorsiune fluid Dali
         dx = (14 * np.sin(3 * math.pi * yc / h + phase)).astype(int)
@@ -713,8 +714,8 @@ def _frames_vangogh(img: Image.Image) -> list:
     dist = np.sqrt((xc - cx) ** 2 + (yc - cy) ** 2)
     angle = np.arctan2(yc - cy, xc - cx)
     frames = []
-    for i in range(24):
-        t = i / 24
+    for i in range(N_FRAMES):
+        t = i / N_FRAMES
         phase = t * 2 * math.pi
         # Swirl: rotatie progresiva care scade cu distanta
         swirl_strength = 0.25 * math.sin(phase)
@@ -737,8 +738,8 @@ def _frames_baroque(img: Image.Image) -> list:
     vx, vy = np.linspace(-1, 1, w), np.linspace(-1, 1, h)
     xg, yg = np.meshgrid(vx, vy)
     frames = []
-    for i in range(24):
-        t = i / 24
+    for i in range(N_FRAMES):
+        t = i / N_FRAMES
         phase = t * 2 * math.pi
         f = arr.copy()
         # Flicker lumina lumanare
@@ -771,8 +772,8 @@ def _frames_mondrian(img: Image.Image) -> list:
     cell_colors = rng.integers(0, len(mondrian_colors), (4, 4))
 
     frames = []
-    for i in range(24):
-        t = i / 24
+    for i in range(N_FRAMES):
+        t = i / N_FRAMES
         phase = t * 2 * math.pi
         f = arr.copy()
         # Flash celule rand pe rand
@@ -804,8 +805,8 @@ def _frames_mucha(img: Image.Image) -> list:
     # Pastel Mucha colors
     mucha_pastel = np.array([245, 215, 195], dtype=np.float32)
     frames = []
-    for i in range(24):
-        t = i / 24
+    for i in range(N_FRAMES):
+        t = i / N_FRAMES
         phase = t * 2 * math.pi
         f = arr.copy()
         # Radial shimmer pastelat
@@ -832,8 +833,8 @@ def _frames_cinemagraph(img: Image.Image, subject_type: str, style_id: str) -> l
     motion_mask = _get_cinemagraph_mask(subject_type, h, w)
 
     frames = []
-    for i in range(24):
-        t = i / 24
+    for i in range(N_FRAMES):
+        t = i / N_FRAMES
         phase = t * 2 * math.pi
 
         # Animație pentru zona respectivă

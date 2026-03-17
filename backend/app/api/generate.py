@@ -42,7 +42,7 @@ async def start_generation(
     quality: QualityTier = Form(QualityTier.standard),
     session_id: str = Form(...),
     animation_mode: AnimationMode = Form(AnimationMode.life),
-    frame_delay: int = Form(60),
+    frame_delay: int = Form(80),
     ref_source: str = Form(None),  # referral viral tracking (optional)
 ):
     import re
@@ -256,7 +256,7 @@ async def start_generation_multi(
     quality: QualityTier = Form(QualityTier.free),
     session_id: str = Form(...),
     animation_mode: AnimationMode = Form(AnimationMode.life),
-    frame_delay: int = Form(60),
+    frame_delay: int = Form(80),
     variants: int = Form(3),
 ):
     """Generează N variante simultan ale aceluiași stil (doar pentru tier free)."""
@@ -398,7 +398,7 @@ async def _run_generation_pipeline(
     quality: QualityTier,
     session_id: str,
     animation_mode: AnimationMode = AnimationMode.life,
-    frame_delay: int = 60,
+    frame_delay: int = 80,
     ref_source: str = None,
 ):
     try:
@@ -425,10 +425,11 @@ async def _run_generation_pipeline(
             video_bytes = await generate_video_from_image(image_bytes, prompt, quality)
 
         _jobs[job_id]["progress"] = 85
-        video_url = await upload_video(video_bytes, creation_id)
-
-        # Thumbnail din GIF/video artistic (primul frame), nu din poza bruta
-        thumbnail_url = await upload_thumbnail(video_bytes, creation_id)
+        # Parallel uploads: video + thumbnail simultaneously
+        video_url, thumbnail_url = await asyncio.gather(
+            upload_video(video_bytes, creation_id),
+            upload_thumbnail(video_bytes, creation_id),
+        )
         _jobs[job_id]["progress"] = 95
 
         share_code = generate_share_code()
@@ -475,7 +476,7 @@ async def _run_regenerate_pipeline(
     session_id: str,
     thumbnail_url: str,
     animation_mode: AnimationMode = AnimationMode.life,
-    frame_delay: int = 60,
+    frame_delay: int = 80,
 ):
     try:
         _jobs[job_id]["status"] = "processing"

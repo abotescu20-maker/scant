@@ -173,7 +173,7 @@
     .progress-ring-bg { fill: none; stroke: rgba(255,255,255,.1); stroke-width: 7; }
     .progress-ring-fill {
       fill: none; stroke: url(#ring-grad); stroke-width: 7;
-      stroke-linecap: round; transition: stroke-dashoffset .5s ease;
+      stroke-linecap: round; transition: stroke-dashoffset 0.7s ease-out;
     }
     .progress-icon { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: 2.2rem; animation: pulse 1.8s ease-in-out infinite; }
     @keyframes pulse { 0%,100% { transform: translate(-50%,-50%) scale(1); } 50% { transform: translate(-50%,-50%) scale(1.14); } }
@@ -1448,20 +1448,25 @@ function startLoadingMessages() {
   _loadingMsgInterval = setInterval(() => {
     idx = (idx + 1) % msgs.length;
     document.getElementById('loading-status').textContent = msgs[idx];
-  }, 3000);
+  }, 2000);
 }
 
 function stopLoadingMessages() { clearInterval(_loadingMsgInterval); }
 
+let _progressAnimFrame = null;
+let _displayedPct = 0;
+
 async function pollStatus(jobId) {
   let attempts = 0;
-  while (attempts < 160) {
-    await sleep(1500);
+  _displayedPct = 0;
+  while (attempts < 200) {
+    await sleep(800);
     const r = await fetch(`${API_BASE}/status/${jobId}`);
     if (!r.ok) throw new Error('Eroare polling');
     const data = await r.json();
-    setProgress(data.progress || 0);
+    _animateProgressTo(data.progress || 0);
     if (data.status === 'done') {
+      _animateProgressTo(100);
       stopLoadingMessages();
       currentResult = data.result;
       showResult(data.result);
@@ -1475,6 +1480,25 @@ async function pollStatus(jobId) {
   }
   stopLoadingMessages();
   throw new Error('Timeout – încearcă din nou');
+}
+
+function _animateProgressTo(target) {
+  if (_progressAnimFrame) cancelAnimationFrame(_progressAnimFrame);
+  const start = _displayedPct;
+  const diff = target - start;
+  if (diff <= 0) { setProgress(target); _displayedPct = target; return; }
+  const duration = 600; // ms
+  const t0 = performance.now();
+  function step(now) {
+    const elapsed = now - t0;
+    const ratio = Math.min(elapsed / duration, 1);
+    const eased = 1 - Math.pow(1 - ratio, 3); // ease-out cubic
+    const current = Math.round(start + diff * eased);
+    setProgress(current);
+    if (ratio < 1) { _progressAnimFrame = requestAnimationFrame(step); }
+    else { _displayedPct = target; }
+  }
+  _progressAnimFrame = requestAnimationFrame(step);
 }
 
 function setProgress(pct) {
@@ -1723,8 +1747,8 @@ async function captureAndGenerateMulti() {
 
       const polls = job_ids.map(async (jobId, idx) => {
         let attempts = 0;
-        while (attempts < 160) {
-          await sleep(1500);
+        while (attempts < 200) {
+          await sleep(800);
           const res = await fetch(`${API_BASE}/status/${jobId}`);
           if (!res.ok) break;
           const data = await res.json();

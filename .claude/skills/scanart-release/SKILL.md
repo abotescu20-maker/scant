@@ -19,7 +19,7 @@ This skill orchestrates a complete release in 5 phases. If any phase fails, STOP
 
 ## Phase 3: Backend Deploy
 1. Run (SINGLE LINE, no backslash continuations):
-   `gcloud run deploy scanart-backend --image=gcr.io/gen-lang-client-0167987852/scanart-backend:v{new} --region=us-central1 --platform=managed --allow-unauthenticated --memory=1Gi --cpu=2 --concurrency=10 --timeout=300 --set-env-vars=GOOGLE_CLOUD_PROJECT=gen-lang-client-0167987852,GCS_BUCKET_NAME=scanart-results --quiet`
+   `gcloud run deploy scanart-backend --image=gcr.io/gen-lang-client-0167987852/scanart-backend:v{new} --region=us-central1 --platform=managed --allow-unauthenticated --memory=1Gi --cpu=2 --concurrency=10 --timeout=300 --set-env-vars=GOOGLE_CLOUD_PROJECT=gen-lang-client-0167987852,GCS_BUCKET_NAME=scanart-results-1772986018,ADMIN_API_KEY=scanart-admin-2026 --quiet`
 2. Capture revision name from output
 3. If deploy fails → STOP, report error
 

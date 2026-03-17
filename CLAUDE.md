@@ -6,7 +6,7 @@
 - **AI:** Gemini 2.0 Flash (prompt generation), Imagen 3 Fast (free GIF), Veo 3 (paid MP4)
 - **Storage:** Firestore (`creations`, `referrals` collections), GCS buckets
 - **Deploy:** Cloud Run (backend) + GCS static hosting (frontend)
-- **Current version:** v17 (sw.js cache name `scanart-v17`)
+- **Current version:** v18 (sw.js cache name `scanart-v18`)
 
 ## Architecture
 
@@ -45,7 +45,7 @@ deploy/
 ```bash
 # Backend — replace vXX with current version:
 gcloud builds submit backend/ --tag gcr.io/gen-lang-client-0167987852/scanart-backend:vXX --quiet
-gcloud run deploy scanart-backend --image=gcr.io/gen-lang-client-0167987852/scanart-backend:vXX --region=us-central1 --platform=managed --allow-unauthenticated --memory=1Gi --cpu=2 --concurrency=10 --timeout=300 --set-env-vars=GOOGLE_CLOUD_PROJECT=gen-lang-client-0167987852,GCS_BUCKET_NAME=scanart-results --quiet
+gcloud run deploy scanart-backend --image=gcr.io/gen-lang-client-0167987852/scanart-backend:vXX --region=us-central1 --platform=managed --allow-unauthenticated --memory=1Gi --cpu=2 --concurrency=10 --timeout=300 --set-env-vars=GOOGLE_CLOUD_PROJECT=gen-lang-client-0167987852,GCS_BUCKET_NAME=scanart-results-1772986018,ADMIN_API_KEY=scanart-admin-2026 --quiet
 
 # Frontend:
 gsutil -m rsync -r -d frontend/ gs://scanart-frontend-1772986018
@@ -93,7 +93,7 @@ Text `"ScanArt.app"` bottom-right on every frame via PIL ImageDraw. White text +
 ## Gotchas ⚠️
 - `sw.js` **MUST be bumped on every deploy** — otherwise users get stale frontend
 - `gcloud builds submit` must use `--quiet` flag or it prompts interactively
-- GCS env var `GCS_BUCKET_NAME=scanart-results` (WITHOUT the `-1772986018` suffix)
+- GCS env var `GCS_BUCKET_NAME=scanart-results-1772986018` (WITH the numeric suffix — bucket name must match exactly)
 - GCS rsync target IS `scanart-frontend-1772986018` (WITH suffix)
 - Veo 3 model name: `"veo-3.0-generate-preview"` (not veo-2)
 - `hf_service.py` is misnamed — it uses **Imagen 3 Fast + NumPy**, NOT HuggingFace

@@ -25,7 +25,7 @@ jobs:
 
       - name: Deploy to Cloud Run
         run: |
-          gcloud run deploy scanart-backend --image=gcr.io/gen-lang-client-0167987852/scanart-backend:${{ env.VERSION }} --region=us-central1 --platform=managed --allow-unauthenticated --memory=1Gi --cpu=2 --concurrency=10 --timeout=300 --set-env-vars=GOOGLE_CLOUD_PROJECT=gen-lang-client-0167987852,GCS_BUCKET_NAME=scanart-results,ADMIN_API_KEY=${{ secrets.ADMIN_API_KEY }} --quiet
+          gcloud run deploy scanart-backend --image=gcr.io/gen-lang-client-0167987852/scanart-backend:${{ env.VERSION }} --region=us-central1 --platform=managed --allow-unauthenticated --memory=1Gi --cpu=2 --concurrency=10 --timeout=300 --set-env-vars=GOOGLE_CLOUD_PROJECT=gen-lang-client-0167987852,GCS_BUCKET_NAME=scanart-results-1772986018,ADMIN_API_KEY=${{ secrets.ADMIN_API_KEY }} --quiet
 
       - name: Sync frontend to GCS
         run: gsutil -m rsync -r -d frontend/ gs://scanart-frontend-1772986018
