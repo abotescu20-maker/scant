@@ -1,9 +1,9 @@
 name: Deploy ScanArt
 
 on:
-  push:
-    branches: [main]
-  workflow_dispatch: {}
+  # push:
+  #   branches: [main]  # Uncomment after adding GCP_SA_KEY secret
+  workflow_dispatch: {}  # Manual trigger only until secrets are configured
 
 jobs:
   deploy:
