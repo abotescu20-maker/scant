@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 import os
 
 from app.api.generate import router as generate_router
+from app.api.admin import router as admin_router
 from app.config import settings
 
 
@@ -33,6 +34,7 @@ app.add_middleware(
 )
 
 app.include_router(generate_router, prefix="/api", tags=["generate"])
+app.include_router(admin_router, prefix="/api", tags=["admin"])
 
 
 @app.get("/health")

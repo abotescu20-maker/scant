@@ -1,0 +1,45 @@
+name: Weekly Challenge Rotation
+
+on:
+  schedule:
+    - cron: '0 0 * * 1'  # Every Monday at 00:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  rotate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get current analytics
+        id: stats
+        run: |
+          STATS=$(curl -sf "https://scanart-backend-603810013022.us-central1.run.app/api/admin/stats?key=${{ secrets.ADMIN_API_KEY }}&days=7")
+          echo "stats=$STATS" >> $GITHUB_OUTPUT
+
+      - name: Pick challenge with Claude Code
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          CHALLENGE=$(claude --print --output-format json \
+            "You are the ScanArt Challenge Curator. Based on these analytics:
+            ${{ steps.stats.outputs.stats }}
+
+            Pick a style for this week's challenge. Choose a style that is UNDERUSED
+            but has good potential. Return ONLY a JSON object:
+            {\"filter\": \"style_id\", \"emoji\": \"X\", \"name\": \"Display Name\", \"hashtag\": \"#HashTag\", \"description\": \"Romanian description max 50 chars\"}")
+
+          echo "Selected challenge: $CHALLENGE"
+
+          # Parse and set challenge
+          FILTER=$(echo "$CHALLENGE" | python3 -c "import sys,json; print(json.load(sys.stdin)['filter'])")
+          EMOJI=$(echo "$CHALLENGE" | python3 -c "import sys,json; print(json.load(sys.stdin)['emoji'])")
+          NAME=$(echo "$CHALLENGE" | python3 -c "import sys,json; print(json.load(sys.stdin)['name'])")
+          HASHTAG=$(echo "$CHALLENGE" | python3 -c "import sys,json; print(json.load(sys.stdin)['hashtag'])")
+          DESC=$(echo "$CHALLENGE" | python3 -c "import sys,json; print(json.load(sys.stdin)['description'])")
+
+          curl -sf -X POST \
+            "https://scanart-backend-603810013022.us-central1.run.app/api/admin/challenge?key=${{ secrets.ADMIN_API_KEY }}&filter=${FILTER}&emoji=${EMOJI}&name=${NAME}&hashtag=${HASHTAG}&description=${DESC}"
+
+          echo "Challenge set: $EMOJI $NAME"

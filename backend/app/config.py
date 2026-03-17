@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     veo_duration_premium: int = 8    # 8 sec ~$4.00
     veo_output_gcs_bucket: str = "scanart-results-1772986018"  # GCS bucket pentru output Veo
 
+    # Admin API key for cron/agent endpoints
+    admin_api_key: str = ""
+
     # Hugging Face pentru tier free
     hf_api_token: str = ""
     hf_model: str = "stabilityai/stable-video-diffusion-img2vid-xt"

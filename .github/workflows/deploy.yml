@@ -1,0 +1,44 @@
+name: Deploy ScanArt
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build backend Docker image
+        run: |
+          VERSION=$(date +%Y%m%d%H%M)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          gcloud builds submit backend/ --tag gcr.io/gen-lang-client-0167987852/scanart-backend:$VERSION --quiet
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy scanart-backend --image=gcr.io/gen-lang-client-0167987852/scanart-backend:${{ env.VERSION }} --region=us-central1 --platform=managed --allow-unauthenticated --memory=1Gi --cpu=2 --concurrency=10 --timeout=300 --set-env-vars=GOOGLE_CLOUD_PROJECT=gen-lang-client-0167987852,GCS_BUCKET_NAME=scanart-results,ADMIN_API_KEY=${{ secrets.ADMIN_API_KEY }} --quiet
+
+      - name: Sync frontend to GCS
+        run: gsutil -m rsync -r -d frontend/ gs://scanart-frontend-1772986018
+
+      - name: Smoke tests
+        run: |
+          echo "Testing health..."
+          curl -sf https://scanart-backend-603810013022.us-central1.run.app/health
+          echo ""
+          echo "Testing tiers..."
+          curl -sf https://scanart-backend-603810013022.us-central1.run.app/api/tiers
+          echo ""
+          echo "Testing frontend..."
+          curl -sf -o /dev/null -w "%{http_code}" https://storage.googleapis.com/scanart-frontend-1772986018/index.html
+          echo ""
+          echo "All smoke tests passed!"
