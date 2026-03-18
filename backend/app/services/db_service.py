@@ -193,3 +193,79 @@ async def track_referral(ref_share_code: str, referred_creation_id: str) -> None
         await loop.run_in_executor(None, _track_referral_sync, ref_share_code, referred_creation_id)
     except Exception as e:
         print(f"Referral tracking failed (non-critical): {e}")
+
+
+# ─── Admin dashboard helpers ─────────────────────────────────────────────────
+
+def _get_daily_snapshots_sync(days: int = 30) -> list:
+    """Returnează snapshot-urile zilnice din ultimele N zile."""
+    db = _get_db()
+    try:
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+        docs = (
+            db.collection("analytics_daily")
+            .order_by("__name__")
+            .start_at({"__name__": cutoff})
+            .stream()
+        )
+        results = []
+        for d in docs:
+            item = d.to_dict()
+            item["date"] = d.id
+            results.append(item)
+        return results
+    except Exception as e:
+        print(f"Firestore get_daily_snapshots failed: {e}")
+        return []
+
+
+async def get_daily_snapshots(days: int = 30) -> list:
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _get_daily_snapshots_sync, days)
+
+
+def _get_all_time_count_sync() -> int:
+    """Count total creații all-time (scan all docs, count)."""
+    db = _get_db()
+    try:
+        count = 0
+        for _ in db.collection(COLLECTION).select([]).stream():
+            count += 1
+        return count
+    except Exception as e:
+        print(f"Firestore all_time_count failed: {e}")
+        return 0
+
+
+async def get_all_time_count() -> int:
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _get_all_time_count_sync)
+
+
+def _get_recent_creations_sync(limit: int = 20) -> list:
+    """Ultimele N creații (cu thumbnail, fără session_id/prompt)."""
+    db = _get_db()
+    try:
+        docs = (
+            db.collection(COLLECTION)
+            .order_by("created_at", direction=firestore.Query.DESCENDING)
+            .limit(limit)
+            .stream()
+        )
+        results = []
+        for d in docs:
+            item = d.to_dict()
+            if "created_at" in item and hasattr(item["created_at"], "isoformat"):
+                item["created_at"] = item["created_at"].isoformat()
+            item.pop("session_id", None)
+            item.pop("prompt_used", None)
+            results.append(item)
+        return results
+    except Exception as e:
+        print(f"Firestore get_recent failed: {e}")
+        return []
+
+
+async def get_recent_creations(limit: int = 20) -> list:
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _get_recent_creations_sync, limit)
