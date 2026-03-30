@@ -1,0 +1,141 @@
+{
+  "id": "tpl-haftpflicht",
+  "name": "Haftpflicht-Schadenanzeige",
+  "description": "Liability damage report — TPSH Versicherungsmakler GmbH (Hanseatic Broking Center). Covers private, business, vehicle and animal liability claims.",
+  "language": "de",
+  "category": "claims",
+  "status": "published",
+  "sections": [
+    {
+      "title": "Allgemeine Vertragsdaten",
+      "number": "0",
+      "fields": [
+        {"name": "haftpflicht_art", "label": "Art der Haftpflicht", "type": "select", "required": true, "options": "Privathaftpflicht,Betriebshaftpflicht,KFZ-Haftpflicht,Tierhalter-Haftpflicht"},
+        {"name": "versicherungsnehmer_header", "label": "Versicherungsnehmer", "type": "text", "required": true},
+        {"name": "versicherer", "label": "Versicherer", "type": "text"},
+        {"name": "vertragsnummer", "label": "Vertragsnummer", "type": "text"},
+        {"name": "vorgangsnummer", "label": "Vorgangsnummer", "type": "text"}
+      ]
+    },
+    {
+      "title": "Versicherungsnehmer",
+      "number": "1",
+      "fields": [
+        {"name": "vn_firma_name", "label": "1.1 Firma/Name, Vorname", "type": "text", "required": true},
+        {"name": "vn_strasse", "label": "1.2 Straße", "type": "text", "required": true},
+        {"name": "vn_plz_ort", "label": "1.3 PLZ, Ort", "type": "text", "required": true},
+        {"name": "vn_email", "label": "1.4 E-Mail", "type": "email"},
+        {"name": "vn_telefon", "label": "1.5 Telefon", "type": "phone"},
+        {"name": "vn_fax", "label": "1.6 Fax", "type": "text"}
+      ]
+    },
+    {
+      "title": "Geschädigte Person / Gesellschaft",
+      "number": "2",
+      "fields": [
+        {"name": "gesch_firma_name", "label": "2.1 Firma/Name, Vorname", "type": "text", "required": true},
+        {"name": "gesch_strasse", "label": "2.2 Straße", "type": "text"},
+        {"name": "gesch_plz_ort", "label": "2.3 PLZ, Ort", "type": "text"},
+        {"name": "gesch_email", "label": "2.4 E-Mail", "type": "email"},
+        {"name": "gesch_telefon", "label": "2.5 Telefon", "type": "phone"},
+        {"name": "gesch_fax", "label": "2.6 Fax", "type": "text"}
+      ]
+    },
+    {
+      "title": "Allgemeine Angaben",
+      "number": "3",
+      "fields": [
+        {"name": "geschaedigter", "label": "3.1 Geschädigter", "type": "text", "required": true},
+        {"name": "schadentag_uhrzeit", "label": "3.2 Schadentag / Uhrzeit", "type": "text", "required": true, "placeholder": "TT.MM.JJJJ / HH:MM"},
+        {"name": "schadenort", "label": "3.3 Schadenort (Anschrift)", "type": "text", "required": true},
+        {"name": "schaden_verursacher", "label": "3.4 Wer verursachte den Schaden (Versicherungsnehmer)?", "type": "text", "required": true},
+        {"name": "kind_alter", "label": "3.5 Falls Ihr Kind den Schaden verursacht hat, wie alt war das Kind zum Zeitpunkt des Schadens?", "type": "text"},
+        {"name": "haeusliche_gemeinschaft", "label": "3.6 Lebt der Geschädigte mit Ihnen in häuslicher Gemeinschaft?", "type": "yesno"},
+        {"name": "familien_verwandtschaft", "label": "3.7 Besteht zwischen Ihnen und dem Geschädigten ein Familien- oder Verwandtschaftsverhältnis?", "type": "yesno"},
+        {"name": "familien_details", "label": "Wenn ja, und zwar:", "type": "text"},
+        {"name": "dritter_mitverursacht", "label": "3.8 Hat der Geschädigte oder ein sonstiger Dritter den Schadenfall mit verursacht und weshalb?", "type": "textarea"},
+        {"name": "zeugen", "label": "3.9 Gibt es Zeugen? Name, Vorname und Anschrift", "type": "yesno"},
+        {"name": "zeugen_name", "label": "Wenn ja, Name der Zeugen:", "type": "text"},
+        {"name": "verhaeltnis_geschaedigter", "label": "3.10 In welchem Verhältnis steht der Geschädigte zu Ihnen?", "type": "select", "options": "Ehegatte,Kind,Geschwister,Sonstiges"},
+        {"name": "tier_zweck", "label": "3.11 Wenn der Schaden durch eines Ihrer Tiere verursacht wurde, zu welchem Zweck halten Sie das Tier?", "type": "text"},
+        {"name": "polizeilich_aufgenommen", "label": "3.12 Wurde der Schaden polizeilich aufgenommen?", "type": "yesno"},
+        {"name": "polizei_details", "label": "Wenn ja, Anschrift Polizeidienststelle, Aktenzeichen:", "type": "text"}
+      ]
+    },
+    {
+      "title": "Angaben nur bei Sachschäden",
+      "number": "4",
+      "fields": [
+        {"name": "was_beschaedigt", "label": "4.1 Was wurde beschädigt?", "type": "textarea", "required": true},
+        {"name": "alter_sache", "label": "4.2 Alter der beschädigten Sache?", "type": "text"},
+        {"name": "eigentuemer_sache", "label": "4.3 Wer ist der Eigentümer der beschädigten Sache?", "type": "text"},
+        {"name": "gemietet_geliehen", "label": "4.4 War die Sache gemietet oder geliehen?", "type": "text"},
+        {"name": "schaden_besichtigung", "label": "4.5 Kann der Schaden besichtigt werden? Wenn ja, wo?", "type": "text"},
+        {"name": "schadenhoehe_ansprueche", "label": "4.6 Wie hoch wird der Schaden geschätzt oder gibt es bereits schriftliche Schadenersatzansprüche?", "type": "textarea"}
+      ]
+    },
+    {
+      "title": "Angaben nur bei Personenschäden",
+      "number": "5",
+      "fields": [
+        {"name": "wer_verletzt", "label": "5.1 Wer wurde verletzt?", "type": "text"},
+        {"name": "art_verletzung", "label": "5.2 Art der Verletzung?", "type": "textarea"}
+      ]
+    },
+    {
+      "title": "Angaben nur bei Fahrzeugschäden",
+      "number": "6",
+      "fields": [
+        {"name": "fz_typ_marke", "label": "6.1 Typ / Marke", "type": "text"},
+        {"name": "fz_lenker_halter", "label": "6.2 Fahrzeuglenker / Fahrzeughalter", "type": "text"},
+        {"name": "fz_versicherung", "label": "6.3 Wo ist das Fahrzeug Haftpflicht/Vollkasko versichert?", "type": "text"}
+      ]
+    },
+    {
+      "title": "Schadenhergang / Skizze",
+      "number": "7",
+      "fields": [
+        {"name": "schadenhergang", "label": "Bitte beschreiben Sie Anlass, Hergang und Ursache des Schadens", "type": "textarea", "required": true, "minLength": 20, "placeholder": "Beschreiben Sie den Schadenhergang möglichst genau..."},
+        {"name": "schadenhergang_skizze", "label": "Skizze oder Fotos hochladen", "type": "file"}
+      ]
+    },
+    {
+      "title": "Angaben für die Regulierung",
+      "number": "8",
+      "fields": [
+        {"name": "ersatzansprueche", "label": "8.1 Sind bereits Ersatzansprüche an Sie gestellt worden?", "type": "yesno"},
+        {"name": "ersatzansprueche_hoehe", "label": "Wenn ja, in Höhe von (EUR)", "type": "number"},
+        {"name": "auszahlung_anspruchsteller", "label": "8.2 Sind Sie mit einer Auszahlung der Entschädigung unmittelbar an den Anspruchsteller einverstanden?", "type": "yesno"},
+        {"name": "auszahlung_konto", "label": "8.3 An wen und auf welches Konto soll die Auszahlung erfolgen?", "type": "text"},
+        {"name": "andere_haftpflicht", "label": "8.4 Sind Sie noch bei einer anderen Gesellschaft Haftpflicht versichert?", "type": "yesno"},
+        {"name": "ort_datum", "label": "Ort / Datum", "type": "text", "required": true},
+        {"name": "unterschrift", "label": "Unterschrift vom Versicherungsnehmer", "type": "text"}
+      ]
+    },
+    {
+      "title": "Anhang: Schäden durch Gabelstapler oder Arbeitsmaschinen",
+      "number": "A1",
+      "fields": [
+        {"name": "gabel_fahrer", "label": "Wer führte die Maschine oder das Fahrzeug?", "type": "text"},
+        {"name": "gabel_fuehrerschein", "label": "Besitzt dieser einen gültigen Führerschein/Maschinenschein?", "type": "yesno"},
+        {"name": "gabel_fahrzeugart", "label": "Um welche Maschinen-/Fahrzeugart handelt es sich?", "type": "text"},
+        {"name": "gabel_zulassungspflichtig", "label": "Ist das Fahrzeug zulassungspflichtig?", "type": "yesno"},
+        {"name": "gabel_hoechstgeschwindigkeit", "label": "Wie hoch ist die Höchstgeschwindigkeit?", "type": "text"},
+        {"name": "gabel_betriebsort", "label": "Wo wird die Maschine/das Fahrzeug betrieben?", "type": "text"},
+        {"name": "gabel_gelaende_sicherung", "label": "Wie ist das Gelände gesichert auf dem das Fahrzeug oder die Maschinen stehen?", "type": "text"},
+        {"name": "gabel_gelaende_zugaenglich", "label": "Ist das Gelände für jeden zugänglich?", "type": "yesno"},
+        {"name": "gabel_betriebserlaubnis", "label": "Hat das Fahrzeug eine Betriebserlaubnis?", "type": "yesno"}
+      ]
+    },
+    {
+      "title": "Anhang: Schäden durch Tiere",
+      "number": "A2",
+      "fields": [
+        {"name": "tier_art", "label": "Um welches Tier handelt es sich?", "type": "select", "options": "Hund,Katze,Pferd,Sonstiges"},
+        {"name": "tier_besitz_seit", "label": "Seit wann ist das Tier in Ihrem Besitz?", "type": "text"},
+        {"name": "tier_beruflich", "label": "Dient Ihnen das Tier zur Berufs- oder Erwerbstätigkeit?", "type": "yesno"},
+        {"name": "tier_aufsicht", "label": "Wer hatte die Aufsicht für das Tier? (Name und Anschrift)", "type": "text"}
+      ]
+    }
+  ]
+}

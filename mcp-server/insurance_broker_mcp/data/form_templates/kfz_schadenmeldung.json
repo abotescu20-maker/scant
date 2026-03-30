@@ -1,0 +1,149 @@
+{
+  "id": "tpl-kfz-schaden",
+  "name": "KFZ-Schadenmeldung",
+  "description": "Motor vehicle damage report — TPSH Versicherungsmakler GmbH (Hanseatic Broking Center)",
+  "language": "de",
+  "category": "claims",
+  "status": "published",
+  "sections": [
+    {
+      "title": "Versicherungsnehmer",
+      "number": "1",
+      "fields": [
+        {"name": "versicherungsschein_nr", "label": "Versicherungsschein-Nr.", "type": "text", "placeholder": "z.B. VS-123456"},
+        {"name": "schadensnummer", "label": "Schadensnummer", "type": "text", "placeholder": "Falls bereits vorhanden"},
+        {"name": "vn_name", "label": "Name, Vorname", "type": "text", "required": true},
+        {"name": "vn_adresse", "label": "Straße, PLZ und Ort", "type": "text", "required": true},
+        {"name": "vn_kontakt", "label": "Telefon / Fax / E-Mail", "type": "text", "required": true},
+        {"name": "vn_kennzeichen", "label": "Amtliches Kennzeichen", "type": "text", "required": true, "placeholder": "z.B. M-AB 1234"},
+        {"name": "vn_kennzeichen_anhaenger", "label": "Amtliches Kennzeichen Anhänger", "type": "text"},
+        {"name": "schadentag_uhrzeit", "label": "Schadentag / Uhrzeit", "type": "text", "required": true, "placeholder": "TT.MM.JJJJ / HH:MM"},
+        {"name": "schadenort", "label": "Schadenort", "type": "text", "required": true, "placeholder": "Straße, Ort, PLZ"}
+      ]
+    },
+    {
+      "title": "Unfallhergang und Unfallskizze",
+      "number": "2",
+      "fields": [
+        {"name": "unfallhergang", "label": "Bitte beschreiben Sie den Unfallhergang", "type": "textarea", "required": true, "minLength": 20, "placeholder": "Beschreiben Sie den Unfallhergang möglichst genau..."},
+        {"name": "unfallskizze", "label": "Unfallskizze (Datei hochladen)", "type": "file", "placeholder": "Zeichnung oder Foto der Unfallstelle"}
+      ]
+    },
+    {
+      "title": "Allgemeine Fragen zum Schaden",
+      "number": "3",
+      "fields": [
+        {"name": "fahrt_zweck", "label": "3.1 Welchem Zweck diente die Fahrt?", "type": "select", "options": ["privat", "gewerblich"], "required": true},
+        {"name": "fahrer_name", "label": "3.2 Wer lenkte das Fahrzeug zum Schadenzeitpunkt? (Name, Vorname)", "type": "text", "required": true},
+        {"name": "fahrer_anschrift", "label": "Anschrift des Fahrers", "type": "text"},
+        {"name": "fahrer_kontakt", "label": "Telefon / Fax / E-Mail des Fahrers", "type": "text"},
+        {"name": "fahrerlaubnis", "label": "3.3 Hatte der Fahrer die erforderliche Fahrerlaubnis zur Zeit des Unfalls?", "type": "yesno", "required": true},
+        {"name": "fuehrerschein_einbehalten", "label": "3.4 Ist der Führerschein am Unfalltag durch die Polizei einbehalten worden?", "type": "yesno"},
+        {"name": "alkohol_drogen", "label": "3.5 Hatte der Fahrer innerhalb der letzten 24 Stunden vor dem Unfall alkoholhaltige Getränke oder Medikamente/Drogen zu sich genommen?", "type": "yesno"},
+        {"name": "alkohol_menge", "label": "Wenn ja, welche Menge?", "type": "text", "placeholder": "z.B. 2 Bier, 1 Glas Wein"},
+        {"name": "blutprobe", "label": "3.6 Ist eine Blutprobe erfolgt?", "type": "yesno"},
+        {"name": "gegner_bewegung", "label": "3.7 War das gegnerische Fahrzeug in Bewegung?", "type": "select", "options": ["ja", "nein, geparkt", "nein, stehend"]},
+        {"name": "unfallverursacher", "label": "3.8 Wer hat aus Ihrer Sicht den Unfall verursacht?", "type": "textarea", "placeholder": "Beschreibung..."}
+      ]
+    },
+    {
+      "title": "Polizei",
+      "number": "4",
+      "fields": [
+        {"name": "polizei_aufnahme", "label": "4.1 Fand eine polizeiliche Schadenaufnahme statt?", "type": "yesno"},
+        {"name": "polizei_dienststelle", "label": "Dienststelle", "type": "text", "placeholder": "Name der Dienststelle"},
+        {"name": "polizei_aktenzeichen", "label": "Aktenzeichen", "type": "text"},
+        {"name": "verwarnung", "label": "4.2 Wurde jemand gebührenpflichtig verwarnt?", "type": "select", "options": ["nein", "ja — Versicherungsnehmer", "ja — Anspruchsteller"]}
+      ]
+    },
+    {
+      "title": "Zeugen",
+      "number": "5",
+      "fields": [
+        {"name": "zeugen_vorhanden", "label": "5.1 Gab es Zeugen?", "type": "yesno"},
+        {"name": "zeugen_anzahl", "label": "Wenn ja, wie viele?", "type": "number"},
+        {"name": "zeuge1_name", "label": "Zeuge 1 — Name, Vorname", "type": "text"},
+        {"name": "zeuge1_anschrift", "label": "Zeuge 1 — Anschrift", "type": "text"},
+        {"name": "zeuge2_name", "label": "Zeuge 2 — Name, Vorname", "type": "text"},
+        {"name": "zeuge2_anschrift", "label": "Zeuge 2 — Anschrift", "type": "text"}
+      ]
+    },
+    {
+      "title": "Personenschaden",
+      "number": "6",
+      "fields": [
+        {"name": "personen_verletzt", "label": "6.1 Wurden eine oder mehrere Personen verletzt? (auch im eigenen Fahrzeug)", "type": "yesno"},
+        {"name": "verletzte_anzahl", "label": "Wenn ja, wie viele?", "type": "number"},
+        {"name": "verletzungen_art", "label": "Art der Verletzungen", "type": "textarea"},
+        {"name": "verletzter_name", "label": "6.2 Wer wurde verletzt? (Name, Vorname)", "type": "text"},
+        {"name": "verletzter_anschrift", "label": "Anschrift", "type": "text"},
+        {"name": "verletzter_kontakt", "label": "Telefon / Fax / E-Mail", "type": "text"}
+      ]
+    },
+    {
+      "title": "Anspruchsteller (Geschädigter)",
+      "number": "7",
+      "fields": [
+        {"name": "anspruch_name", "label": "7.1 Name, Vorname", "type": "text"},
+        {"name": "anspruch_strasse", "label": "7.2 Straße", "type": "text"},
+        {"name": "anspruch_plz_ort", "label": "7.3 PLZ, Ort", "type": "text"},
+        {"name": "anspruch_telefon", "label": "7.4 Telefon / Telefax", "type": "text"},
+        {"name": "anspruch_email", "label": "7.5 E-Mail", "type": "text"},
+        {"name": "anspruch_kennzeichen", "label": "7.6 Amtliches Kennzeichen", "type": "text"},
+        {"name": "anspruch_fabrikat", "label": "7.7 Fabrikat", "type": "text", "placeholder": "z.B. VW Golf, BMW 320d"},
+        {"name": "anspruch_sachschaeden", "label": "7.8 Sonstige Sachschäden", "type": "textarea"},
+        {"name": "anspruch_vorschaeden", "label": "7.9 Sichtbare Vorschäden", "type": "yesno"},
+        {"name": "anspruch_schadenshoehe", "label": "7.10 Schadenhöhe ca. €", "type": "number", "placeholder": "Geschätzter Betrag in Euro"},
+        {"name": "anspruch_bilder", "label": "7.11 Wurden Bilder gemacht?", "type": "yesno"},
+        {"name": "anspruch_bilder_upload", "label": "Bilder hochladen", "type": "file"}
+      ]
+    },
+    {
+      "title": "Kasko-Schaden am eigenen Fahrzeug",
+      "number": "8",
+      "fields": [
+        {"name": "kasko_anspruch", "label": "8.1 Möchten Sie Ihre Kaskoversicherung in Anspruch nehmen?", "type": "yesno"},
+        {"name": "kasko_besichtigung", "label": "8.2 Kann das Fahrzeug besichtigt werden?", "type": "yesno"},
+        {"name": "kasko_besichtigung_wann", "label": "8.3 Wann, Wo?", "type": "text"},
+        {"name": "kasko_kontakt", "label": "8.4 Wer kann für einen Termin kontaktiert werden? (Name, Telefon)", "type": "text"},
+        {"name": "kasko_schadenshoehe", "label": "8.5 Schadenhöhe ca. €", "type": "number", "placeholder": "Geschätzter Betrag in Euro"},
+        {"name": "kasko_bilder", "label": "8.6 Wurden Bilder gemacht?", "type": "yesno"},
+        {"name": "kasko_bilder_upload", "label": "Bilder hochladen", "type": "file"},
+        {"name": "kasko_vorschaeden", "label": "8.7 Hatte Ihr Fahrzeug nicht reparierte Vorschäden?", "type": "yesno"}
+      ]
+    },
+    {
+      "title": "Diebstahl",
+      "number": "9",
+      "fields": [
+        {"name": "diebstahl_wann_wo", "label": "9.1 Wann und wo wurde das Fahrzeug abgestellt?", "type": "textarea"},
+        {"name": "diebstahl_schluessel", "label": "9.2 Wo befand sich der Schlüssel zum Zeitpunkt?", "type": "text"},
+        {"name": "diebstahl_nachschluessel", "label": "9.3 Wurden Nachschlüssel angefertigt?", "type": "yesno"},
+        {"name": "diebstahl_vorschaeden", "label": "9.4 Hatte Ihr Fahrzeug reparierte Vorschäden?", "type": "yesno"},
+        {"name": "diebstahl_vorschaeden_detail", "label": "Wenn ja, welche?", "type": "textarea"}
+      ]
+    },
+    {
+      "title": "Tierschaden",
+      "number": "10",
+      "fields": [
+        {"name": "tier_art", "label": "10.1 Art des Tieres", "type": "text", "placeholder": "z.B. Reh, Wildschwein, Hund"},
+        {"name": "tier_meldung", "label": "10.2 Erfolgte eine Meldung beim Revierinhaber / Jagdberechtigten / Polizei?", "type": "yesno"},
+        {"name": "tier_bescheinigung", "label": "Bescheinigung hochladen", "type": "file"}
+      ]
+    },
+    {
+      "title": "Eigenschadenregulierung",
+      "number": "11",
+      "fields": [
+        {"name": "regulierung_name", "label": "11.1 Eine evtl. Schadenregulierung soll erfolgen an: (Name, Vorname)", "type": "text"},
+        {"name": "zahlungsart", "label": "11.2 Zahlungsart", "type": "select", "options": ["per Überweisung / Bank", "per Scheck"]},
+        {"name": "iban", "label": "IBAN", "type": "text", "placeholder": "DE00 0000 0000 0000 0000 00"},
+        {"name": "bic", "label": "BIC", "type": "text"},
+        {"name": "vorsteuer", "label": "11.3 Besteht Vorsteuerabzugsberechtigung?", "type": "yesno"},
+        {"name": "ort_datum", "label": "Ort / Datum", "type": "text", "required": true},
+        {"name": "unterschrift_hinweis", "label": "Unterschrift des Fahrers / Versicherungsnehmers", "type": "text", "placeholder": "Bitte Name eintippen als digitale Unterschrift"}
+      ]
+    }
+  ]
+}
