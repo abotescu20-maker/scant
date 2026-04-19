@@ -2313,7 +2313,7 @@ async def health():
     except: _sched_ok = False; _sched_jobs = 0
     return {
         "status": "ok",
-        "version": "rev-00123-field-aliases",
+        "version": "rev-00127-narrative-subfields",
         "timestamp": _hdt.datetime.utcnow().isoformat() + "Z",
         "scheduler_running": _sched_ok,
         "scheduler_jobs": _sched_jobs,
@@ -2706,7 +2706,7 @@ def _generate_form_pdf(ticket_code: str, ref: str, client_name: str, client_emai
     from datetime import datetime as _pdf_dt
 
     def _safe(text: str) -> str:
-        """Replace Unicode chars unsupported by Helvetica with ASCII equivalents."""
+        """Replace smart-punct Unicode with ASCII; preserve German umlauts (latin-1 supports them)."""
         return (str(text)
                 .replace("\u2014", "-")   # em-dash
                 .replace("\u2013", "-")   # en-dash
@@ -2716,9 +2716,7 @@ def _generate_form_pdf(ticket_code: str, ref: str, client_name: str, client_emai
                 .replace("\u201d", '"')   # right double quote
                 .replace("\u2022", "*")   # bullet
                 .replace("\u2026", "...")  # ellipsis
-                .replace("\u00e4", "ae").replace("\u00f6", "oe").replace("\u00fc", "ue")
-                .replace("\u00c4", "Ae").replace("\u00d6", "Oe").replace("\u00dc", "Ue")
-                .replace("\u00df", "ss")  # eszett
+                # NOTE: umlauts ü/ö/ä/ß are preserved — latin-1 encoding supports them natively
                 .encode("latin-1", errors="replace").decode("latin-1")
                )
 
@@ -2844,7 +2842,7 @@ def _generate_form_pdf(ticket_code: str, ref: str, client_name: str, client_emai
   <div class="meta-card" style="border-left-color:#f59e0b">
     <div class="label">Vollständigkeit</div>
     <div class="value">{completeness}%</div>
-    <div class="sub">AI Score: {ai_score}/100</div>
+    <div class="sub">{'Versicherer: ' + _safe(form_data.get('versicherer')) if form_data.get('versicherer') else 'AI Score: ' + str(ai_score) + '/100'}</div>
   </div>
 </div>
 
@@ -2922,13 +2920,15 @@ def _generate_form_pdf(ticket_code: str, ref: str, client_name: str, client_emai
         _row1_cards = [
             ("Versicherungsnehmer", _safe(client_name or 'N/A'), _safe(client_email or ''), (30, 64, 175)),
         ]
+        _versicherer_val = _safe(form_data.get('versicherer','') or '')
+        _completeness_sub = f'Versicherer: {_versicherer_val}' if _versicherer_val else ''
         if _schadennr:
             _row1_cards.append(("Schadennummer", _schadennr, "", (220, 38, 38)))
         if _vs_nr:
             _row1_cards.append(("VS-Nr.", _vs_nr, "", (124, 58, 237)))
         if not _schadennr and not _vs_nr:
             _row1_cards.append(("Aktenzeichen", _safe(ticket_code), _safe(f'Ref: {ref}'), (16, 185, 129)))
-            _row1_cards.append(("Vollstaendigkeit", f'{completeness}%', f'AI Score: {ai_score}/100', (245, 158, 11)))
+            _row1_cards.append(("Vollst\u00e4ndigkeit", f'{completeness}%', _completeness_sub, (245, 158, 11)))
 
         for i, (lbl, val, sub_val, color) in enumerate(_row1_cards):
             x = 14 + i * (_card_w + 4)
@@ -2945,7 +2945,7 @@ def _generate_form_pdf(ticket_code: str, ref: str, client_name: str, client_emai
             _is_prominent = lbl in ("Schadennummer", "VS-Nr.")
             pdf.set_font('Helvetica', 'B', 13 if _is_prominent else 11)
             pdf.set_text_color(30, 41, 59)
-            pdf.cell(_card_w - 6, 5, val[:25])
+            pdf.cell(_card_w - 6, 5, val[:40])
             pdf.set_xy(x + 3, pdf.get_y() + 6)
             pdf.set_font('Helvetica', '', 7)
             pdf.set_text_color(100, 116, 139)
@@ -2956,7 +2956,7 @@ def _generate_form_pdf(ticket_code: str, ref: str, client_name: str, client_emai
             pdf.set_y(pdf.get_y() + 24)
             _row2_cards = [
                 ("Aktenzeichen", _safe(ticket_code), _safe(f'Ref: {ref}'), (100, 116, 139)),
-                ("Vollstaendigkeit", f'{completeness}%', f'AI Score: {ai_score}/100', (245, 158, 11)),
+                ("Vollst\u00e4ndigkeit", f'{completeness}%', _completeness_sub, (245, 158, 11)),
             ]
             if _polizei_az:
                 _row2_cards.append(("Polizei AZ", _polizei_az, "", (59, 130, 246)))
@@ -3008,27 +3008,33 @@ def _generate_form_pdf(ticket_code: str, ref: str, client_name: str, client_emai
                 pdf.line(14, pdf.get_y(), 196, pdf.get_y())
                 pdf.ln(2)
 
-                # Fields table
+                # Fields table — fixed 2-column layout (label 68mm, value 110mm)
+                # Label truncated at 48 chars + req_mark; value wraps via multi_cell
                 for idx, (label, val, req) in enumerate(fields_in_sec):
                     if pdf.get_y() > 270:
                         pdf.add_page()
                     bg = (249, 250, 251) if idx % 2 == 0 else (255, 255, 255)
                     pdf.set_fill_color(*bg)
                     y_before = pdf.get_y()
-                    # Label cell
+                    # Truncate label to safely fit in 68mm at Helvetica 8pt (~48 chars incl req_mark)
+                    req_mark = ' *' if req else ''
+                    _label_text = f'{label}{req_mark}'
+                    if len(_label_text) > 48:
+                        _label_text = _label_text[:45] + '...' + (' *' if req else '')
+                    display = _safe(val) if val else "-"
+                    # Use multi_cell for value to get wrap; measure label height similarly
                     pdf.set_font('Helvetica', 'B', 8)
                     pdf.set_text_color(55, 65, 81)
-                    req_mark = ' *' if req else ''
                     pdf.set_x(14)
-                    pdf.cell(68, 6, f'{label}{req_mark}', fill=True)
-                    # Value cell
+                    pdf.cell(68, 6, _label_text, fill=True)
+                    # Value cell — draw at x=82 with multi_cell if long, else single cell
                     pdf.set_font('Helvetica', '', 8)
                     pdf.set_text_color(31, 41, 55)
-                    display = val if val else "-"
-                    if len(display) > 80:
+                    pdf.set_xy(82, y_before)
+                    if len(display) > 70:
                         pdf.multi_cell(110, 6, display, fill=True, new_x="LMARGIN", new_y="NEXT")
                     else:
-                        pdf.cell(110, 6, display[:80], fill=True, new_x="LMARGIN", new_y="NEXT")
+                        pdf.cell(110, 6, display, fill=True, new_x="LMARGIN", new_y="NEXT")
 
         elif form_data:
             pdf.set_font('Helvetica', 'B', 10)
@@ -3058,7 +3064,7 @@ def _generate_form_pdf(ticket_code: str, ref: str, client_name: str, client_emai
             pdf.add_page()
             pdf.set_font('Helvetica', 'B', 10)
             pdf.set_text_color(30, 64, 175)
-            pdf.cell(0, 7, 'Bildanhaenge', new_x="LMARGIN", new_y="NEXT")
+            pdf.cell(0, 7, 'Bildanh\u00e4nge', new_x="LMARGIN", new_y="NEXT")
             pdf.set_draw_color(59, 130, 246)
             pdf.line(14, pdf.get_y(), 196, pdf.get_y())
             pdf.ln(4)
@@ -7347,32 +7353,51 @@ async def api_mark_nn_synced(sub_id: str):
 
 
 def _calc_completeness(form_data: dict, template_id: str) -> int:
-    """Calculate weighted completeness. Critical fields worth more than minor ones.
-    With 7 critical fields filled (VN, Versicherer, VS-Nr, etc.) => ~70% instead of 9%.
+    """Calculate HONEST completeness based on per-template mandatory (starred) fields.
+    Returns ratio of populated mandatory fields × 100. Caps at 95% unless ALL mandatory fields populated.
     """
     if not form_data:
         return 0
 
-    # Critical fields (each worth 10%)
-    critical = ["vn_name", "vn_email", "versicherungsschein_nr", "versicherer",
-                 "schadenort", "schadentag_uhrzeit", "unfallhergang"]
-    # Important fields (each worth 5%)
-    important = ["vn_kennzeichen", "vn_adresse", "vn_kontakt", "schadensnummer",
-                  "kontaktperson", "schadenshoehe", "polizei_aufnahme", "fahrer_name"]
-    # All other fields worth 1% each
+    # Per-template starred (mandatory) fields — from template JSON definitions
+    _template_mandatory = {
+        "tpl-kfz-schaden": ["vn_name", "vn_adresse", "vn_kontakt", "vn_kennzeichen",
+                            "schadentag_uhrzeit", "schadenort", "unfallhergang",
+                            "fahrt_zweck", "fahrer_name", "fahrerlaubnis", "ort_datum"],
+        "tpl-haftpflicht": ["haftpflicht_art", "versicherungsnehmer_header",
+                            "vn_firma_name", "vn_strasse", "vn_plz_ort",
+                            "gesch_firma_name", "geschaedigter",
+                            "schadentag_uhrzeit", "schadenort", "schaden_verursacher",
+                            "was_beschaedigt", "schadenhergang", "ort_datum"],
+        "tpl-maschinenbruch": ["contact_name", "contact_phone_email",
+                               "schadensdatum", "schadensort",
+                               "owner_name", "owner_phone",
+                               "catalog_position", "producator", "serie_produs",
+                               "garantie_expirata", "descriere_dauna",
+                               "piese_avariate", "piese_inlocuit"],
+    }
+    _mandatory = _template_mandatory.get(template_id, [])
+    if not _mandatory:
+        # Fallback: generic critical/important weighted for unknown templates
+        critical = ["vn_name", "vn_email", "versicherungsschein_nr", "versicherer",
+                    "schadenort", "schadentag_uhrzeit", "unfallhergang"]
+        important = ["vn_kennzeichen", "vn_adresse", "vn_kontakt", "schadensnummer",
+                     "schadenshoehe", "polizei_aufnahme"]
+        score = 0
+        for k, v in form_data.items():
+            if v and str(v).strip():
+                if k in critical: score += 10
+                elif k in important: score += 5
+                else: score += 1
+        return min(95, score)
 
-    score = 0
-    filled = [k for k, v in form_data.items() if v and str(v).strip()]
-
-    for f in filled:
-        if f in critical:
-            score += 10
-        elif f in important:
-            score += 5
-        else:
-            score += 1
-
-    return min(100, score)
+    _populated = sum(1 for k in _mandatory if form_data.get(k) and str(form_data.get(k)).strip())
+    _total = len(_mandatory)
+    # Cap at 95% unless ALL mandatory fields filled
+    _pct = int(round(100 * _populated / _total))
+    if _populated < _total:
+        _pct = min(_pct, 95)
+    return _pct
 
 
 @app.post("/api/forms/autosave")
@@ -15245,33 +15270,33 @@ async def _process_openviva_email(body_text: str, sender_email: str) -> dict:
 
     # Map email fields to EXACTLY ONE template field each (no duplicates)
     _field_mapping = {
-        # Identity
-        "VN": ["vn_name"],
-        "Name": ["vn_name"],
-        "Versicherungsnehmer": ["vn_name"],
-        "Kontaktperson": ["kontaktperson"],
-        "Ansprechpartner": ["kontaktperson"],
+        # Identity — populates KFZ (vn_name), Haftpflicht (vn_firma_name), Maschinenbruch (owner_name, contact_name)
+        "VN": ["vn_name", "vn_firma_name", "owner_name", "contact_name", "versicherungsnehmer_header"],
+        "Name": ["vn_name", "vn_firma_name", "owner_name", "contact_name", "versicherungsnehmer_header"],
+        "Versicherungsnehmer": ["vn_name", "vn_firma_name", "owner_name", "contact_name", "versicherungsnehmer_header"],
+        "Kontaktperson": ["kontaktperson", "contact_name"],
+        "Ansprechpartner": ["kontaktperson", "contact_name"],
 
-        # Address
-        "Adresse": ["vn_adresse"],
-        "Straße": ["vn_adresse"],
+        # Address — populates KFZ (vn_adresse), Haftpflicht (vn_strasse, vn_plz_ort)
+        "Adresse": ["vn_adresse", "vn_strasse"],
+        "Straße": ["vn_adresse", "vn_strasse"],
         "PLZ": ["vn_plz_ort"],
         "Ort": ["vn_plz_ort"],  # will be combined with PLZ below
 
-        # Contact
+        # Contact — HPF: vn_email/vn_telefon, MB: contact_phone_email/owner_phone
         "Email": ["vn_email"],
         "E-Mail": ["vn_email"],
         "Absender": ["vn_email"],
-        "Telefon": ["vn_kontakt"],
-        "Tel": ["vn_kontakt"],
+        "Telefon": ["vn_kontakt", "vn_telefon", "contact_phone_email", "owner_phone"],
+        "Tel": ["vn_kontakt", "vn_telefon", "contact_phone_email", "owner_phone"],
         "Fax": ["vn_fax"],
 
-        # Insurance
-        "VS-Nummer": ["versicherungsschein_nr"],
-        "VS-Nr": ["versicherungsschein_nr"],
-        "Versicherungsschein-Nr": ["versicherungsschein_nr"],
-        "Versicherungsscheinnummer": ["versicherungsschein_nr"],
-        "Vertragsnummer": ["versicherungsschein_nr"],
+        # Insurance — KFZ (versicherungsschein_nr), HPF (vertragsnummer), MB (versicherungsschein_nr)
+        "VS-Nummer": ["versicherungsschein_nr", "vertragsnummer"],
+        "VS-Nr": ["versicherungsschein_nr", "vertragsnummer"],
+        "Versicherungsschein-Nr": ["versicherungsschein_nr", "vertragsnummer"],
+        "Versicherungsscheinnummer": ["versicherungsschein_nr", "vertragsnummer"],
+        "Vertragsnummer": ["versicherungsschein_nr", "vertragsnummer"],
         "Versicherer": ["versicherer"],
         "Versicherungsgesellschaft": ["versicherer"],
         "VG": ["versicherer"],
@@ -15280,8 +15305,15 @@ async def _process_openviva_email(body_text: str, sender_email: str) -> dict:
         "Kennzeichen": ["vn_kennzeichen"],
         "Kfz-Kennzeichen": ["vn_kennzeichen"],
         "Amtliches Kennzeichen": ["vn_kennzeichen"],
-        "Fahrzeug": ["anspruchsteller_fahrzeug", "anspruch_fabrikat"],
-        "Fahrzeugtyp": ["anspruchsteller_fahrzeug", "anspruch_fabrikat"],
+        # REGRESSION FIX: "Fahrzeug" in broker email is typically VN's OWN vehicle,
+        # not Geschädigter's. Don't alias to anspruch_fabrikat (wrong-slot bug in T5).
+        # Claimant vehicle comes from Polizeibericht Vision extraction (role-aware).
+        "Fahrzeug": ["vn_fahrzeug"],
+        "Fahrzeugtyp": ["vn_fahrzeug"],
+        # Explicit claimant vehicle keys (only populate anspruch_fabrikat when broker says so)
+        "Gegner-Fahrzeug": ["anspruchsteller_fahrzeug", "anspruch_fabrikat"],
+        "Anspruchsteller-Fahrzeug": ["anspruchsteller_fahrzeug", "anspruch_fabrikat"],
+        "Geschädigtes Fahrzeug": ["anspruchsteller_fahrzeug", "anspruch_fabrikat"],
         "Fahrzeug-Ident-Nr": ["fahrgestellnummer"],
         "Fahrzeug-Ident-Nr.": ["fahrgestellnummer"],
         "Fahrgestellnr": ["fahrgestellnummer"],
@@ -15289,7 +15321,7 @@ async def _process_openviva_email(body_text: str, sender_email: str) -> dict:
         "Fahrgestellnummer": ["fahrgestellnummer"],
         "FIN": ["fahrgestellnummer"],
         "VIN": ["fahrgestellnummer"],
-        "Baujahr": ["baujahr"],
+        "Baujahr": ["baujahr", "serie_produs"],  # covers both KFZ and MB
         "Erstzulassung": ["erstzulassung"],
         "Fahrer": ["fahrer"],
         "Halter": ["vn_name"],
@@ -15299,47 +15331,52 @@ async def _process_openviva_email(body_text: str, sender_email: str) -> dict:
         "Getriebe": ["getriebe"],
         "Fahrzeugkategorie": ["fahrzeugkategorie"],
 
-        # Damage
-        "Schadennummer": ["schadensnummer"],
-        "Schadennr": ["schadensnummer"],
-        "Schadensnummer": ["schadensnummer"],
-        "SN": ["schadensnummer"],
-        "Schadenfall-Nr": ["schadensnummer"],
-        "Schadenfall-Nr.": ["schadensnummer"],
-        "Unser Zeichen": ["schadensnummer"],
-        "Schadendatum": ["schadentag_uhrzeit"],
-        "Schadentag": ["schadentag_uhrzeit"],
-        "Schadensdatum": ["schadentag_uhrzeit"],
-        "Unfall-Uhrzeit": ["schadentag_uhrzeit"],
-        "Unfallzeit": ["schadentag_uhrzeit"],
-        "Unfalldatum": ["schadentag_uhrzeit"],
-        "Schadenort": ["schadenort"],
-        "Schadensort": ["schadenort"],
-        "Unfallort": ["schadenort"],
-        "Schadenshöhe": ["schadenshoehe", "anspruch_schadenshoehe", "kasko_schadenshoehe"],
-        "Schadenshoehe": ["schadenshoehe", "anspruch_schadenshoehe", "kasko_schadenshoehe"],
-        "Schadenhöhe": ["schadenshoehe", "anspruch_schadenshoehe", "kasko_schadenshoehe"],
-        "Schadenhoehe": ["schadenshoehe", "anspruch_schadenshoehe", "kasko_schadenshoehe"],
-        "Schadenhöhe EUR": ["schadenshoehe", "anspruch_schadenshoehe", "kasko_schadenshoehe"],
-        "Geschätzte Schadenshöhe": ["schadenshoehe", "anspruch_schadenshoehe", "kasko_schadenshoehe"],
-        "Geschätzter Schaden": ["schadenshoehe", "anspruch_schadenshoehe", "kasko_schadenshoehe"],
+        # Damage — populate across templates: KFZ + HPF (schadentag_uhrzeit), MB (schadensdatum, schadensort)
+        "Schadennummer": ["schadensnummer", "vorgangsnummer", "dosar_nr_client"],
+        "Schadennr": ["schadensnummer", "vorgangsnummer", "dosar_nr_client"],
+        "Schadensnummer": ["schadensnummer", "vorgangsnummer", "dosar_nr_client"],
+        "SN": ["schadensnummer", "vorgangsnummer", "dosar_nr_client"],
+        "Schadenfall-Nr": ["schadensnummer", "vorgangsnummer", "dosar_nr_client"],
+        "Schadenfall-Nr.": ["schadensnummer", "vorgangsnummer", "dosar_nr_client"],
+        "Unser Zeichen": ["schadensnummer", "vorgangsnummer", "dosar_nr_client"],
+        "Schadendatum": ["schadentag_uhrzeit", "schadensdatum"],
+        "Schadentag": ["schadentag_uhrzeit", "schadensdatum"],
+        "Schadensdatum": ["schadentag_uhrzeit", "schadensdatum"],
+        "Unfall-Uhrzeit": ["schadentag_uhrzeit", "schadensdatum"],
+        "Unfallzeit": ["schadentag_uhrzeit", "schadensdatum"],
+        "Unfalldatum": ["schadentag_uhrzeit", "schadensdatum"],
+        "Schadenort": ["schadenort", "schadensort"],
+        "Schadensort": ["schadenort", "schadensort"],
+        "Unfallort": ["schadenort", "schadensort"],
+        # Damage amount — KFZ (anspruch_schadenshoehe), HPF (schadenhoehe_ansprueche)
+        # kasko_schadenshoehe only via explicit Kasko keys below
+        "Schadenshöhe": ["schadenshoehe", "anspruch_schadenshoehe", "schadenhoehe_ansprueche"],
+        "Schadenshoehe": ["schadenshoehe", "anspruch_schadenshoehe", "schadenhoehe_ansprueche"],
+        "Schadenhöhe": ["schadenshoehe", "anspruch_schadenshoehe", "schadenhoehe_ansprueche"],
+        "Schadenhoehe": ["schadenshoehe", "anspruch_schadenshoehe", "schadenhoehe_ansprueche"],
+        "Schadenhöhe EUR": ["schadenshoehe", "anspruch_schadenshoehe", "schadenhoehe_ansprueche"],
+        "Geschätzte Schadenshöhe": ["schadenshoehe", "anspruch_schadenshoehe", "schadenhoehe_ansprueche"],
+        "Geschätzter Schaden": ["schadenshoehe", "anspruch_schadenshoehe", "schadenhoehe_ansprueche"],
+        # Explicit Kasko keys (only populate kasko_schadenshoehe when broker says so)
+        "Kasko-Schadenshöhe": ["schadenshoehe", "kasko_schadenshoehe"],
+        "Kaskoschaden": ["schadenshoehe", "kasko_schadenshoehe"],
         "Selbstbeteiligung": ["selbstbeteiligung"],
         "SB": ["selbstbeteiligung"],
         "Deckung": ["deckung"],
         "Versicherungsklasse": ["versicherungsklasse"],
 
-        # Damage details
-        "Schadenhergang": ["unfallhergang"],
-        "Unfallhergang": ["unfallhergang"],
-        "Unfallbeschreibung": ["unfallhergang"],
-        "Hergang": ["unfallhergang"],
-        "Beschreibung": ["unfallhergang"],
+        # Damage details — KFZ (unfallhergang), HPF (schadenhergang), MB (descriere_dauna)
+        "Schadenhergang": ["unfallhergang", "schadenhergang", "descriere_dauna"],
+        "Unfallhergang": ["unfallhergang", "schadenhergang", "descriere_dauna"],
+        "Unfallbeschreibung": ["unfallhergang", "schadenhergang", "descriere_dauna"],
+        "Hergang": ["unfallhergang", "schadenhergang", "descriere_dauna"],
+        "Beschreibung": ["unfallhergang", "schadenhergang", "descriere_dauna"],
 
-        # Third party
-        "Geschädigter": ["anspruchsteller_name", "anspruch_name"],
-        "Geschadigter": ["anspruchsteller_name", "anspruch_name"],
-        "Beschädigter": ["anspruchsteller_name", "anspruch_name"],
-        "Anspruchsteller": ["anspruchsteller_name", "anspruch_name"],
+        # Third party — KFZ (anspruch_name), HPF (gesch_firma_name + geschaedigter in sec 3)
+        "Geschädigter": ["anspruchsteller_name", "anspruch_name", "gesch_firma_name", "geschaedigter"],
+        "Geschadigter": ["anspruchsteller_name", "anspruch_name", "gesch_firma_name", "geschaedigter"],
+        "Beschädigter": ["anspruchsteller_name", "anspruch_name", "gesch_firma_name", "geschaedigter"],
+        "Anspruchsteller": ["anspruchsteller_name", "anspruch_name", "gesch_firma_name", "geschaedigter"],
         "Gegnerisches Kennzeichen": ["schadensbeschreibung_gegner"],
 
         # Police
@@ -15347,9 +15384,28 @@ async def _process_openviva_email(body_text: str, sender_email: str) -> dict:
         "Aktenzeichen": ["polizei_aktenzeichen"],
         "Polizei": ["polizei_dienststelle"],
 
-        # Machine specific
-        "Maschinentyp": ["machine_type"],
-        "Hersteller": ["machine_manufacturer"],
+        # Machine specific — MB (producator, catalog_position, serie_produs)
+        "Maschinentyp": ["machine_type", "catalog_position", "piese_avariate"],
+        "Hersteller": ["machine_manufacturer", "producator"],
+        "Fabrikat": ["machine_manufacturer", "producator"],
+        "Seriennummer": ["serie_produs"],
+        "Maschine": ["machine_type", "catalog_position", "piese_avariate"],
+        "Fabrikationsnummer": ["serie_produs"],
+        "Fabr-Nr": ["serie_produs"],
+        "Fabriknummer": ["serie_produs"],
+        "Beschädigte Teile": ["piese_avariate"],
+        "Teile zu ersetzen": ["piese_inlocuit"],
+        "Ersatzteile": ["piese_inlocuit"],
+        "Garantie abgelaufen": ["garantie_expirata"],
+        "Position Verzeichnis": ["catalog_position"],
+        "Servicemitarbeiter": ["contact_name"],
+        "Eigentümer": ["owner_name"],
+        "Eigentuemer": ["owner_name"],
+        # Haftpflicht specific
+        "Art der Haftpflicht": ["haftpflicht_art"],
+        "Haftpflicht-Art": ["haftpflicht_art"],
+        "Was wurde beschädigt": ["was_beschaedigt"],
+        "Beschädigte Sache": ["was_beschaedigt"],
     }
 
     form_data = {}
@@ -15370,6 +15426,40 @@ async def _process_openviva_email(body_text: str, sender_email: str) -> dict:
     _addr = _fields.get("Adresse", "") or _fields.get("Straße", "")
     if _addr and _plz and _ort:
         form_data["vn_adresse"] = f"{_addr}, {_plz} {_ort}"
+    # Parse Geschädigter block — extract sub-fields (strasse, plz_ort, telefon, email)
+    # Broker emails often format: "Geschädigter: Name\nAdresse: Str. 5\nPLZ: 12345 Ort\nTel: +49..."
+    # or a single block: "Geschädigter: Name, Str. 5, 12345 Ort, Tel +49..."
+    _gesch_name = form_data.get("anspruchsteller_name") or form_data.get("gesch_firma_name") or ""
+    if _gesch_name:
+        # Try to parse "Geschädigter-Adresse", "Geschädigter-PLZ", "Geschädigter-Telefon", "Geschädigter-Email" keys
+        for _suffix_key, _target_keys in [
+            ("Geschädigter-Adresse", ["anspruch_strasse", "gesch_strasse"]),
+            ("Geschädigter-Straße", ["anspruch_strasse", "gesch_strasse"]),
+            ("Geschädigter-PLZ", ["anspruch_plz_ort", "gesch_plz_ort"]),
+            ("Geschädigter-Ort", ["anspruch_plz_ort", "gesch_plz_ort"]),
+            ("Geschädigter-Telefon", ["anspruch_telefon", "gesch_telefon"]),
+            ("Geschädigter-Tel", ["anspruch_telefon", "gesch_telefon"]),
+            ("Geschädigter-Email", ["anspruch_email", "gesch_email"]),
+            ("Geschädigter-E-Mail", ["anspruch_email", "gesch_email"]),
+            ("Geschädigter-Kennzeichen", ["anspruch_kennzeichen"]),
+        ]:
+            if _fields.get(_suffix_key):
+                for _tk in _target_keys:
+                    if not form_data.get(_tk):
+                        form_data[_tk] = _fields[_suffix_key]
+        # Also parse inline Geschädigter "Name, Str. 5, 12345 Ort" comma-separated
+        if "," in _gesch_name and not form_data.get("anspruch_strasse") and not form_data.get("gesch_strasse"):
+            _parts = [p.strip() for p in _gesch_name.split(",")]
+            if len(_parts) >= 3:
+                form_data["anspruchsteller_name"] = _parts[0]
+                form_data["anspruch_name"] = _parts[0]
+                form_data["gesch_firma_name"] = _parts[0]
+                form_data["geschaedigter"] = _parts[0]
+                form_data["anspruch_strasse"] = _parts[1]
+                form_data["gesch_strasse"] = _parts[1]
+                form_data["anspruch_plz_ort"] = _parts[2]
+                form_data["gesch_plz_ort"] = _parts[2]
+
     # Combine date + time into schadentag_uhrzeit if both present
     _date_val = _fields.get("Schadendatum", "") or _fields.get("Schadentag", "") or _fields.get("Schadensdatum", "") or _fields.get("Unfalldatum", "")
     _time_val = _fields.get("Unfall-Uhrzeit", "") or _fields.get("Unfallzeit", "") or _fields.get("Uhrzeit", "")
@@ -15713,17 +15803,23 @@ async def api_debug_simulate_openviva(request: _Request):
                 "unfalldatum":"schadentag_uhrzeit","schadendatum":"schadentag_uhrzeit"}
             _has_id = any(_current_fd.get(f) for f in ("vn_name","vn_email","vn_kennzeichen"))
             # Template-specific aliases: generic names (Vision) → KFZ/HPF/MB template field names
+            # Vision from Polizeibericht/KV has role context — safe to populate claimant fields
             _template_aliases = {
-                "schadenshoehe": ["anspruch_schadenshoehe", "kasko_schadenshoehe"],
-                "schadenhoehe": ["anspruch_schadenshoehe", "kasko_schadenshoehe"],
-                "aktenzeichen": ["polizei_aktenzeichen"],
-                "anspruchsteller_name": ["anspruch_name"],
-                "anspruchsteller_fahrzeug": ["anspruch_fabrikat"],
-                "anspruchsteller_strasse": ["anspruch_strasse"],
-                "anspruchsteller_plz_ort": ["anspruch_plz_ort"],
-                "anspruchsteller_telefon": ["anspruch_telefon"],
-                "anspruchsteller_email": ["anspruch_email"],
+                "schadenshoehe": ["anspruch_schadenshoehe", "schadenhoehe_ansprueche"],
+                "schadenhoehe": ["anspruch_schadenshoehe", "schadenhoehe_ansprueche"],
+                "aktenzeichen": ["polizei_aktenzeichen", "polizei_details"],
+                # KFZ + HPF claimant mapping
+                "anspruchsteller_name": ["anspruch_name", "gesch_firma_name", "geschaedigter"],
+                "anspruchsteller_fahrzeug": ["anspruch_fabrikat", "fz_typ_marke"],
+                "anspruchsteller_strasse": ["anspruch_strasse", "gesch_strasse"],
+                "anspruchsteller_plz_ort": ["anspruch_plz_ort", "gesch_plz_ort"],
+                "anspruchsteller_telefon": ["anspruch_telefon", "gesch_telefon"],
+                "anspruchsteller_email": ["anspruch_email", "gesch_email"],
                 "anspruchsteller_kennzeichen": ["anspruch_kennzeichen"],
+                # Maschinenbruch extractions
+                "machine_type": ["catalog_position"],
+                "machine_manufacturer": ["producator"],
+                "seriennummer": ["serie_produs"],
             }
             _new_fields = {}
             for _mk,_mv in _att_extracted_fields_merged.items():
