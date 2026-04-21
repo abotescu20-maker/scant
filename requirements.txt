@@ -38,3 +38,10 @@ google-cloud-firestore>=2.16.0
 # RAG / Knowledge Base
 chromadb>=1.0.0                    # Vector store (persistent, file-based)
                                    # Embeddings: all-MiniLM-L6-v2 (local, no API key)
+apscheduler>=3.10.0
+
+# PDF generation + merging (insurance SAZ forms)
+fpdf2>=2.8.0
+pypdf>=5.0.0
+Pillow>=10.0.0
+google-cloud-storage>=2.10.0

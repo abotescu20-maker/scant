@@ -62,7 +62,7 @@ except Exception as e:
 " 2>&1 || echo "[startup] Broker Firestore restore failed (non-fatal)"
 else
     echo "[startup] No broker data in Firestore — running demo reseed and syncing..."
-    PYTHONPATH="$PYTHONPATH" python3 /app/scripts/reseed_demo.py
+    PYTHONPATH="$PYTHONPATH" python3 /app/scripts/reseed_demo.py || echo "[startup] reseed_demo failed (non-fatal) — Firestore is authoritative"
     echo "[startup] Demo reseed complete. Syncing broker data to Firestore..."
     PYTHONPATH="$PYTHONPATH" python3 -c "
 import sys

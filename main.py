@@ -2853,8 +2853,9 @@ def _generate_form_pdf(ticket_code: str, ref: str, client_name: str, client_emai
 
 <div class="footer">
   TPSH Versicherungsmakler GmbH<br>
-  {_safe(os.environ.get("TPSH_ADDRESS","Hanseatisches Maklerzentrum, Hamburg, Deutschland"))}<br>
-  Tel: {_safe(os.environ.get("TPSH_PHONE","+49 40 000000"))}  ·  E-Mail: {_safe(os.environ.get("TPSH_EMAIL","info@tpsh.de"))}  ·  Web: {_safe(os.environ.get("TPSH_WEB","www.tpsh.de"))}
+  {_safe(os.environ.get("TPSH_ADDRESS","Inselkammerstr. 1, 82008 Unterhaching"))}<br>
+  Tel: {_safe(os.environ.get("TPSH_PHONE","+49 (89) 66550 100"))}  ·  Fax: {_safe(os.environ.get("TPSH_FAX","+49 (89) 66550 200"))}  ·  E-Mail: {_safe(os.environ.get("TPSH_EMAIL","info@tpsh.de"))}<br>
+  Ansprechpartner: {_safe(os.environ.get("TPSH_ANSPRECHPARTNER","Valeria Teodoru — VTeodoru@tpsh.de"))}
 </div>
 
 </body></html>"""
@@ -3095,6 +3096,20 @@ def _generate_form_pdf(ticket_code: str, ref: str, client_name: str, client_emai
                 _img_path = _upload_dir / _img_file
                 if not _img_path.exists():
                     _img_path = _upload_dir / _att.get("saved_as", "")
+                # FAZA 2: If still missing, fetch from GCS and save to /tmp
+                if not _img_path.exists():
+                    _gcs_uri_img = _att.get("gcs_uri","")
+                    if _gcs_uri_img and _gcs_uri_img.startswith("gs://"):
+                        try:
+                            from google.cloud import storage as _gcs_img_mod
+                            _parts_img = _gcs_uri_img.replace("gs://","").split("/",1)
+                            _tmp_img = Path(f"/tmp/gcs_img_{_att.get('saved_as','img')}")
+                            _img_bytes_gcs = _gcs_img_mod.Client().bucket(_parts_img[0]).blob(_parts_img[1]).download_as_bytes()
+                            _tmp_img.write_bytes(_img_bytes_gcs)
+                            _img_path = _tmp_img
+                            _log.info(f"📥 GCS fetched image {_img_file} ({len(_img_bytes_gcs)} bytes)")
+                        except Exception as _gimg_err:
+                            _log.warning(f"GCS image fetch failed: {_gimg_err}")
                 if not _img_path.exists():
                     continue
                 if _imgs_on_page >= 2:
@@ -3107,7 +3122,7 @@ def _generate_form_pdf(ticket_code: str, ref: str, client_name: str, client_emai
                     if pdf.get_y() + _max_img_h + 15 > 270:
                         pdf.add_page()
                         _imgs_on_page = 0
-                    pdf.image(str(_img_path), x=20, w=_max_img_w)
+                    pdf.image(str(_img_path), x=20, w=_max_img_w, h=_max_img_h, keep_aspect_ratio=True)
                     pdf.ln(2)
                     # Caption with filename
                     pdf.set_font('Helvetica', 'I', 7)
@@ -3218,6 +3233,50 @@ def _generate_form_pdf(ticket_code: str, ref: str, client_name: str, client_emai
             _min_pdf.output(_min_buf)
             pdf_bytes = _min_buf.getvalue()
         _log.info(f"PDF generated for {ticket_code}: {len(pdf_bytes)} bytes (fpdf2)")
+        # Merge attached PDFs into the main PDF (append pages)
+        try:
+            _pdf_attachments = [a for a in (attachments or []) if (a.get("content_type") or a.get("mime","") or "").lower() == "application/pdf" or (a.get("filename","") or "").lower().endswith(".pdf")]
+            if _pdf_attachments:
+                from pypdf import PdfWriter, PdfReader
+                _io_m = __import__("io")
+                _writer = PdfWriter()
+                # Add main PDF
+                _writer.append(PdfReader(_io_m.BytesIO(pdf_bytes)))
+                # Append each PDF attachment (pages only, no annotations)
+                _upload_dir_m = Path(__file__).parent / "output" / "form-attachments"
+                for _pa in _pdf_attachments:
+                    _pa_file = _pa.get("saved_as") or ""
+                    _pa_path = _upload_dir_m / _pa_file
+                    _pa_bytes = None
+                    if _pa_path.exists():
+                        _pa_bytes = _pa_path.read_bytes()
+                    else:
+                        # Fallback: fetch from GCS
+                        _pa_gcs = _pa.get("gcs_uri","")
+                        if _pa_gcs and _pa_gcs.startswith("gs://"):
+                            try:
+                                from google.cloud import storage as _gcs_dl
+                                _gcs_dl_client = _gcs_dl.Client()
+                                _parts = _pa_gcs.replace("gs://","").split("/",1)
+                                _pa_bytes = _gcs_dl_client.bucket(_parts[0]).blob(_parts[1]).download_as_bytes()
+                                _log.info(f"📥 Fetched {_pa_file} from GCS ({len(_pa_bytes)} bytes)")
+                            except Exception as _gcs_dl_err:
+                                _log.warning(f"GCS download failed for {_pa_file}: {_gcs_dl_err}")
+                    if not _pa_bytes:
+                        continue
+                    try:
+                        _pa_reader = PdfReader(_io_m.BytesIO(_pa_bytes))
+                        for _p in _pa_reader.pages:
+                            _writer.add_page(_p)
+                        _log.info(f"📎 Merged {len(_pa_reader.pages)} pages from {_pa_file} into main PDF")
+                    except Exception as _pa_err:
+                        _log.warning(f"PDF merge failed for {_pa_file}: {_pa_err}")
+                _merged_buf = _io_m.BytesIO()
+                _writer.write(_merged_buf)
+                pdf_bytes = _merged_buf.getvalue()
+                _log.info(f"PDF after merge: {len(pdf_bytes)} bytes (+{len(_pdf_attachments)} attachments embedded)")
+        except Exception as _mrg_err:
+            _log.warning(f"PDF merge skipped (pypdf error): {_mrg_err}")
         return pdf_bytes
     except ImportError:
         _log.warning("fpdf2 not available — PDF generation disabled")
@@ -4659,7 +4718,13 @@ async def api_send_claim_questionnaire(claim_id: str, request: _Request):
 
     # 5. Create submission linked to claim
     sub_id = f"sub-{_u.uuid4().hex[:10]}"
-    ref = f"FRM-{_dt.utcnow().strftime('%Y')}-{_u.uuid4().hex[:5].upper()}"
+    # Use Schadennummer as Referenznummer if valid 7-digit (Oliver feedback)
+    _sn_for_ref = (form_data.get("schadensnummer") or form_data.get("schadennummer","") or "").strip()
+    _sn_for_ref_digits = _sn_for_ref.replace("-","").replace(" ","").replace(".","")
+    if _sn_for_ref_digits.isdigit() and len(_sn_for_ref_digits) >= 6:
+        ref = _sn_for_ref_digits
+    else:
+        ref = f"FRM-{_dt.utcnow().strftime('%Y')}-{_u.uuid4().hex[:5].upper()}"
     _sn_supplied = (form_data.get("schadensnummer") or form_data.get("schadennummer","") or "").strip()
     _sn_digits = _sn_supplied.replace("-","").replace(" ","").replace(".","")
     if not _sn_digits.isdigit() or len(_sn_digits) < 6:
@@ -7231,7 +7296,7 @@ async def api_export_submission(sub_id: str):
 
 @app.get("/api/forms/submissions/{sub_id}/pdf")
 async def api_submission_pdf(sub_id: str):
-    """Generate and download PDF for any submission (complete or partial)."""
+    """Generate and download PDF for any submission — FULL with embedded photos + merged attachments (for both broker AND Versicherer)."""
     sub = _fs_get("form_submissions", sub_id)
     if not sub:
         return JSONResponse({"error": "Submission not found"}, 404)
@@ -7563,6 +7628,44 @@ async def api_submit_form(request: _Request):
             }, merge=True)
             sub_id = linked_sub_id
             ref = existing_doc.get("reference_number", "")
+            # CRITICAL FIX (Oliver feedback #1): Send completed SAZ to broker + Versicherer
+            if completeness >= 80:
+                try:
+                    _broker_em = existing_doc.get("broker_email") or ""
+                    _versicherer_em = os.environ.get("VERSICHERER_EMAIL", "fungadgetsgames@gmail.com")
+                    _ticket = existing_doc.get("ticket_code","")
+                    _vn_name = client_name_val or existing_doc.get("client_name","")
+                    # Regenerate PDF with full data + attachments
+                    _tpl_doc = _fs_get("form_templates", template_id) or {}
+                    _sec = _tpl_doc.get("sections") or _tpl_doc.get("sections_json",[])
+                    if isinstance(_sec,str): _sec = json.loads(_sec or "[]")
+                    _final_pdf = _generate_form_pdf(
+                        ticket_code=_ticket, ref=ref,
+                        client_name=_vn_name, client_email=client_email_val,
+                        template_name=_tpl_doc.get("name","KFZ-Schadenmeldung"),
+                        completeness=completeness, ai_score=0,
+                        form_data=form_data, ai_validation=None,
+                        sections=_sec, attachments=body.get("attachments",[]),
+                        template_id=template_id
+                    )
+                    _completion_subj = f"✅ [{_ticket}] SAZ vollständig ausgefüllt — {_vn_name}"
+                    _completion_html = f"""<html><body style="font-family:Arial"><h2 style="color:#10b981">SAZ vollständig — bereit für Versicherer</h2>
+<p><b>Aktenzeichen:</b> {_ticket}<br><b>Versicherungsnehmer:</b> {_vn_name}<br><b>Vollständigkeit:</b> {completeness}%<br><b>Schadennummer:</b> {form_data.get('schadensnummer','-')}</p>
+<p>Anbei die vollständig ausgefüllte Schadenanzeige mit allen Dokumenten und Fotos embedded.</p></body></html>"""
+                    _broker_atts = [{"filename": f"{_ticket}_SAZ_VOLLSTAENDIG.pdf", "content": _final_pdf, "mime": "application/pdf"}] if _final_pdf else None
+                    # Send to broker
+                    if _broker_em and "@" in _broker_em:
+                        _send_email_html([_broker_em], _completion_subj, _completion_html, attachments=_broker_atts)
+                        _log.info(f"📧 Completion notification → broker {_broker_em} ({_ticket})")
+                        _audit("completion.broker_notified", actor="system", entity_type="form_submission", entity_id=sub_id, details=f"broker={_broker_em}, pdf={len(_final_pdf) if _final_pdf else 0} bytes")
+                    # Send to Versicherer
+                    if _versicherer_em and "@" in _versicherer_em:
+                        _vr_subj = f"Schadenmeldung {_ticket} — {_vn_name} — {form_data.get('versicherer','')}"
+                        _send_email_html([_versicherer_em], _vr_subj, _completion_html, attachments=_broker_atts)
+                        _log.info(f"📧 Auto-forward → Versicherer {_versicherer_em} ({_ticket})")
+                        _audit("completion.versicherer_forwarded", actor="system", entity_type="form_submission", entity_id=sub_id, details=f"versicherer={_versicherer_em}")
+                except Exception as _cp_err:
+                    _log.warning(f"Completion notification failed: {_cp_err}")
         else:
             linked_sub_id = ""  # fallback to new submission
 
@@ -15741,7 +15844,13 @@ Antworte NUR mit der fertigen Schadenschilderung, ohne Anfuehrungszeichen, ohne 
     # Determine context: populate even if not strictly in HPF — harmless if field unused by template
     # Section 0 Allgemeine Vertragsdaten
     _vn_lower_check = (form_data.get("vn_name","") + " " + form_data.get("vn_firma_name","")).lower()
-    _vn_is_company = any(s in _vn_lower_check for s in ("gmbh","kg","ag","e.k.","ek","ug","ohg","gbr","se","sarl","service","gewerbe"))
+    # Extended company suffixes + German-specific forms
+    _vn_is_company = any(s in _vn_lower_check for s in (
+        "gmbh","kg","ag","e.k.","ek ","ug","ohg","gbr","se","sarl","service","gewerbe",
+        "eg","eg.","e.g.","e. g.","genossenschaft","stiftung","verein","kommanditgesellschaft",
+        "werke","werk","industrie","logistik","spedition","transport","autohaus","taxi",
+        "verwaltung","holding","group","hotel","gastro","bau","bauunternehmen"
+    ))
     if not form_data.get("haftpflicht_art"):
         form_data["haftpflicht_art"] = "Betriebs-Haftpflicht" if _vn_is_company else "Privat-Haftpflicht"
     # G4: If VN is a private person, vn_firma_name should be "Privatperson" (not the person's name)
@@ -16017,6 +16126,7 @@ Ihr Alex (TPSH Versicherungsmakler)"""
         "template_id": template_id, "reference_number": ref,
         "client_name": client_name, "client_email": client_email,
         "client_phone": client_phone,
+        "broker_email": sender_email,  # Store broker email for notification on completion
         "form_data": form_data, "status": "sent",
         "completeness_pct": _completeness, "submitted_at": now,
         "ticket_code": ticket_code, "created_at": now,
@@ -16537,7 +16647,7 @@ async def poll_inbox_for_commands():
         _already_processed = {d["_id"] for d in _pe_docs}
 
         for msg_id in _msg_ids[0].split()[-20:]:  # max 20 per poll
-            # Check if already processed
+            # Check if already processed (by IMAP UID)
             _msg_uid = msg_id.decode() if isinstance(msg_id, bytes) else str(msg_id)
             if _msg_uid in _already_processed:
                 continue
@@ -16546,6 +16656,18 @@ async def poll_inbox_for_commands():
             if _status != "OK":
                 continue
             msg = _email_mod.message_from_bytes(_data[0][1])
+            # FIX: Dedup by Message-ID header (globally unique, survives UID changes)
+            _msg_id_hdr = str(msg.get("Message-ID","") or msg.get("Message-Id","") or "").strip("<>").strip()
+            if _msg_id_hdr:
+                _mid_key = f"mid-{_msg_id_hdr.replace('@','_at_').replace('.','_')[:100]}"
+                if _mid_key in _already_processed:
+                    try: mail.store(msg_id, "+FLAGS", "\\Seen")
+                    except: pass
+                    continue
+                # Mark as processed by Message-ID IMMEDIATELY (before processing)
+                try:
+                    _fs_set("processed_emails", _mid_key, {"processed_at": __import__("datetime").datetime.utcnow().isoformat(), "imap_uid": _msg_uid}, merge=False)
+                except: pass
             _from = msg.get("From", "")
             _subject_raw = msg.get("Subject", "")
             # Decode subject (may be base64/quoted-printable encoded)
@@ -16763,9 +16885,32 @@ async def poll_inbox_for_commands():
                                     _att_path = _att_upload_dir / f"{_att_uuid4().hex[:12]}_{_att_safe_name}"
                                     _att_path.write_bytes(_eatt["data"])
                                     _att_ct = _eatt["content_type"]
+                                    # Upload to GCS for persistence across Cloud Run instances
+                                    _gcs_uri = None
+                                    _gcs_error = None
+                                    try:
+                                        _gcs_bucket = os.environ.get("GCS_BUCKET","")
+                                        _log.info(f"🪣 GCS upload attempt for {_eatt['filename']} bucket={_gcs_bucket}")
+                                        if _gcs_bucket:
+                                            from google.cloud import storage as _gcs_storage
+                                            _gcs_client = _gcs_storage.Client()
+                                            _bkt = _gcs_client.bucket(_gcs_bucket)
+                                            _gcs_blob = _bkt.blob(f"attachments/{_att_path.name}")
+                                            _gcs_blob.upload_from_string(_eatt["data"], content_type=_att_ct)
+                                            _gcs_uri = f"gs://{_gcs_bucket}/attachments/{_att_path.name}"
+                                            _log.info(f"✅ GCS UPLOADED: {_gcs_uri} ({_eatt['size']} bytes)")
+                                        else:
+                                            _gcs_error = "GCS_BUCKET env var empty"
+                                    except ImportError as _imp_err:
+                                        _gcs_error = f"IMPORT_ERROR: {_imp_err}"
+                                        _log.error(f"❌ GCS import failed: {_imp_err}")
+                                    except Exception as _gcs_err:
+                                        _gcs_error = str(_gcs_err)[:200]
+                                        _log.error(f"❌ GCS upload failed for {_eatt['filename']}: {_gcs_err}")
                                     _att_info = {
                                         "filename": _eatt["filename"],
                                         "saved_as": _att_path.name,
+                                        "gcs_uri": _gcs_uri,
                                         "size": _eatt["size"],
                                         "content_type": _att_ct,
                                         "source": "email_attachment",
