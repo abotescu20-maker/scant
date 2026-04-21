@@ -2582,6 +2582,33 @@ async def api_audit_recent(limit: int = Query(default=50, ge=1, le=500)):
     return {"items": rows, "total": len(rows)}
 
 
+def _next_tpsh_ticket() -> str:
+    """Generate next TPSH Schadennummer: 7-digit format starting with 112.
+    Range 1120001-1129999 → 9999 numbers. If exhausted, rolls to 1130001, 1140001, etc.
+    Queries Firestore for max existing TPSH-format ticket and increments.
+    Returns a string like '1120042'.
+    """
+    try:
+        # Query for max ticket that looks like TPSH format (starts with 11, 7 digits)
+        # Firestore range filter on ticket_code
+        _docs = _fs_query("form_submissions",
+                          filters=[("ticket_code", ">=", "1120000"),
+                                   ("ticket_code", "<", "1200000")],
+                          order_by=("ticket_code", "DESC"), limit=1)
+        if _docs:
+            _last = str(_docs[0].get("ticket_code","")).strip()
+            # Must be 7 digits starting with 11
+            if len(_last) == 7 and _last.isdigit() and _last.startswith("11"):
+                _next = int(_last) + 1
+                if _next > 1199999:
+                    _next = 1200001
+                return str(_next)
+    except Exception as _tpsh_err:
+        _log.warning(f"TPSH ticket lookup failed: {_tpsh_err}")
+    # Fallback: first TPSH ticket
+    return "1120001"
+
+
 def _cmd_footer_html(ref: str = "") -> str:
     """Reusable CMD commands footer for ALL operator/employee emails.
     Angelo: 'sa le pui in corpul mailului mereu sa le vada angajatii'
@@ -7750,7 +7777,7 @@ async def api_forms_autosave(request: _Request):
                 "status": "in_progress",
                 "created_at": now,
                 "last_autosave_at": now,
-                "ticket_code": f"AKT-{_as_dt.utcnow().strftime('%Y')}-{str(int(_as_dt.utcnow().timestamp()))[-5:]}",
+                "ticket_code": _next_tpsh_ticket(),
                 "reference": f"FRM-{_as_dt.utcnow().strftime('%Y')}-{_as_uuid.uuid4().hex[:5].upper()}",
                 "activity_log": [{"ts": now, "action": "created", "fields_changed": filled, "completeness": completeness}]
             })
@@ -7842,19 +7869,8 @@ async def api_submit_form(request: _Request):
     if not linked_sub_id:
         sub_id = f"sub-{_u.uuid4().hex[:10]}"
         ref = f"FRM-{_dt.utcnow().strftime('%Y')}-{_u.uuid4().hex[:5].upper()}"
-        # Generate sequential ticket code: AKT-2026-00001
-        _year = _dt.utcnow().strftime('%Y')
-        _last_tickets = _fs_query("form_submissions",
-                                   filters=[("ticket_code", ">=", f"AKT-{_year}-")],
-                                   order_by=("ticket_code",), limit=1)
-        if _last_tickets and _last_tickets[0].get("ticket_code"):
-            try:
-                _last_num = int(_last_tickets[0]["ticket_code"].split("-")[-1])
-                _ticket_code = f"AKT-{_year}-{_last_num + 1:05d}"
-            except (ValueError, IndexError):
-                _ticket_code = f"AKT-{_year}-00001"
-        else:
-            _ticket_code = f"AKT-{_year}-00001"
+        # TPSH Schadennummer format: 7 digits starting with 112 (1120001 - 1129999)
+        _ticket_code = _next_tpsh_ticket()
 
         filled_submit = [k for k, v in form_data.items() if str(v).strip()]
         _fs_set("form_submissions", sub_id, {
@@ -16271,18 +16287,9 @@ Antworte NUR mit der fertigen Schadenschilderung, ohne Anfuehrungszeichen, ohne 
     # Create pre-filled submission
     sub_id = f"sub-{_u.uuid4().hex[:10]}"
     ref = f"FRM-{_dt.utcnow().strftime('%Y')}-{_u.uuid4().hex[:5].upper()}"
-    _year = _dt.utcnow().strftime('%Y')
-    _last_tickets = _fs_query("form_submissions",
-                               filters=[("ticket_code", ">=", f"AKT-{_year}-")],
-                               order_by=("ticket_code",), limit=1)
-    if _last_tickets and _last_tickets[0].get("ticket_code"):
-        try:
-            _last_num = int(_last_tickets[0]["ticket_code"].split("-")[-1])
-            ticket_code = f"AKT-{_year}-{_last_num + 1:05d}"
-        except (ValueError, IndexError):
-            ticket_code = f"AKT-{_year}-00001"
-    else:
-        ticket_code = f"AKT-{_year}-00001"
+    # TPSH Schadennummer format: 7 digits starting with 112 (1120001 - 1129999)
+    # Fallback to 113XXXX if 112 range exhausted, etc.
+    ticket_code = _next_tpsh_ticket()
 
     now = _dt.utcnow().isoformat()
 
