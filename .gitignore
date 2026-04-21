@@ -7,3 +7,6 @@ node_modules/
 .claude/worktrees/
 ~$*.docx
 *.tmp
+alex-local-agent/build_venv/
+.rag_db/
+mcp-server/insurance_broker.db
