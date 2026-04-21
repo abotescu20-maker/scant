@@ -7799,6 +7799,8 @@ async def api_submit_form(request: _Request):
 
         # Client wiki page — structured template
         if client_name_val:
+            # Fetch template for wiki (fix: tpl was undefined)
+            tpl = _fs_get("form_templates", template_id) or {} if template_id else {}
             _tpl_name_link = (tpl or {}).get("name", template_id) if template_id else ""
             # Fetch all submissions for this client to build Cases section
             _client_all_subs = [s for s in _fs_all("form_submissions", limit=2000)
