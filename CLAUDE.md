@@ -104,4 +104,85 @@ You have access to the `insurance_broker_mcp` server with these tools — always
 All offers are informative and subject to final risk assessment. Binding coverage only upon policy issuance by the licensed insurer. Broker acts as intermediary under ASF License RBK-DEMO-001 and BaFin registration.
 
 ---
+
+## Project: Alex Insurance Broker
+FastAPI + Chainlit + SQLite + Firestore + Cloud Run
+
+## Tech Stack
+- **Backend**: FastAPI (main.py ~5300 lines) + Chainlit (app.py) chat UI
+- **Database**: SQLite (local) + Firestore (persistent across Cloud Run deploys)
+- **Auth**: Admin panel with role-based access (superadmin/admin/user)
+- **AI**: Anthropic Claude API (PDF parsing, form generation) + Google Gemini (document analysis)
+- **Export**: WeasyPrint (PDF), python-docx (DOCX), openpyxl (XLSX)
+- **NovoNexus**: Form converter + export integration (`scripts/novonexus_converter.py`)
+- **Browser Automation**: Playwright via CU (Compute Utility) for CEDAM/RCA verification
+- **Deploy**: Google Cloud Run, region `europe-west3`, project `gen-lang-client-0167987852`
+
+## Commands
+```bash
+# Local dev
+python main.py                          # FastAPI on port 8080
+chainlit run app.py -w                  # Chainlit with hot-reload
+
+# Deploy
+gcloud run deploy alex-insurance-broker --source . --region europe-west3 --project gen-lang-client-0167987852 --allow-unauthenticated
+
+# Scripts
+python scripts/novonexus_converter.py <template_id> --output /tmp/export.json
+python scripts/reseed_demo.py          # Re-seed demo data
+python scripts/seed_users.py           # Create admin users
+```
+
+## Architecture
+```
+/main.py              → FastAPI app: 74 API endpoints + 5 dashboard HTML pages
+/app.py               → Chainlit chat: 16+ MCP tools, quick commands, agentic loop
+/shared/db.py          → SQLite schema + migrations + Firestore sync
+/shared/firestore_db.py → Firestore dual-write layer
+/admin/router.py       → Admin panel routes
+/scripts/              → CLI tools (novonexus_converter, reseed, seed_users)
+/alex-local-agent/     → Multi-connector agent (Allianz, CEDAM, PAID)
+/agent-sdk/            → Agent SDK implementations
+/mcp-server/           → MCP server for insurance tools
+/public/               → Static assets (CSS, SVGs)
+/form_templates/       → JSON template files (KFZ, Haftpflicht)
+```
+
+## Key Files
+- **All endpoints**: `main.py` — search for `@app.get`, `@app.post`, `@app.put`, `@app.delete`
+- **Dashboard pages**: `main.py` — search for `_FORMS_DASHBOARD_HTML`, `_DB_DASHBOARD_HTML`, `_CRON_DASHBOARD_HTML`
+- **DB schema**: `shared/db.py` — all CREATE TABLE + ALTER TABLE migrations
+- **NovoNexus**: `scripts/novonexus_converter.py` — TYPE_MAP + convert_template() + convert_submission()
+- **Startup migrations**: `startup.sh` — runs on every Cloud Run deploy
+
+## Dashboard Pages (HTML in main.py)
+1. `/dashboard/approvals` — Approval queue management
+2. `/dashboard/database` — Client/policy/claim/vehicle CRUD
+3. `/dashboard/reports` — ASF/BaFin monthly reports
+4. `/dashboard/cron` — Job scheduling/automation
+5. `/dashboard/forms` — Form templates + submissions + NovoNexus export
+
+## Gotchas
+- **GCP Project**: `gen-lang-client-0167987852` (NOT `tpsh-444017`). Account: `fungadgetsgames@gmail.com`
+- **APP_HOST**: Must use `603810013022` in URL, not `195506480254`
+- **PDF Upload**: Anthropic API requires `"type": "document"` (not `"image"`) with `"media_type": "application/pdf"`
+- **SQLite migrations**: Use try/except for each ALTER TABLE (idempotent) — both in `shared/db.py` and `startup.sh`
+- **POST vs PUT templates**: POST and PUT both handle NovoNexus fields (novonexus_form_id, novonexus_public_url, collection_mode)
+- **Form URL**: Works without email — adds `?client=` param only if email present
+- **NovoNexus KFZ form ID**: 33
+- **NovoNexus login**: `ahaplea@tpsh.de` / Mandant: TPSH Versicherungsmakler GmbH
+
+## Workflow Rules
+- Always use plan mode for multi-file changes
+- Test Python compilation before deploying: `python3 -c "import py_compile; py_compile.compile('main.py', doraise=True)"`
+- Deploy command: `gcloud run deploy alex-insurance-broker --source . --region europe-west3 --project gen-lang-client-0167987852 --allow-unauthenticated`
+- After deploy: verify with `curl https://alex-insurance-broker-603810013022.europe-west3.run.app/health`
+- Commit style: descriptive, no conventional commits prefix
+
+## Lessons Learned
+- GCP project was wrong for months (tpsh-444017 → gen-lang-client-0167987852) — always verify with `gcloud projects list`
+- POST /api/forms/templates was silently dropping NovoNexus fields — always check INSERT matches PUT fields
+- completed_at column missing caused 500 on status-summary — always add migrations to BOTH db.py AND startup.sh
+- Chainlit embedded JS: SyntaxWarning for regex escapes is harmless, ignore it
+
 *MCP Server: insurance_broker_mcp | DB: SQLite (local demo) | Gemini Vision: available for document analysis*

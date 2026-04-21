@@ -1,0 +1,50 @@
+{
+  "id": "tpl-kfz-kasko",
+  "name": "KFZ-Kasko (Eigenschaden)",
+  "language": "de",
+  "category": "claims",
+  "status": "published",
+  "sections": [
+    {"number":"1","title":"Versicherungsnehmer","fields":[
+      {"name":"versicherungsschein_nr","label":"Versicherungsschein-Nr.","type":"text","required":false},
+      {"name":"schadensnummer","label":"Schadensnummer","type":"text","required":false},
+      {"name":"vn_name","label":"Name, Vorname","type":"text","required":true},
+      {"name":"vn_adresse","label":"Straße, PLZ und Ort","type":"text","required":true},
+      {"name":"vn_kontakt","label":"Telefon / Fax / E-Mail","type":"text","required":true},
+      {"name":"vn_kennzeichen","label":"Amtliches Kennzeichen","type":"text","required":true},
+      {"name":"schadentag_uhrzeit","label":"Schadentag / Uhrzeit","type":"text","required":true},
+      {"name":"schadenort","label":"Schadenort","type":"text","required":true}
+    ]},
+    {"number":"2","title":"Schaden am eigenen Fahrzeug","fields":[
+      {"name":"schadenart","label":"Art des Schadens (Hagel/Sturm/Vandalismus/Diebstahl/Wildunfall/Glasbruch/Sonstiges)","type":"select","required":true,
+       "options":["Hagel","Sturm","Vandalismus","Diebstahl","Wildunfall","Glasbruch","Brand","Sonstiges"]},
+      {"name":"schadenbild","label":"Beschreibung des Schadens","type":"textarea","required":true},
+      {"name":"schaden_entdeckt","label":"Wann wurde der Schaden entdeckt?","type":"text","required":true},
+      {"name":"fahrzeug_geparkt_wo","label":"Wo war das Fahrzeug zum Zeitpunkt des Schadens?","type":"text","required":true}
+    ]},
+    {"number":"3","title":"Vorschäden","fields":[
+      {"name":"vorschaeden","label":"Hatte Ihr Fahrzeug nicht reparierte Vorschäden?","type":"select","required":true,"options":["ja","nein"]},
+      {"name":"vorschaeden_detail","label":"Wenn ja, welche?","type":"textarea","required":false}
+    ]},
+    {"number":"4","title":"Kaskoversicherung","fields":[
+      {"name":"kasko_besichtigung","label":"Kann das Fahrzeug besichtigt werden?","type":"select","required":true,"options":["ja","nein"]},
+      {"name":"kasko_besichtigung_wann","label":"Wann, Wo?","type":"text","required":false},
+      {"name":"kasko_kontakt","label":"Wer kann für einen Termin kontaktiert werden?","type":"text","required":false},
+      {"name":"kasko_schadenshoehe","label":"Schadenhöhe ca. €","type":"number","required":true},
+      {"name":"kasko_bilder","label":"Wurden Bilder gemacht?","type":"select","required":true,"options":["ja","nein"]}
+    ]},
+    {"number":"5","title":"Diebstahl (falls zutreffend)","fields":[
+      {"name":"diebstahl_wann_wo","label":"Wann und wo wurde das Fahrzeug abgestellt?","type":"text","required":false},
+      {"name":"diebstahl_schluessel","label":"Wo befand sich der Schlüssel zum Zeitpunkt?","type":"text","required":false},
+      {"name":"diebstahl_polizei_az","label":"Polizei-Aktenzeichen","type":"text","required":false}
+    ]},
+    {"number":"6","title":"Bankverbindung","fields":[
+      {"name":"iban","label":"IBAN","type":"text","required":false},
+      {"name":"bic","label":"BIC","type":"text","required":false},
+      {"name":"vorsteuer","label":"Besteht Vorsteuerabzugsberechtigung?","type":"select","required":false,"options":["ja","nein"]}
+    ]},
+    {"number":"7","title":"Unterschrift","fields":[
+      {"name":"ort_datum","label":"Ort / Datum","type":"text","required":true}
+    ]}
+  ]
+}

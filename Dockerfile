@@ -50,10 +50,14 @@ COPY main.py .
 COPY cu_state.py .
 COPY chainlit.md .
 COPY CLAUDE.md .
+COPY template_builder.html .
 COPY .chainlit/ ./.chainlit/
 
 # Copy public assets (custom CSS, logo, etc.)
 COPY public/ ./public/
+
+# Clean up any stale Python cache that slipped through
+RUN find /app -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 
 # Ensure output directory exists
 RUN mkdir -p mcp-server/output
@@ -62,9 +66,15 @@ RUN mkdir -p mcp-server/output
 COPY startup.sh .
 RUN chmod +x startup.sh
 
+# Force UTF-8 everywhere — prevents encoding issues with Romanian text
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+ENV PYTHONIOENCODING=utf-8
+
 # Cloud Run uses PORT env variable (default 8080)
 ENV PORT=8080
 ENV PYTHONPATH=/app:/app/mcp-server
 
 # startup.sh: re-seeds demo data on fresh deploys, then starts uvicorn
 CMD ["/app/startup.sh"]
+# cache-bust: 1776000122

@@ -2,8 +2,8 @@
 Insurance Broker AI Assistant — Chainlit UI
 ============================================
 Chat interface for non-technical insurance broker employees.
-Uses Anthropic Claude API (anthropic SDK).
-Features: PDF/image upload (Claude Vision), email offers, export PDF/XLSX/DOCX
+Uses proprietary AI engine.
+Features: PDF/image upload (AI analysis), email offers, export PDF/XLSX/DOCX
 """
 import sys
 import os
@@ -34,6 +34,8 @@ try:
         list_clients_with_conversations,
         list_conversations_for_client,
         get_all_clients_for_picker,
+        # Conversation management
+        delete_conversation, search_conversations,
     )
     from shared.auth import verify_password
     init_admin_tables()
@@ -62,15 +64,31 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 sys.path.insert(0, str(MCP_SERVER_DIR))
 
 # ── Import broker tools directly ────────────────────────────────────────────
-from insurance_broker_mcp.tools.client_tools import search_clients_fn, get_client_fn, create_client_fn, update_client_fn, delete_client_fn
-from insurance_broker_mcp.tools.policy_tools import get_renewals_due_fn, list_policies_fn
-from insurance_broker_mcp.tools.product_tools import search_products_fn, compare_products_fn
-from insurance_broker_mcp.tools.offer_tools import create_offer_fn, list_offers_fn
-from insurance_broker_mcp.tools.claims_tools import log_claim_fn, get_claim_status_fn
-from insurance_broker_mcp.tools.compliance_tools import asf_summary_fn, bafin_summary_fn, check_rca_validity_fn
-from insurance_broker_mcp.tools.email_tools import send_offer_email_fn
-from insurance_broker_mcp.tools.analytics_tools import cross_sell_fn
-from insurance_broker_mcp.tools.calculator_tools import calculate_premium_fn, compare_premiums_live_fn
+import traceback as _tb
+_tool_imports = [
+    ("insurance_broker_mcp.tools.client_tools", ["search_clients_fn", "get_client_fn", "create_client_fn", "update_client_fn", "delete_client_fn"]),
+    ("insurance_broker_mcp.tools.policy_tools", ["get_renewals_due_fn", "list_policies_fn"]),
+    ("insurance_broker_mcp.tools.product_tools", ["search_products_fn", "compare_products_fn"]),
+    ("insurance_broker_mcp.tools.offer_tools", ["create_offer_fn", "list_offers_fn"]),
+    ("insurance_broker_mcp.tools.claims_tools", ["log_claim_fn", "get_claim_status_fn"]),
+    ("insurance_broker_mcp.tools.compliance_tools", ["asf_summary_fn", "bafin_summary_fn", "check_rca_validity_fn"]),
+    ("insurance_broker_mcp.tools.email_tools", ["send_offer_email_fn"]),
+    ("insurance_broker_mcp.tools.analytics_tools", ["cross_sell_fn"]),
+    ("insurance_broker_mcp.tools.calculator_tools", ["calculate_premium_fn", "compare_premiums_live_fn"]),
+]
+for _mod_name, _names in _tool_imports:
+    try:
+        _mod = __import__(_mod_name, fromlist=_names)
+        for _n in _names:
+            globals()[_n] = getattr(_mod, _n)
+    except Exception as _e:
+        print(f"[app.py] FATAL: Failed to import {_names} from {_mod_name}: {_e}", flush=True)
+        _tb.print_exc()
+        raise
+from insurance_broker_mcp.tools.vehicle_tools import (
+    add_vehicle_fn, list_vehicles_fn, search_vehicle_fn,
+    get_vehicle_fn, update_vehicle_fn, delete_vehicle_fn,
+)
 from insurance_broker_mcp.tools.compliance_check_tools import compliance_check_fn
 from insurance_broker_mcp.tools.web_tools import check_rca_fn as _playwright_check_rca_fn, browse_web_fn as _playwright_browse_web_fn, scrape_rca_prices_fn as _scrape_rca_prices_fn
 from insurance_broker_mcp.tools.drive_tools import (
@@ -480,6 +498,48 @@ if not _anthropic_key:
 client = anthropic.Anthropic(api_key=_anthropic_key)
 MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-5")
 
+# ── RAG Context Injection ─────────────────────────────────────────────────────
+def _get_rag_context(user_message: str) -> str:
+    """Retrieve relevant knowledge and inject into system prompt.
+    Self-contained — no imports from main.py to avoid circular imports."""
+    try:
+        import sqlite3 as _sq_rag
+        _db_path = str(_Path(__file__).parent / "mcp-server" / "insurance_broker.db")
+        conn = _sq_rag.connect(_db_path)
+        conn.row_factory = _sq_rag.Row
+        words = [w.strip() for w in user_message.lower().split() if len(w.strip()) > 2]
+        if not words:
+            conn.close()
+            return ""
+        where_clauses = " OR ".join(["LOWER(content) LIKE ?"] * len(words))
+        params = [f"%{w}%" for w in words]
+        rows = conn.execute(
+            f"SELECT id, hook, content FROM alex_knowledge "
+            f"WHERE ({where_clauses}) "
+            f"ORDER BY relevance_score DESC, created_at DESC LIMIT 5",
+            params
+        ).fetchall()
+        if not rows:
+            conn.close()
+            return ""
+        # Bump times_used
+        ids = [r["id"] for r in rows]
+        placeholders = ",".join(["?"] * len(ids))
+        conn.execute(
+            f"UPDATE alex_knowledge SET times_used = times_used + 1, "
+            f"last_used_at = datetime('now') WHERE id IN ({placeholders})", ids
+        )
+        conn.commit()
+        conn.close()
+        context = "\n\n## What you've learned from previous interactions:\n"
+        for r in rows:
+            context += f"- [{r['hook']}] {r['content']}\n"
+        context += "\nUse this knowledge to give better, more personalized responses.\n"
+        return context
+    except Exception:
+        return ""
+
+
 # ── System prompt ─────────────────────────────────────────────────────────────
 SYSTEM_PROMPT = """You are Alex, a friendly and proactive AI assistant for an insurance brokerage (ASF Romania / BaFin Germany).
 
@@ -511,7 +571,13 @@ You talk naturally with brokers in whatever language they use (Romanian, English
 - broker_bafin_summary — raport lunar BaFin (Germania)
 - broker_check_rca_validity — verifică valabilitate RCA
 - broker_cross_sell — analizează portofoliul clientului și sugerează produse lipsă
-- broker_compare_premiums_live — compară prețurile RCA/CASCO de la TOȚI asigurătorii (Allianz, Generali, Omniasig, Groupama, Uniqa, Asirom, Euroins, Grawe). Returnează tabel sortat cel mai ieftin primul. Folosește oricând brokerul întreabă despre prețuri RCA/CASCO, comparații, cel mai ieftin asigurător. Tarife orientative 2024-2025 ASF.
+- broker_compare_premiums_live — compară prețurile RCA/CASCO de la TOȚI asigurătorii (Allianz, Generali, Omniasig, Groupama, Uniqa, Asirom, Euroins, Grawe). Acceptă: vehicle_type (autoturism/SUV/camion/motocicleta/autoutilitara), vehicle_year (an fabricație), fuel_type (benzina/diesel/GPL/hybrid/electric), period_months (6 sau 12). Returnează tabel sortat cel mai ieftin primul. Folosește oricând brokerul întreabă despre prețuri RCA/CASCO. Tarife orientative 2024-2025 ASF.
+- broker_add_vehicle — adaugă vehicul la un client (obligatoriu: client_id + plate_number; opțional: make, model, year, engine_cc, fuel_type, vehicle_type, vehicle_value, vin)
+- broker_list_vehicles — listează vehiculele unui client cu polițe asociate
+- broker_search_vehicle — caută vehicul după nr. înmatriculare, VIN, marcă sau model
+- broker_get_vehicle — detalii complete vehicul cu toate polițele
+- broker_update_vehicle — actualizează datele unui vehicul
+- broker_delete_vehicle — șterge vehicul (refuză dacă are polițe active)
 - broker_compliance_check — verifică completitudinea dosarului client (documente, polițe, conformitate)
 - broker_save_conversation — salvează și asociază conversația curentă cu un client (pentru istoric). Apelează când brokerul spune "salvează", "linkuiește la Ionescu", etc.
 - broker_check_rca — verifică RCA în timp real pe portalul AIDA/BAAR via browser headless pe server (NU necesită agent local). Returnează: rca_valid, expiry_date, insurer, policy_number, coverage_type, insured_sum, days_until_expiry, captcha_blocked, from_cache (cache TTL 6h), screenshot_b64 (la eșec).
@@ -531,6 +597,10 @@ You talk naturally with brokers in whatever language they use (Romanian, English
 - broker_kb_status — starea knowledge base (număr chunks indexate, categorii)
 - broker_kb_reindex — re-indexează knowledge base (după adăugare produse noi sau actualizare docs/)
 - broker_list_output_files — listează ofertele/rapoartele generate și salvate local (PDF, TXT, XLSX, DOCX). Folosește când brokerul întreabă "ce oferte am generat?", "curăță fișierele vechi", "arată-mi ce am salvat".
+- broker_send_claim_questionnaire — trimite chestionar de daune unui client pentru un claim specific. Auto-selectează template KFZ-Schaden sau Haftpflicht pe baza tipului de poliță. Trimite prin email + WhatsApp.
+- broker_auto_send_questionnaires — detectează TOATE claimurile deschise fără chestionar și trimite automat formularul potrivit (KFZ-Schaden sau Haftpflicht) fiecărui client. Returnează câte formulare au fost trimise.
+- broker_check_form_status — rezumat statusul tuturor chestionarelor: câte trimise, în curs, completate, restante. Include detalii client și referință.
+- broker_run_form_reminders — rulează follow-up: verifică toate chestionarele incomplete și trimite remindere clienților care nu au completat după 4, 8 sau 12 zile.
 
 ## Când să folosești ce tool:
 - **RCA verificare** → `broker_check_rca` (instant, fără agent). Dacă răspunsul conține `captcha_blocked: true` → folosește automat `broker_run_task` cu connector=`cedam` (agent local, browser vizibil, ocolește CAPTCHA).
@@ -549,7 +619,16 @@ You talk naturally with brokers in whatever language they use (Romanian, English
 - **Analizează poliță scanată** → `broker_analyze_document(doc_type="policy")` → extrage număr poliță, date, primă, acoperire (BETA)
 - **Analizează poze daune** → doc_type="claim_photo" este DEZACTIVAT în producție. Spune brokerului că această funcție este în testare și va fi disponibilă în Faza 2.
 - **Procesează constatare amiabilă** → `broker_analyze_document(doc_type="constatare")` → extrage ambii șoferi (BETA — verificați manual)
-- **Comparator prețuri RCA/CASCO** (orice variantă: "compară", "cât costă", "care e mai ieftin", "vreau să văd prețurile") → `broker_compare_premiums_live` → tabel complet cu toți asigurătorii sortat după preț
+- **Comparator prețuri RCA/CASCO** (orice variantă: "compară", "cât costă", "care e mai ieftin", "vreau să văd prețurile") → `broker_compare_premiums_live` → tabel complet cu toți asigurătorii sortat după preț. IMPORTANT: trimite și vehicle_type, vehicle_year, fuel_type, period_months dacă le cunoști!
+- **Client spune nr. mașinii** → `broker_search_vehicle(query=nr_inmatriculare)` → dacă nu există, creează cu `broker_add_vehicle`
+- **RCA/CASCO pentru un client** → `broker_list_vehicles(client_id)` → ia datele vehiculului → `broker_compare_premiums_live` cu engine_cc, vehicle_type, vehicle_year, fuel_type din vehicul
+- **Onboarding client cu mașină** → `broker_create_client` → `broker_add_vehicle` → `broker_compare_premiums_live` → `broker_create_offer` — flow complet
+- **Generare ofertă auto** → include în ofertă: marca, modelul, anul, nr. înmatriculare vehiculului
+- **Trimite chestionar la un claim** → `broker_send_claim_questionnaire(claim_id)` — auto-selectează KFZ sau Haftpflicht
+- **Trimite chestionare la TOATE claimurile fără formular** → `broker_auto_send_questionnaires` — detectează claimuri open/investigating
+- **Verifică status chestionare** → `broker_check_form_status` — afișează total, status, restante
+- **Trimite remindere chestionare** → `broker_run_form_reminders` — 4/8/12 zile, max 3 remindere
+- **Flow complet daune** → `broker_log_claim` → `broker_send_claim_questionnaire` → (client completează) → `broker_check_form_status`
 - INTERZIS: action `fill_form` pentru sarcini desktop simple — folosește `run_task` cu instrucțiune naturală.
 - INTERZIS: action `run_task` când utilizatorul cere să deschizi o aplicație și să scrii text — folosește `open_app_and_type`.
 
@@ -568,7 +647,7 @@ You talk naturally with brokers in whatever language they use (Romanian, English
 ## How to Handle Any Request
 1. **Understand intent** — even vague requests ("fa ceva cu asta", "vreau oferta", "ce mai am de facut")
 2. **Always call a tool first** — never describe data you haven't fetched yet
-3. **Chain actions** — search client → create if missing → search products → create offer, all in one flow when the broker says "onboard" or "fa oferta"
+3. **Chain actions** — search client → create if missing → add vehicle if auto insurance → compare premiums → create offer, all in one flow when the broker says "onboard" or "fa oferta"
 4. **After offer is generated** — it's already shown in chat. Don't regenerate. Ask if they want to email it or modify something
 5. **If a tool returns no results** — suggest alternatives: "Nu am găsit produse HEALTH, dar am LIFE cu acoperire similară. Generez oferta cu astea?"
 6. **If something fails** — say what happened in plain language and offer 2-3 options to continue
@@ -837,6 +916,8 @@ TOOLS = [
             "Compare RCA or CASCO prices from ALL 8 major Romanian insurers simultaneously "
             "(Allianz-Tiriac, Generali, Omniasig, Groupama, Uniqa, Asirom, Euroins, Grawe). "
             "Returns a ranked comparison table sorted cheapest first, with annual premium, monthly cost, insurer rating, and price difference. "
+            "Accepts vehicle details: vehicle_type (autoturism/SUV/camion/motocicleta/autoutilitara), vehicle_year, "
+            "fuel_type (benzina/diesel/GPL/hybrid/electric), period_months (6 or 12). "
             "Use this for: 'compară prețurile', 'cât costă RCA', 'care e cel mai ieftin', 'vreau să văd toate prețurile', "
             "'compara asiguratorii', 'compare prices', 'cheapest RCA', 'price comparison'. "
             "Sources: market rates 2024-2025 based on public ASF data, updated quarterly."
@@ -852,8 +933,106 @@ TOOLS = [
                 "vehicle_value": {"type": "number", "description": "Vehicle value in RON — required for CASCO"},
                 "country": {"type": "string", "description": "RO (default)"},
                 "insurers": {"type": "string", "description": "Optional: comma-separated list of specific insurers to compare (e.g. 'Allianz-Tiriac,Groupama'). Leave empty for all."},
+                "vehicle_type": {"type": "string", "description": "autoturism, SUV, camion, motocicleta, autoutilitara (default autoturism)"},
+                "vehicle_year": {"type": "integer", "description": "Vehicle manufacturing year (e.g. 2021). Affects age factor."},
+                "fuel_type": {"type": "string", "description": "benzina, diesel, GPL, hybrid, electric (default benzina)"},
+                "period_months": {"type": "integer", "description": "Insurance period: 6 or 12 months (default 12)"},
             },
             "required": ["product_type"],
+        },
+    },
+    # ── Vehicle management tools ──────────────────────────────────────────────
+    {
+        "name": "broker_add_vehicle",
+        "description": "Add a vehicle to a client. Required: client_id, plate_number. Optional: make, model, year, engine_cc, fuel_type, vehicle_type, vehicle_value, vin.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "client_id": {"type": "string", "description": "Client ID (e.g. CLI001)"},
+                "plate_number": {"type": "string", "description": "Nr. inmatriculare (e.g. B123ABC, CJ01XYZ, F-AB-1234)"},
+                "make": {"type": "string", "description": "Marca vehiculului (e.g. Dacia, BMW, VW, Mercedes)"},
+                "model": {"type": "string", "description": "Modelul (e.g. Duster, X5, Golf, Actros)"},
+                "year": {"type": "integer", "description": "Anul fabricatiei (e.g. 2021)"},
+                "engine_cc": {"type": "integer", "description": "Capacitate cilindrica (e.g. 1461)"},
+                "engine_power_kw": {"type": "integer", "description": "Putere motor kW (e.g. 84)"},
+                "fuel_type": {"type": "string", "description": "benzina, diesel, GPL, hybrid, electric (default benzina)"},
+                "vehicle_type": {"type": "string", "description": "autoturism, SUV, camion, motocicleta, autoutilitara (default autoturism)"},
+                "color": {"type": "string", "description": "Culoare vehicul"},
+                "vehicle_value": {"type": "number", "description": "Valoare vehicul in RON (necesar pt CASCO)"},
+                "vin": {"type": "string", "description": "Serie sasiu / VIN (17 caractere)"},
+                "seats": {"type": "integer", "description": "Numar locuri (default 5)"},
+                "gross_weight_kg": {"type": "integer", "description": "Masa totala maxima kg"},
+                "registration_date": {"type": "string", "description": "Data primei inmatriculari YYYY-MM-DD"},
+                "notes": {"type": "string", "description": "Note suplimentare"},
+            },
+            "required": ["client_id", "plate_number"],
+        },
+    },
+    {
+        "name": "broker_list_vehicles",
+        "description": "List all vehicles for a client, with active policy associations.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "client_id": {"type": "string", "description": "Client ID (e.g. CLI001)"},
+            },
+            "required": ["client_id"],
+        },
+    },
+    {
+        "name": "broker_search_vehicle",
+        "description": "Search vehicles by plate number, VIN, make, or model across all clients.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Nr. inmatriculare, VIN, marca, sau model"},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "broker_get_vehicle",
+        "description": "Get full vehicle details with all associated policies (active and expired).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "vehicle_id": {"type": "string", "description": "Vehicle ID (e.g. VEH001)"},
+            },
+            "required": ["vehicle_id"],
+        },
+    },
+    {
+        "name": "broker_update_vehicle",
+        "description": "Update a vehicle's details. Only provided fields are changed.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "vehicle_id": {"type": "string", "description": "Vehicle ID (e.g. VEH001)"},
+                "plate_number": {"type": "string"},
+                "make": {"type": "string"},
+                "model": {"type": "string"},
+                "year": {"type": "integer"},
+                "engine_cc": {"type": "integer"},
+                "engine_power_kw": {"type": "integer"},
+                "fuel_type": {"type": "string"},
+                "vehicle_type": {"type": "string"},
+                "color": {"type": "string"},
+                "vehicle_value": {"type": "number"},
+                "vin": {"type": "string"},
+                "notes": {"type": "string"},
+            },
+            "required": ["vehicle_id"],
+        },
+    },
+    {
+        "name": "broker_delete_vehicle",
+        "description": "Delete a vehicle. Refuses if it has active policies.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "vehicle_id": {"type": "string", "description": "Vehicle ID to delete"},
+            },
+            "required": ["vehicle_id"],
         },
     },
     {
@@ -1160,7 +1339,86 @@ TOOLS = [
                 "filter_ext": {"type": "string", "description": "Filter by extension: 'pdf', 'txt', 'xlsx', 'docx' or 'all' (default)"},
             },
         },
-        "cache_control": {"type": "ephemeral"},  # Cache system prompt + full tools list (last tool)
+    },
+    {
+        "name": "broker_send_claim_questionnaire",
+        "description": "Send a damage report questionnaire to a client for a specific claim. Auto-selects KFZ-Schaden or Haftpflicht template based on policy type. Sends via email + WhatsApp.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "claim_id": {"type": "string", "description": "Claim ID (e.g. CLM001)"},
+                "template_id": {"type": "string", "description": "Optional: override template (tpl-kfz-schaden or tpl-haftpflicht)"},
+            },
+            "required": ["claim_id"],
+        },
+    },
+    {
+        "name": "broker_auto_send_questionnaires",
+        "description": "Auto-detect ALL open claims without questionnaires and send the appropriate damage report form (KFZ-Schaden or Haftpflicht) to each client. Returns count of forms sent.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "broker_check_form_status",
+        "description": "Get summary of all form/questionnaire submissions: counts by status (sent, in_progress, completed), overdue forms, and recent submissions with client details.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "broker_run_form_reminders",
+        "description": "Run form follow-up: check all incomplete form submissions and send reminders to clients who haven't completed after 4, 8, or 12 days. Max 3 reminders per submission.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "broker_form_daily_report",
+        "description": "Generate daily form completion report: total forms, completion rate %, overdue count, recent submissions. Sends HTML report email to operator. Returns stats summary.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "broker_oracle_dashboard",
+        "description": "Connect to Oracle Database and return the full insurance broker dashboard: connection status, Oracle version, total clients, active policies, monthly premium revenue, open claims with details, form completion rate, and all database tables with row counts.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "broker_oracle_query",
+        "description": "Execute a read-only SQL query on the Oracle Database. Use standard Oracle SQL syntax. Returns columns and rows as JSON. Use for custom reports, analytics, filtering clients, policies, claims, or form submissions.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "sql": {"type": "string", "description": "Oracle SQL SELECT query to execute"},
+            },
+            "required": ["sql"],
+        },
+        "cache_control": {"type": "ephemeral"},
+    },
+    {
+        "name": "broker_execute_command",
+        "description": "Execute a CMD quick command. Available: CMD1 [ref] = check status, CMD2 [ref] = send reminder, CMD3 [name/email] = client history, CMD4 [ref] = resend form, CMD5 [ref] = close case, CMD6 [ref] \"question\" = send extra questions to client, CMD7 = Oracle sync, CMD8 = daily report. Ref = AKT-xxxx or FRM-xxxx.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "command": {"type": "string", "description": "Command code: CMD1, CMD2, CMD3, CMD4, CMD5, CMD6, CMD7"},
+                "ref": {"type": "string", "description": "Reference: AKT-xxxx, FRM-xxxx, or client name/email for CMD3"},
+            },
+            "required": ["command"],
+        },
+    },
+    {
+        "name": "broker_list_forms",
+        "description": "List all form submissions with status, client name, template, completeness. Use to see all questionnaires sent to clients.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "broker_send_form_link",
+        "description": "Send a new questionnaire link to a client. Creates a pre-submission and sends via email. Use when a broker wants to manually send a form to a specific client.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "template_id": {"type": "string", "description": "Template: tpl-kfz-schaden, tpl-haftpflicht, or tpl-maschinenbruch"},
+                "client_name": {"type": "string", "description": "Client name"},
+                "client_email": {"type": "string", "description": "Client email address"},
+                "client_phone": {"type": "string", "description": "Client phone (optional, for WhatsApp)"},
+            },
+            "required": ["template_id", "client_name", "client_email"],
+        },
     },
 ]
 
@@ -1185,6 +1443,13 @@ TOOL_DISPATCH = {
     "broker_check_rca_validity": check_rca_validity_fn,
     "broker_cross_sell":         cross_sell_fn,
     "broker_compare_premiums_live":   compare_premiums_live_fn,
+    # Vehicle management
+    "broker_add_vehicle":        add_vehicle_fn,
+    "broker_list_vehicles":      list_vehicles_fn,
+    "broker_search_vehicle":     search_vehicle_fn,
+    "broker_get_vehicle":        get_vehicle_fn,
+    "broker_update_vehicle":     update_vehicle_fn,
+    "broker_delete_vehicle":     delete_vehicle_fn,
     "broker_compliance_check":   compliance_check_fn,
     "broker_save_conversation":  None,  # special — handled in agentic loop (needs session context)
     # Web automation (Playwright on Cloud Run — sync wrappers, run in thread pool)
@@ -1210,6 +1475,17 @@ TOOL_DISPATCH = {
     "broker_kb_reindex":          broker_kb_reindex_fn,
     # Output file management
     "broker_list_output_files":   None,  # handled inline — uses OUTPUT_DIR
+    # Questionnaire / Form management tools
+    "broker_send_claim_questionnaire": None,  # async — calls API endpoint
+    "broker_auto_send_questionnaires": None,  # async — calls API endpoint
+    "broker_check_form_status":        None,  # async — calls API endpoint
+    "broker_run_form_reminders":       None,  # async — calls function directly
+    "broker_form_daily_report":        None,  # async — calls function directly
+    "broker_oracle_dashboard":         None,  # async — calls Oracle API
+    "broker_oracle_query":             None,  # async — calls Oracle API
+    "broker_execute_command":          None,  # async — calls CMD API
+    "broker_list_forms":               None,  # async — calls forms API
+    "broker_send_form_link":           None,  # async — calls send-link API
 }
 
 def execute_tool(tool_name: str, tool_input: dict) -> str:
@@ -1218,24 +1494,24 @@ def execute_tool(tool_name: str, tool_input: dict) -> str:
         # Async tool — should be handled by execute_tool_async
         return f"[async tool '{tool_name}' — use execute_tool_async]"
     if not fn:
-        return (f"Toolul '{tool_name}' nu există. "
-                f"Tooluri disponibile: {', '.join(TOOL_DISPATCH.keys())}")
+        return (f"Tool '{tool_name}' does not exist. "
+                f"Available tools: {', '.join(TOOL_DISPATCH.keys())}")
     try:
         result = fn(**tool_input)
-        return result if result else "Operațiunea a fost efectuată cu succes."
+        return result if result else "Operation completed successfully."
     except TypeError as e:
         # Missing or wrong arguments — give helpful hint
         import inspect
         sig = inspect.signature(fn)
-        return (f"Parametri incorecți pentru {tool_name}. "
-                f"Parametri necesari: {list(sig.parameters.keys())}. "
-                f"Primit: {list(tool_input.keys())}. Eroare: {e}")
+        return (f"Incorrect parameters for {tool_name}. "
+                f"Required parameters: {list(sig.parameters.keys())}. "
+                f"Received: {list(tool_input.keys())}. Error: {e}")
     except Exception as e:
         err = str(e)
         # Return friendly message with context so Alex can recover
-        return (f"A apărut o problemă la {tool_name}: {err[:200]}. "
-                f"Input folosit: {tool_input}. "
-                f"Sugestie: verifică dacă ID-ul clientului/produsului este corect.")
+        return (f"An issue occurred with {tool_name}: {err[:200]}. "
+                f"Input used: {tool_input}. "
+                f"Suggestion: check if the client/product ID is correct.")
 
 
 # ── Computer Use tool implementations (async) ─────────────────────────────────
@@ -1260,22 +1536,22 @@ def _cu_computer_use_status_fn(**kwargs) -> str:
 
     if not online:
         return (
-            "⚠️ **Niciun agent local conectat.**\n\n"
-            "Pentru a folosi computer use, porniți agentul local pe calculatorul angajatului:\n"
+            "⚠️ **No local agent connected.**\n\n"
+            "To use computer use, start the local agent on the employee's machine:\n"
             "```\n"
             "cd alex-local-agent\n"
             "python main.py start\n"
             "```"
         )
 
-    lines = ["## 🤖 Agent Local — Status\n"]
+    lines = ["## 🤖 Local Agent — Status\n"]
     for info in online:
         secs = info.get("seconds_ago", "?")
         lines.append(f"**Agent:** `{info.get('agent_id', '?')}`")
-        lines.append(f"- Status: 🟢 Online (văzut acum {secs}s)")
+        lines.append(f"- Status: 🟢 Online (last seen {secs}s ago)")
         lines.append(f"- Platform: {info.get('platform', 'N/A')}")
         connectors = info.get("connectors", [])
-        lines.append(f"- Connectors disponibili: {', '.join(connectors) if connectors else 'niciunul'}")
+        lines.append(f"- Available connectors: {', '.join(connectors) if connectors else 'none'}")
         lines.append("")
 
     return "\n".join(lines)
@@ -1308,8 +1584,8 @@ async def _cu_run_task_async(
 
     if not agent_id:
         return (
-            "⚠️ **Niciun agent local online.**\n\n"
-            "Pornește agentul local cu:\n"
+            "⚠️ **No local agent online.**\n\n"
+            "Start the local agent with:\n"
             "```\ncd /Users/andreibotescu/Desktop/insurance-broker-agent/alex-local-agent\n"
             "python main.py start\n```"
         )
@@ -1328,16 +1604,16 @@ async def _cu_run_task_async(
     connector_emoji = {"cedam": "🚗", "web_generic": "🌐", "desktop_generic": "🖥️",
                        "anthropic_computer_use": "🤖"}.get(connector, "⚙️")
     action_desc = {
-        "check_rca": f"verificare RCA pentru {params.get('plate', '')}",
-        "extract": f"extragere: {params.get('query', '')[:60]}",
-        "navigate": f"navigare la {params.get('url', '')}",
-        "fill_form": "completare formular",
-        "screenshot": "capturare ecran",
-        "read_screen": "citire ecran",
-        "login": "autentificare",
+        "check_rca": f"RCA check for {params.get('plate', '')}",
+        "extract": f"extracting: {params.get('query', '')[:60]}",
+        "navigate": f"navigating to {params.get('url', '')}",
+        "fill_form": "filling form",
+        "screenshot": "screen capture",
+        "read_screen": "reading screen",
+        "login": "authentication",
     }.get(action, action)
 
-    wait_msg = f"{connector_emoji} **Execut task pe agentul local** ({connector} / {action_desc})..."
+    wait_msg = f"{connector_emoji} **Running task on local agent** ({connector} / {action_desc})..."
 
     # Wait for result with timeout
     result = await _cu_wait_result(task_id, timeout=timeout + 10)
@@ -1346,23 +1622,23 @@ async def _cu_run_task_async(
         visible_used = result.get("visible_browser_used", False)
         if visible_used:
             return (
-                "🔒 **CAPTCHA nerezolvat**\n\n"
-                "Browserul s-a deschis pe calculatorul tău. "
-                "Completează CAPTCHA în fereastra de browser, "
-                "apoi spune-mi să reîncerc verificarea."
+                "🔒 **CAPTCHA not solved**\n\n"
+                "The browser opened on your computer. "
+                "Complete the CAPTCHA in the browser window, "
+                "then tell me to retry the check."
             )
         else:
             return (
-                "🔒 **Portalul AIDA cere CAPTCHA**\n\n"
-                "Agentul local va deschide un browser vizibil pe calculatorul tău. "
-                "Verifică dacă agentul rulează cu:\n"
+                "🔒 **AIDA portal requires CAPTCHA**\n\n"
+                "The local agent will open a visible browser on your computer. "
+                "Check if the agent is running with:\n"
                 "```\ncd /Users/andreibotescu/Desktop/insurance-broker-agent/alex-local-agent\npython main.py start\n```\n"
-                "Dacă rulează, încearcă din nou — browserul se va deschide și poți completa CAPTCHA manual."
+                "If it's running, try again — the browser will open and you can complete the CAPTCHA manually."
             )
 
     if not result.get("success"):
-        error = result.get("error", "Eroare necunoscută")
-        return f"❌ **Task eșuat** ({connector}/{action})\n\nEroare: {error}"
+        error = result.get("error", "Unknown error")
+        return f"❌ **Task failed** ({connector}/{action})\n\nError: {error}"
 
     # Format result nicely
     if action == "check_rca":
@@ -1370,28 +1646,28 @@ async def _cu_run_task_async(
     elif action == "screenshot":
         # Return info about screenshot (base64 would be too long for chat)
         size = result.get("size_bytes", 0)
-        return f"📸 **Screenshot capturat** ({size // 1024} KB)\n\nPot analiza ecranul dacă dorești — spune-mi ce să caut."
+        return f"📸 **Screenshot captured** ({size // 1024} KB)\n\nI can analyze the screen if you want — tell me what to look for."
     elif action == "extract":
         data = result.get("data") or result.get("result", {})
         if isinstance(data, str):
-            return f"📄 **Date extrase:**\n\n{data[:2000]}"
+            return f"📄 **Extracted data:**\n\n{data[:2000]}"
         elif isinstance(data, (list, dict)):
-            return f"📄 **Date extrase:**\n\n```json\n{json.dumps(data, indent=2, ensure_ascii=False)[:2000]}\n```"
-        return f"📄 **Rezultat:** {str(result)[:1000]}"
+            return f"📄 **Extracted data:**\n\n```json\n{json.dumps(data, indent=2, ensure_ascii=False)[:2000]}\n```"
+        return f"📄 **Result:** {str(result)[:1000]}"
     else:
         # Generic success response
         data = result.get("data") or result.get("result") or result
         if isinstance(data, str):
-            return f"✅ **Task completat** ({connector}/{action})\n\n{data[:1500]}"
-        return f"✅ **Task completat** ({connector}/{action})\n\n```\n{json.dumps(data, indent=2, ensure_ascii=False, default=str)[:1500]}\n```"
+            return f"✅ **Task completed** ({connector}/{action})\n\n{data[:1500]}"
+        return f"✅ **Task completed** ({connector}/{action})\n\n```\n{json.dumps(data, indent=2, ensure_ascii=False, default=str)[:1500]}\n```"
 
 
 def _format_rca_result(result: dict, plate: str) -> str:
     """Format RCA check result as readable markdown."""
     if not result.get("data_found"):
         return (
-            f"❌ **Nu există RCA activ** pentru numărul de înmatriculare **{plate}**\n\n"
-            f"Clientul trebuie să achiziționeze o poliță RCA."
+            f"❌ **No active RCA** for plate number **{plate}**\n\n"
+            f"The client needs to purchase an RCA policy."
         )
 
     valid = result.get("rca_valid")
@@ -1401,21 +1677,21 @@ def _format_rca_result(result: dict, plate: str) -> str:
     policy_no = result.get("policy_number", "N/A")
 
     status_icon = "✅" if valid else "❌"
-    status_text = "**VALABIL**" if valid else "**EXPIRAT**"
+    status_text = "**VALID**" if valid else "**EXPIRED**"
 
     urgency = ""
     if days is not None and days <= 30:
-        urgency = f"\n\n⚠️ **ATENȚIE: Polița expiră în {days} zile!** Contactați clientul pentru reînnoire."
+        urgency = f"\n\n⚠️ **WARNING: Policy expires in {days} days!** Contact the client for renewal."
     elif days is not None and days <= 60:
-        urgency = f"\n\n📅 Polița expiră în {days} zile — pregătire reînnoire."
+        urgency = f"\n\n📅 Policy expires in {days} days — prepare renewal."
 
     return (
-        f"## {status_icon} Verificare RCA — {plate}\n\n"
+        f"## {status_icon} RCA Check — {plate}\n\n"
         f"- **Status:** {status_text}\n"
-        f"- **Asigurător:** {insurer}\n"
-        f"- **Număr poliță:** {policy_no}\n"
-        f"- **Dată expirare:** {expiry}\n"
-        f"- **Zile rămase:** {days if days is not None else 'N/A'}"
+        f"- **Insurer:** {insurer}\n"
+        f"- **Policy number:** {policy_no}\n"
+        f"- **Expiry date:** {expiry}\n"
+        f"- **Days remaining:** {days if days is not None else 'N/A'}"
         f"{urgency}"
     )
 
@@ -1756,8 +2032,8 @@ Be precise. Never confuse issuer contact data with client personal data."""
         return f"[Document analyzed: {file.name}]\n\n{analysis}" if analysis else f"Could not extract content from {file.name}."
     except Exception as e:
         err_str = str(e)
-        return (f"⚠️ Nu am putut analiza {file.name}. "
-                f"(Eroare: {err_str[:200]})")
+        return (f"⚠️ Could not analyze {file.name}. "
+                f"(Error: {err_str[:200]})")
 
 
 # ── Auth callback (only active when CHAINLIT_AUTH_SECRET is set) ──────────────
@@ -1793,8 +2069,11 @@ async def _init_session_tools():
             cl.user_session.set("user_meta", meta)
             return meta
         else:
-            cl.user_session.set("allowed_tools", None)
-            cl.user_session.set("user_meta", {})
+            # No login active — use demo user so history/conversations still work
+            _demo_meta = {"user_id": "demo", "role": "admin", "full_name": "Broker"}
+            cl.user_session.set("allowed_tools", None)  # all tools allowed
+            cl.user_session.set("user_meta", _demo_meta)
+            return _demo_meta
     return {}
 
 
@@ -1807,18 +2086,18 @@ async def _build_sidebar_content(user_id: str) -> str:
 
     if not clients:
         return (
-            "## 📁 Conversații salvate\n\n"
-            "_Nu ai conversații salvate încă._\n\n"
-            "**Cum salvezi:**\n"
-            "1. Discută cu Alex despre un client\n"
-            "2. Spune **\"salvează discuția\"**\n"
-            "3. Apare aici grupat pe client\n\n"
-            "_Sau după 3+ mesaje apare butonul 💾 automat._"
+            "## 📁 Saved Conversations\n\n"
+            "_No saved conversations yet._\n\n"
+            "**How to save:**\n"
+            "1. Chat with Alex about a client\n"
+            "2. Say **\"save conversation\"**\n"
+            "3. It appears here grouped by client\n\n"
+            "_Or after 3+ messages the button appears automatically._"
         )
 
-    lines = ["## 📁 Conversații salvate\n"]
+    lines = ["## 📁 Saved Conversations\n"]
     for c in clients[:30]:
-        cname = c["client_name"] if c["client_name"] != "__unlinked__" else "Fără client"
+        cname = c["client_name"] if c["client_name"] != "__unlinked__" else "No client linked"
         conv_count = c.get("conv_count", 0)
         lines.append(f"### 👤 {cname} ({conv_count})")
         try:
@@ -1828,11 +2107,11 @@ async def _build_sidebar_content(user_id: str) -> str:
         for conv in convs[:8]:
             msgs  = conv.get("message_count", 0)
             upd   = conv.get("updated_at", "")[:10]
-            label = conv.get("title", "Conversație")
+            label = conv.get("title", "Conversation")
             detail = f"{msgs} msg · {upd}" if msgs else upd
             lines.append(f"- **{label}**  \n  _{detail}_")
         lines.append("")
-    lines.append("---\n_Spune 'salvează discuția' pentru a adăuga._")
+    lines.append("---\n_Say 'save conversation' to add one._")
     return "\n".join(lines)
 
 
@@ -1849,37 +2128,91 @@ async def _show_dashboard_welcome(user_id: str | None = None, full_name: str | N
         n = stats['expiring_7']
         alerts = f"\n> ⚠️ **{n} {'policy' if n == 1 else 'policies'} expiring within 7 days!** Try: *'Show urgent renewals'*"
 
+    # Pending approvals count
+    pending_approvals = 0
+    try:
+        import sqlite3 as _sq3
+        _adb = _sq3.connect(str(Path(__file__).parent / "mcp-server" / "insurance_broker.db"))
+        pending_approvals = _adb.execute("SELECT COUNT(*) FROM approval_queue WHERE status = 'pending'").fetchone()[0]
+        _adb.close()
+    except Exception:
+        pass
+    approval_line = ""
+    if pending_approvals > 0:
+        approval_line = f"\n| 📬 Pending Approval | **{pending_approvals}** | [🔗 Open Dashboard](/dashboard/approvals) |"
+
     greeting_line = f"👋 Hello, **{full_name}**!\n\n" if full_name else ""
 
     welcome = f"""{greeting_line}## 📊 Portfolio Dashboard — {date.today().strftime('%d %B %Y')}
 
-| Metric | Value |
-|---|---|
-| 🟢 Active Policies | **{stats.get('active_policies', 0)}** |
-| ⚠️ Expiring within 7 days | **{stats.get('expiring_7', 0)}** |
-| 📅 Expiring within 30 days | **{stats.get('expiring_30', 0)}** |
-| 👥 Clients | **{stats.get('clients', 0)}** |
-| 📋 Open Claims | **{stats.get('open_claims', 0)}** |
-| 📄 Offers Generated | **{stats.get('offers_sent', 0)}** |
+| Metric | Value | Action |
+|---|---|---|
+| 🟢 Active Policies | **{stats.get('active_policies', 0)}** | [View →](/dashboard/database) |
+| ⚠️ Expiring in 7 Days | **{stats.get('expiring_7', 0)}** | [Renewals →](/dashboard/approvals) |
+| 📅 Expiring in 30 Days | **{stats.get('expiring_30', 0)}** | [Policies →](/dashboard/database) |
+| 👥 Clients | **{stats.get('clients', 0)}** | [Clients →](/dashboard/database) |
+| 📋 Open Claims | **{stats.get('open_claims', 0)}** | [Claims →](/dashboard/database) |
+| 📄 Offers Generated | **{stats.get('offers_sent', 0)}** | [Offers →](/dashboard/database) |{approval_line}
 {alerts}
 
-How can I help you today? *(upload a document, ask about clients, renewals, compliance...)*"""
+How can I help you? *(upload a document, ask about clients, renewals, compliance...)*"""
 
     actions = []
-    if ADMIN_ENABLED and user_id:
+    # Dashboard button — always visible
+    actions.append(cl.Action(
+        name="open_dashboard",
+        label=f"📬 Dashboard ({pending_approvals})" if pending_approvals > 0 else "📬 Dashboard",
+        payload={"url": "/dashboard/approvals"},
+    ))
+    # Quick commands menu
+    actions.append(cl.Action(
+        name="quick_commands",
+        label="📋 Quick Commands",
+        payload={},
+    ))
+    # Public forms link
+    actions.append(cl.Action(
+        name="open_dashboard",
+        label="📝 Insurance Forms",
+        payload={"url": "/forms"},
+    ))
+    # Agent local status
+    from datetime import datetime as _dt_check
+    agent_online = False
+    for _ag_id, _ag_info in _cu_agents.items():
+        try:
+            _last = _dt_check.fromisoformat(_ag_info["last_seen"])
+            if (_dt_check.utcnow() - _last).total_seconds() < 120:
+                agent_online = True
+                break
+        except Exception:
+            pass
+    actions.append(cl.Action(
+        name="agent_local_toggle",
+        label="🟢 Local Agent ON" if agent_online else "🔴 Local Agent OFF",
+        payload={"online": agent_online},
+    ))
+    # History buttons — show even without login (use fallback user_id)
+    _hist_user_id = user_id or "demo"
+    if ADMIN_ENABLED:
         actions.append(cl.Action(
             name="open_history",
-            label="📁 Conversații salvate",
-            payload={"user_id": user_id},
+            label="📁 Saved Conversations",
+            payload={"user_id": _hist_user_id},
+        ))
+        actions.append(cl.Action(
+            name="search_conversations",
+            label="🔍 Search Conversations",
+            payload={},
         ))
 
     # Attach sidebar as a named Text element — display="side" opens the right panel
     # and stays open as long as the message is visible (persists in Chainlit 2.x)
     elements = []
-    if ADMIN_ENABLED and user_id:
-        sidebar_content = await _build_sidebar_content(user_id)
+    if ADMIN_ENABLED:
+        sidebar_content = await _build_sidebar_content(_hist_user_id)
         elements.append(cl.Text(
-            name="📁 Conversații salvate",
+            name="📁 Saved Conversations",
             content=sidebar_content,
             display="side",
         ))
@@ -2005,20 +2338,20 @@ async def _render_history_to_ui(history: list[dict]):
 async def set_starters():
     return [
         cl.Starter(
-            label="📁 Conversații salvate",
-            message="Arată-mi conversațiile salvate",
+            label="⚠️ Urgent Renewals",
+            message="Show policies expiring in 30 days and generate renewal emails",
         ),
         cl.Starter(
-            label="⚠️ Reinnoiri urgente",
-            message="Arată polițele care expiră în 30 de zile",
+            label="📊 Full Report",
+            message="Generate the full report: renewals + cross-sell + compliance + claims",
         ),
         cl.Starter(
-            label="👥 Caută clienți",
-            message="Caută toți clienții activi",
+            label="🔍 Check RCA",
+            message="Check RCA for plate number: ",
         ),
         cl.Starter(
-            label="📊 Dashboard",
-            message="Arată statistici portofoliu",
+            label="👥 Search Clients",
+            message="Search all active clients",
         ),
     ]
 
@@ -2038,13 +2371,15 @@ async def on_chat_start():
     user_id   = meta.get("user_id")
     full_name = meta.get("full_name") or "Broker"
 
-    # Varianta A — always go straight to chat.
-    # If the user has saved projects, the welcome message shows a
-    # "📁 My saved conversations" button. No blocking picker on startup.
-    await _show_dashboard_welcome(user_id=user_id, full_name=full_name)
-    # Open sidebar with saved conversations (non-blocking, cosmetic)
-    if user_id:
-        await _refresh_sidebar(user_id)
+    # Send welcome ONLY ONCE per thread.
+    # on_chat_start fires on every reconnect/refresh — don't duplicate.
+    _already = cl.user_session.get("_welcome_sent")
+    if not _already:
+        cl.user_session.set("_welcome_sent", True)
+        await _show_dashboard_welcome(user_id=user_id, full_name=full_name)
+        # Open sidebar with saved conversations (non-blocking, cosmetic)
+        if user_id:
+            await _refresh_sidebar(user_id)
 
 
 # ── Action callbacks ──────────────────────────────────────────────────────────
@@ -2105,6 +2440,166 @@ async def on_no_project(action: cl.Action):
         user_id=meta.get("user_id"),
         full_name=meta.get("full_name"),
     )
+
+
+@cl.action_callback("open_dashboard")
+async def on_open_dashboard(action: cl.Action):
+    """Open a dashboard or page link in a new tab."""
+    url = action.payload.get("url", "/dashboard/approvals")
+    if url == "/forms":
+        await cl.Message(
+            content=(
+                "📝 **Versicherungsformulare**\n\n"
+                "👉 [**Formulare öffnen →**](/forms)\n\n"
+                "Verfügbare Fragebögen:\n"
+                "- 🚗 [KFZ-Schadenmeldung](/forms/tpl-kfz-schaden) — Fahrzeugschaden melden\n"
+                "- 📋 [Haftpflicht-Schadenanzeige](/forms/tpl-haftpflicht) — Haftpflichtschaden melden\n\n"
+                "📊 [Dashboard →](/dashboard/forms) | ❓ [FAQ →](/forms/faq)"
+            ),
+            author="Alex 🤖",
+        ).send()
+    else:
+        await cl.Message(
+            content=(
+                "📬 **Approvals Dashboard**\n\n"
+                "Open the dashboard in a new tab:\n\n"
+                f"👉 [**Open Approvals Dashboard →**]({url})\n\n"
+                "There you can:\n"
+                "- ✅ Approve and send emails to clients\n"
+                "- 📱 Send WhatsApp messages\n"
+                "- ✏️ Edit emails before sending\n"
+                "- ❌ Reject unsuitable proposals"
+            ),
+            author="Alex 🤖",
+        ).send()
+
+
+@cl.action_callback("quick_commands")
+async def on_quick_commands(action: cl.Action):
+    """Show a comprehensive list of available commands."""
+    all_cmds = [
+        cl.Action(name="cmd_daily_brief", label="☀️ Daily Briefing", payload={}),
+        cl.Action(name="cmd_renewals", label="⚠️ Urgent Renewals", payload={}),
+        cl.Action(name="cmd_claims", label="🔧 Claims Follow-up", payload={}),
+        cl.Action(name="cmd_cross_sell", label="💰 Cross-sell", payload={}),
+        cl.Action(name="cmd_search_client", label="👥 Search Client", payload={}),
+        cl.Action(name="cmd_check_rca", label="🔍 Check RCA", payload={}),
+        cl.Action(name="cmd_send_questionnaire", label="📋 Send Questionnaire", payload={}),
+        cl.Action(name="cmd_check_forms", label="📝 Form Status", payload={}),
+        cl.Action(name="cmd_form_report", label="📊 Form Report", payload={}),
+        cl.Action(name="cmd_form_reminders", label="🔔 Form Reminders", payload={}),
+        cl.Action(name="cmd_generate_offers", label="📄 Generate Offers", payload={}),
+        cl.Action(name="cmd_send_emails", label="✉️ Send Emails", payload={}),
+        cl.Action(name="cmd_oracle_status", label="🗄️ Oracle DB", payload={}),
+        cl.Action(name="cmd_knowledge_status", label="🧠 Knowledge Base", payload={}),
+        cl.Action(name="cmd_machinery_status", label="🔧 Machinery", payload={}),
+    ]
+    await cl.Message(
+        content="## 📋 Quick Commands\n\nChoose an action or type directly in chat:\n",
+        actions=all_cmds,
+        author="Alex 🤖",
+    ).send()
+
+
+# ── Quick Command Handlers ─────────────────────────────────────────────────
+# Each command callback sends a prompt as if the user typed it.
+
+_CMD_MAP = {
+    "cmd_renewals":        "Show policies expiring in 30 days and generate renewal emails",
+    "cmd_full_report":     "Generate the full report: renewals, cross-sell, compliance, claims",
+    "cmd_cross_sell":      "Analyze cross-sell opportunities for all clients",
+    "cmd_compliance":      "Check ASF and BaFin compliance",
+    "cmd_claims":          "Show open claims and generate follow-up",
+    "cmd_send_questionnaire": "Check open claims without questionnaires and send the appropriate damage report form (KFZ-Schaden or Haftpflicht) to each client via email and WhatsApp",
+    "cmd_check_forms":     "Show the status of all form submissions: how many sent, in progress, completed, overdue. Include client names and reference numbers",
+    "cmd_form_reminders":  "Run form follow-up: check all incomplete form submissions and send reminders to clients who haven't completed their forms after 4, 8, or 12 days",
+    "cmd_form_report":     "Generate the daily form completion report: show total forms, completion rate, overdue forms, and recent submissions. Send the report by email to the operator",
+    "cmd_check_rca":       "🔍 Type the plate number (e.g. B123ABC) in chat and I will check RCA.",
+    "cmd_search_client":   "Search all active clients and show portfolio details",
+    "cmd_generate_offers": "Generate offers for clients with expiring policies",
+    "cmd_send_emails":     "Generate and queue renewal and cross-sell emails",
+    "cmd_daily_brief":     "Generate the daily briefing with all of today's priorities",
+    "cmd_oracle_status":   "Connect to Oracle Database and show the full dashboard: connection status, total clients, active policies, monthly premium revenue, open claims with details, and form completion rate. Show all data from Oracle.",
+    "cmd_knowledge_status": "Show me what you've learned so far: how many knowledge entries, which hooks are most active, what patterns have you detected, and what are the most used learnings. Also show the Knowledge Base dashboard link: /dashboard/knowledge",
+    "cmd_machinery_status": "Show the machinery breakdown claims status: how many equipment entries are registered, how many have active insurance, how many machinery claims are open, investigating, settled, or rejected. List each active claim with its step progress. Also show the Machinery dashboard link: /dashboard/machinery",
+}
+
+# Commands that should be sent as user messages (auto-execute)
+_CMD_AUTO_EXEC = {"cmd_renewals", "cmd_full_report", "cmd_cross_sell", "cmd_compliance",
+                  "cmd_claims", "cmd_search_client", "cmd_generate_offers", "cmd_send_emails",
+                  "cmd_daily_brief", "cmd_send_questionnaire", "cmd_check_forms", "cmd_form_reminders",
+                  "cmd_oracle_status", "cmd_knowledge_status", "cmd_machinery_status"}
+
+async def _handle_quick_cmd(action: cl.Action):
+    """Generic handler for quick commands."""
+    cmd_text = _CMD_MAP.get(action.name, "")
+    if not cmd_text:
+        return
+
+    if action.name in _CMD_AUTO_EXEC:
+        # Auto-execute: create fake user message and process through main handler
+        await action.remove()
+        fake_msg = cl.Message(content=cmd_text, author="user", type="user_message")
+        await fake_msg.send()
+        # Process through the main handler
+        try:
+            _on_msg = globals().get("on_message")
+            if _on_msg:
+                await _on_msg(fake_msg)
+            else:
+                await cl.Message(content="⚠️ Main handler is not available. Type the command directly in chat.", author="Alex 🤖").send()
+        except Exception as _cmd_err:
+            import traceback
+            await cl.Message(content=f"⚠️ Error executing command: {_cmd_err}", author="Alex 🤖").send()
+            traceback.print_exc()
+    else:
+        # Just display instruction (e.g., check RCA — user needs to type the plate)
+        await action.remove()
+        await cl.Message(content=cmd_text, author="Alex 🤖").send()
+
+for _cmd_name in _CMD_MAP:
+    cl.action_callback(_cmd_name)(_handle_quick_cmd)
+
+
+@cl.action_callback("agent_local_toggle")
+async def _on_agent_toggle(action: cl.Action):
+    """Show agent local status and instructions to start/stop."""
+    online = action.payload.get("online", False)
+    if online:
+        # Show status
+        from datetime import datetime as _dt3
+        info_lines = ["## 🟢 Local Agent — Connected\n"]
+        for _ag_id, _ag_info in _cu_agents.items():
+            try:
+                _last = _dt3.fromisoformat(_ag_info["last_seen"])
+                secs = int((_dt3.utcnow() - _last).total_seconds())
+                if secs < 120:
+                    info_lines.append(f"- **Agent:** `{_ag_info.get('agent_id', _ag_id)}`")
+                    info_lines.append(f"- **Platform:** {_ag_info.get('platform', 'N/A')}")
+                    conns = _ag_info.get("connectors", [])
+                    info_lines.append(f"- **Connectors:** {', '.join(conns) if conns else 'none'}")
+                    info_lines.append(f"- **Last signal:** {secs}s ago")
+            except Exception:
+                pass
+        info_lines.append("\n*Local agent is running. You can use: RCA check, internal network access, desktop apps.*")
+        await cl.Message(content="\n".join(info_lines), author="Alex 🤖").send()
+    else:
+        await cl.Message(
+            content=(
+                "## 🔴 Local Agent — Disconnected\n\n"
+                "The local agent is not running. To activate it:\n\n"
+                "```bash\n"
+                "cd alex-local-agent\n"
+                "python main.py start\n"
+                "```\n\n"
+                "The local agent allows you to:\n"
+                "- 🔍 RCA check via CEDAM (ASF portal)\n"
+                "- 🖥️ Access desktop apps (Word, Excel, etc.)\n"
+                "- 🌐 Access internal network / intranet\n"
+                "- 📸 Screenshot and local browser automation"
+            ),
+            author="Alex 🤖",
+        ).send()
 
 
 @cl.action_callback("open_history")
@@ -2258,18 +2753,132 @@ async def on_save_conv_confirm(action: cl.Action):
         if user_id and ADMIN_ENABLED:
             sidebar_content = await _build_sidebar_content(user_id)
             elements.append(cl.Text(
-                name="📁 Conversații salvate",
+                name="📁 Saved Conversations",
                 content=sidebar_content,
                 display="side",
             ))
         await cl.Message(
-            content=f"✅ Conversație salvată și linkuită la **{client_name}**.\n"
-                    f"O găsești în panoul lateral →",
+            content=f"✅ Conversation saved and linked to **{client_name}**.\n"
+                    f"You can find it in the side panel →",
             elements=elements,
             author="Alex 🤖",
         ).send()
     except Exception as e:
         await cl.Message(content=f"Could not link conversation: {e}", author="Alex 🤖").send()
+
+
+# ── Search & Delete Conversations ─────────────────────────────────────────────
+
+@cl.action_callback("search_conversations")
+async def on_search_conversations(action: cl.Action):
+    """Prompt user for search query, then show matching conversations."""
+    await action.remove()
+    meta    = cl.user_session.get("user_meta", {})
+    user_id = meta.get("user_id")
+    if not user_id or not ADMIN_ENABLED:
+        await cl.Message(content="Feature unavailable.", author="Alex 🤖").send()
+        return
+
+    # Ask user what to search for
+    res = await cl.AskUserMessage(
+        content="🔍 **Search conversations** — type your keywords:",
+        author="Alex 🤖",
+    ).send()
+    if not res:
+        return
+
+    query = res["output"] if isinstance(res, dict) else res.content
+    results = search_conversations(user_id, query.strip())
+
+    if not results:
+        await cl.Message(
+            content=f"No conversations found containing **\"{query}\"**.",
+            actions=[cl.Action(name="search_conversations", label="🔍 Search again", payload={})],
+            author="Alex 🤖",
+        ).send()
+        return
+
+    actions = []
+    lines = [f"## 🔍 Results: \"{query}\" ({len(results)})\n"]
+    for conv in results[:15]:
+        title = conv.get("title", "Conversation")
+        msgs  = conv.get("message_count", 0)
+        client = conv.get("client_name") or "No client linked"
+        upd   = conv.get("updated_at", "")[:10]
+        lines.append(f"- **{title}** — {client} ({msgs} msg, {upd})")
+        actions.append(cl.Action(
+            name="resume_conversation",
+            label=f"📂 {title[:30]}",
+            payload={"conversation_id": conv["id"], "title": title},
+        ))
+        actions.append(cl.Action(
+            name="delete_conversation_confirm",
+            label=f"🗑️ Delete: {title[:25]}",
+            payload={"conversation_id": conv["id"], "title": title},
+        ))
+
+    actions.append(cl.Action(name="search_conversations", label="🔍 Search again", payload={}))
+
+    await cl.Message(
+        content="\n".join(lines),
+        actions=actions,
+        author="Alex 🤖",
+    ).send()
+
+
+@cl.action_callback("delete_conversation_confirm")
+async def on_delete_conversation_confirm(action: cl.Action):
+    """Delete a saved conversation after confirmation."""
+    await action.remove()
+    meta    = cl.user_session.get("user_meta", {})
+    user_id = meta.get("user_id")
+    conv_id = action.payload["conversation_id"]
+    title   = action.payload["title"]
+
+    if not user_id or not ADMIN_ENABLED:
+        await cl.Message(content="Feature unavailable.", author="Alex 🤖").send()
+        return
+
+    # Confirm deletion
+    actions = [
+        cl.Action(name="delete_conversation_do", label="✅ Yes, delete",
+                  payload={"conversation_id": conv_id, "title": title}),
+        cl.Action(name="delete_conversation_cancel", label="❌ Cancel", payload={}),
+    ]
+    await cl.Message(
+        content=f"⚠️ Are you sure you want to delete the conversation **\"{title}\"**?\n\nThis action is irreversible.",
+        actions=actions,
+        author="Alex 🤖",
+    ).send()
+
+
+@cl.action_callback("delete_conversation_do")
+async def on_delete_conversation_do(action: cl.Action):
+    """Actually delete the conversation."""
+    await action.remove()
+    meta    = cl.user_session.get("user_meta", {})
+    user_id = meta.get("user_id")
+    conv_id = action.payload["conversation_id"]
+    title   = action.payload["title"]
+
+    success = delete_conversation(conv_id, user_id) if ADMIN_ENABLED else False
+    if success:
+        await cl.Message(
+            content=f"🗑️ Conversation **\"{title}\"** has been deleted.",
+            author="Alex 🤖",
+        ).send()
+    else:
+        await cl.Message(
+            content=f"❌ Could not delete the conversation. Check if it exists.",
+            author="Alex 🤖",
+        ).send()
+
+
+@cl.action_callback("delete_conversation_cancel")
+async def on_delete_conversation_cancel(action: cl.Action):
+    """Cancel deletion."""
+    await action.remove()
+    await cl.Message(content="Cancelled — the conversation was not deleted.", author="Alex 🤖").send()
 
 
 # ── Output file cleanup — interactive flow ────────────────────────────────────
@@ -2284,7 +2893,7 @@ async def on_output_cleanup_start(action: cl.Action):
         key=lambda f: f.stat().st_mtime, reverse=True
     )
     if not _files:
-        await cl.Message(content="📂 Nu există fișiere de șters.", author="Alex 🤖").send()
+        await cl.Message(content="📂 No files to delete.", author="Alex 🤖").send()
         return
 
     # Categorize by age
@@ -2295,23 +2904,23 @@ async def on_output_cleanup_start(action: cl.Action):
     _total_old_mb = sum(f.stat().st_size for f in _old_30) / (1024 * 1024)
 
     summary = (
-        f"**📂 {len(_files)} fișiere** în total:\n"
-        f"- 🟢 Recente (<7 zile): **{len(_recent)}** fișiere\n"
-        f"- 🟡 7-30 zile: **{len(_old_7)}** fișiere\n"
-        f"- 🔴 Vechi (>30 zile): **{len(_old_30)}** fișiere ({_total_old_mb:.1f} MB)\n\n"
-        f"Ce vrei să ștergi?"
+        f"**📂 {len(_files)} files** in total:\n"
+        f"- 🟢 Recent (<7 days): **{len(_recent)}** files\n"
+        f"- 🟡 7-30 days: **{len(_old_7)}** files\n"
+        f"- 🔴 Old (>30 days): **{len(_old_30)}** files ({_total_old_mb:.1f} MB)\n\n"
+        f"What do you want to delete?"
     )
 
     await cl.Message(
         content=summary,
         actions=[
-            cl.Action(name="output_cleanup_confirm", label=f"🔴 Șterge >30 zile ({len(_old_30)} fișiere, {_total_old_mb:.1f} MB)",
+            cl.Action(name="output_cleanup_confirm", label=f"🔴 Delete >30 days ({len(_old_30)} files, {_total_old_mb:.1f} MB)",
                       payload={"mode": "old30"}),
-            cl.Action(name="output_cleanup_confirm", label=f"🟡 Șterge >7 zile ({len(_old_7) + len(_old_30)} fișiere)",
+            cl.Action(name="output_cleanup_confirm", label=f"🟡 Delete >7 days ({len(_old_7) + len(_old_30)} files)",
                       payload={"mode": "old7"}),
-            cl.Action(name="output_cleanup_confirm", label=f"🗑️ Șterge TOT ({len(_files)} fișiere)",
+            cl.Action(name="output_cleanup_confirm", label=f"🗑️ Delete ALL ({len(_files)} files)",
                       payload={"mode": "all"}),
-            cl.Action(name="output_cleanup_cancel", label="❌ Anulează",
+            cl.Action(name="output_cleanup_cancel", label="❌ Cancel",
                       payload={"mode": "cancel"}),
         ],
         author="Alex 🤖",
@@ -2341,40 +2950,40 @@ async def on_output_cleanup_confirm(action: cl.Action):
         _to_delete = list(_files)
         _keep = []
     else:
-        await cl.Message(content="✅ Anulat — niciun fișier șters.", author="Alex 🤖").send()
+        await cl.Message(content="✅ Cancelled — no files deleted.", author="Alex 🤖").send()
         return
 
     if not _to_delete:
-        await cl.Message(content="✅ Nu există fișiere care să corespundă criteriului.", author="Alex 🤖").send()
+        await cl.Message(content="✅ No files match the criteria.", author="Alex 🤖").send()
         return
 
     # Store list in session for final delete step
     cl.user_session.set("_cleanup_pending", [str(f) for f in _to_delete])
 
     _del_mb = sum(f.stat().st_size for f in _to_delete) / (1024 * 1024)
-    _lines = [f"### ⚠️ Vor fi șterse {len(_to_delete)} fișiere ({_del_mb:.1f} MB):\n"]
+    _lines = [f"### ⚠️ {len(_to_delete)} files will be deleted ({_del_mb:.1f} MB):\n"]
     for f in _to_delete[:20]:
         _mtime = _dt.fromtimestamp(f.stat().st_mtime).strftime("%d %b %Y")
         _sz = f"{f.stat().st_size/1024:.0f} KB"
         _lines.append(f"- `{f.name}` — {_sz} — {_mtime}")
     if len(_to_delete) > 20:
-        _lines.append(f"- _... și {len(_to_delete) - 20} fișiere_")
+        _lines.append(f"- _... and {len(_to_delete) - 20} more files_")
 
     if _keep:
-        _lines.append(f"\n### ✅ Rămân {len(_keep)} fișiere mai recente:")
+        _lines.append(f"\n### ✅ {len(_keep)} newer files will be kept:")
         for f in _keep[:5]:
             _lines.append(f"- `{f.name}`")
         if len(_keep) > 5:
-            _lines.append(f"  _... și {len(_keep) - 5} altele_")
+            _lines.append(f"  _... and {len(_keep) - 5} others_")
 
-    _lines.append("\n**Confirmi ștergerea?** Această acțiune nu poate fi anulată.")
+    _lines.append("\n**Confirm deletion?** This action cannot be undone.")
 
     await cl.Message(
         content="\n".join(_lines),
         actions=[
-            cl.Action(name="output_cleanup_execute", label=f"✅ Da, șterge {len(_to_delete)} fișiere",
+            cl.Action(name="output_cleanup_execute", label=f"✅ Yes, delete {len(_to_delete)} files",
                       payload={"confirmed": True}),
-            cl.Action(name="output_cleanup_cancel", label="❌ Nu, anulează",
+            cl.Action(name="output_cleanup_cancel", label="❌ No, cancel",
                       payload={}),
         ],
         author="Alex 🤖",
@@ -2387,7 +2996,7 @@ async def on_output_cleanup_execute(action: cl.Action):
     await action.remove()
     _pending = cl.user_session.get("_cleanup_pending", [])
     if not _pending:
-        await cl.Message(content="⚠️ Nimic de șters.", author="Alex 🤖").send()
+        await cl.Message(content="⚠️ Nothing to delete.", author="Alex 🤖").send()
         return
 
     _deleted = []
@@ -2404,15 +3013,15 @@ async def on_output_cleanup_execute(action: cl.Action):
     cl.user_session.set("_cleanup_pending", [])
 
     _remaining = [f for f in OUTPUT_DIR.iterdir() if f.is_file() and f.suffix.lower() in {".pdf", ".txt", ".xlsx", ".docx"}]
-    _lines = [f"### ✅ Cleanup finalizat\n"]
-    _lines.append(f"- **Șterse:** {len(_deleted)} fișiere")
+    _lines = [f"### ✅ Cleanup completed\n"]
+    _lines.append(f"- **Deleted:** {len(_deleted)} files")
     if _errors:
-        _lines.append(f"- **Erori:** {len(_errors)}")
+        _lines.append(f"- **Errors:** {len(_errors)}")
         for _e in _errors[:3]:
             _lines.append(f"  - {_e}")
-    _lines.append(f"- **Rămase:** {len(_remaining)} fișiere în output/")
+    _lines.append(f"- **Remaining:** {len(_remaining)} files in output/")
     if _deleted[:5]:
-        _lines.append(f"\n_Exemple șterse: {', '.join(_deleted[:5])}_")
+        _lines.append(f"\n_Deleted examples: {', '.join(_deleted[:5])}_")
 
     await cl.Message(content="\n".join(_lines), author="Alex 🤖").send()
 
@@ -2422,7 +3031,133 @@ async def on_output_cleanup_cancel(action: cl.Action):
     """Cancel cleanup."""
     await action.remove()
     cl.user_session.set("_cleanup_pending", [])
-    await cl.Message(content="✅ Anulat — niciun fișier șters.", author="Alex 🤖").send()
+    await cl.Message(content="✅ Cancelled — no files deleted.", author="Alex 🤖").send()
+
+
+# ── Offer action callbacks (persistent buttons — no timeout) ─────────────────
+
+@cl.action_callback("offer_approve")
+async def on_offer_approve(action: cl.Action):
+    """Broker approved offer → inject approval into history and trigger agentic loop."""
+    await action.remove()
+    base_title = cl.user_session.get("last_offer_title", "")
+
+    import re as _re
+    _m = _re.search(r"(OFF-[A-F0-9]{8})", base_title)
+    _offer_id_hint = _m.group(1) if _m else ""
+
+    cl.user_session.set("offer_approved", True)
+
+    approval_text = (
+        f"Send offer {_offer_id_hint} via email to the client."
+        if _offer_id_hint else
+        "Send the offer via email to the client."
+    )
+
+    await cl.Message(
+        content="\u2705 **Offer approved!** Preparing to send via email...",
+        author="Alex \U0001f916"
+    ).send()
+
+    # Feed this through the on_message handler directly
+    synthetic = cl.Message(content=approval_text, author="user")
+    await on_message(synthetic)
+
+
+@cl.action_callback("offer_save_dashboard")
+async def on_offer_save_dashboard(action: cl.Action):
+    """Save offer to approval_queue dashboard."""
+    await action.remove()
+    offer_content = cl.user_session.get("last_offer_content", "")
+    base_title = cl.user_session.get("last_offer_title", "")
+    history = cl.user_session.get("history", [])
+    _save_msg = ""
+    try:
+        import uuid as _uuid_dash, sqlite3 as _sql_dash
+        from pathlib import Path as _P_dash
+        import re as _re_dash
+        _db_path = str(_P_dash(__file__).parent / "mcp-server" / "insurance_broker.db")
+        _conn_dash = _sql_dash.connect(_db_path)
+        _m_offer = _re_dash.search(r"(OFF-[A-F0-9]{8})", base_title)
+        _offer_id_d = _m_offer.group(1) if _m_offer else ""
+        _client_name_d = base_title.split("_")[0] if "_" in base_title else "Client"
+        _client_id_d = ""
+        _client_email_d = ""
+        try:
+            if _offer_id_d:
+                _offer_row = _conn_dash.execute(
+                    "SELECT o.client_id, c.name, c.email FROM offers o LEFT JOIN clients c ON c.id = o.client_id WHERE o.id = ?",
+                    (_offer_id_d,)
+                ).fetchone()
+            else:
+                _offer_row = None
+            if _offer_row:
+                _client_id_d = _offer_row[0] or ""
+                _client_name_d = _offer_row[1] or _client_name_d
+                _client_email_d = _offer_row[2] or ""
+        except Exception:
+            pass
+        if not _client_id_d:
+            _client_id_d = "unknown"
+        _approval_id = _uuid_dash.uuid4().hex[:16]
+        _conn_dash.execute(
+            "INSERT OR IGNORE INTO approval_queue "
+            "(id, type, client_id, client_name, client_email, subject, email_body_html, offer_id, status, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', datetime('now'))",
+            (_approval_id, "offer", _client_id_d, _client_name_d, _client_email_d,
+             f"Offer {_offer_id_d or 'new'} - {_client_name_d}",
+             offer_content or "Offer generated by Alex",
+             _offer_id_d or "")
+        )
+        _conn_dash.commit()
+        _conn_dash.close()
+        _save_msg = (
+            f"\u2705 **Offer saved to Dashboard!**\n\n"
+            f"- **Client:** {_client_name_d}\n"
+            f"- **Offer:** {_offer_id_d or 'N/A'}\n"
+            f"- **Status:** Pending approval\n\n"
+            f"\U0001f449 [Open Dashboard \u2192](/dashboard/approvals)"
+        )
+    except Exception as _e_dash:
+        import traceback as _tb_dash
+        _tb_dash.print_exc()
+        _save_msg = f"\u274c Error saving to dashboard: {_e_dash}"
+
+    history.append({"role": "assistant", "content": _save_msg or "Offer saved."})
+    cl.user_session.set("history", history)
+    await cl.Message(content=_save_msg, author="Alex \U0001f916").send()
+
+
+@cl.action_callback("offer_download")
+async def on_offer_download(action: cl.Action):
+    """Export offer as PDF/XLSX/DOCX."""
+    await action.remove()
+    offer_content = cl.user_session.get("last_offer_content", "")
+    base_title = cl.user_session.get("last_offer_title", "")
+    history = cl.user_session.get("history", [])
+
+    history.append({"role": "assistant", "content": "Offer downloaded."})
+    cl.user_session.set("history", history)
+    await send_export_files(offer_content, base_title)
+
+
+@cl.action_callback("offer_edit")
+async def on_offer_edit(action: cl.Action):
+    """Broker wants to edit the offer."""
+    await action.remove()
+    history = cl.user_session.get("history", [])
+    history.append({"role": "assistant", "content": "Broker wants to edit the offer."})
+    cl.user_session.set("history", history)
+    await cl.Message(
+        content=(
+            "\u270f\ufe0f **What would you like to change?** Write naturally, for example:\n"
+            "- *'Change validity to 14 days'*\n"
+            "- *'Add a note about 10% discount'*\n"
+            "- *'Generate in Romanian'*\n"
+            "- *'Remove the Generali product'*"
+        ),
+        author="Alex \U0001f916"
+    ).send()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2431,6 +3166,42 @@ async def on_output_cleanup_cancel(action: cl.Action):
 async def on_message(message: cl.Message):
     """Handle incoming broker message — full agentic loop with Claude."""
     history = cl.user_session.get("history", [])
+
+    # ── History sanitizer: fix orphan tool_use without tool_result ─────────
+    # This prevents 400 errors when a previous flow returned early
+    if history:
+        _sanitized = []
+        _pending_tool_ids = []
+        for _msg in history:
+            if _msg.get("role") == "assistant":
+                content = _msg.get("content", [])
+                if isinstance(content, list):
+                    for _block in content:
+                        if hasattr(_block, "type") and _block.type == "tool_use":
+                            _pending_tool_ids.append(_block.id)
+                        elif isinstance(_block, dict) and _block.get("type") == "tool_use":
+                            _pending_tool_ids.append(_block.get("id"))
+                _sanitized.append(_msg)
+            elif _msg.get("role") == "user":
+                content = _msg.get("content", [])
+                if isinstance(content, list):
+                    for _block in content:
+                        if isinstance(_block, dict) and _block.get("type") == "tool_result":
+                            _tid = _block.get("tool_use_id")
+                            if _tid in _pending_tool_ids:
+                                _pending_tool_ids.remove(_tid)
+                _sanitized.append(_msg)
+            else:
+                _sanitized.append(_msg)
+        # If there are orphan tool_use IDs, add fake tool_results
+        if _pending_tool_ids:
+            _fake_results = [{
+                "type": "tool_result",
+                "tool_use_id": _tid,
+                "content": "[Session interrupted — result unavailable]",
+            } for _tid in _pending_tool_ids]
+            _sanitized.append({"role": "user", "content": _fake_results})
+            history = _sanitized
 
     # ── Project / conversation persistence ────────────────────────────────
     conv_id    = cl.user_session.get(_SK_CONV_ID)
@@ -2458,25 +3229,25 @@ async def on_message(message: cl.Message):
         import re as _re2
         _raw = _re2.sub(r'^(vreau|vrea|as vrea|as dori|cauta|caută|arata|arată|fa|fă|verifica|verifică|spune|hai|hei|alex[,:]?\s*)', '', _raw, flags=_re2.IGNORECASE).strip()
         _title = (_raw[:57] + "…") if len(_raw) > 60 else _raw
-        _title = _title or "Conversație"
+        _title = _title or "Conversation"
         update_conversation_title(conv_id, _title)
         cl.user_session.set(_SK_TITLE_SET, True)
     # ─────────────────────────────────────────────────────────────────────
 
     # ── Sidebar shortcut — intercept starter message before Claude sees it ──
     _msg_lower = (message.content or "").strip().lower()
-    if _msg_lower == "arată-mi conversațiile salvate" or "conversații salvate" in _msg_lower:
+    if _msg_lower in ("arată-mi conversațiile salvate", "show saved conversations", "saved conversations") or "conversații salvate" in _msg_lower or "saved conversations" in _msg_lower:
         _meta = cl.user_session.get("user_meta", {})
         _uid  = _meta.get("user_id")
         if _uid and ADMIN_ENABLED:
             _sidebar_content = await _build_sidebar_content(_uid)
             _elements = [cl.Text(
-                name="📁 Conversații salvate",
+                name="📁 Saved Conversations",
                 content=_sidebar_content,
                 display="side",
             )]
             await cl.Message(
-                content="📁 **Conversații salvate** — panoul s-a deschis în dreapta.",
+                content="📁 **Saved Conversations** — the panel has opened on the right.",
                 elements=_elements,
                 author="Alex 🤖",
             ).send()
@@ -2501,22 +3272,22 @@ async def on_message(message: cl.Message):
                     # Show extracted data with confirmation buttons
                     await cl.Message(
                         content=(
-                            f"✅ **Document citit: {element.name}**\n\n"
+                            f"✅ **Document read: {element.name}**\n\n"
                             f"{analysis}\n\n"
                             f"---\n"
-                            f"⚠️ **Verifică datele de mai sus înainte să continui.** "
-                            f"Dacă ceva e greșit (ex: s-a confundat telefonul clinicii cu al clientului), "
-                            f"scrie corecția în mesajul următor."
+                            f"⚠️ **Check the data above before continuing.** "
+                            f"If something is wrong (e.g. clinic phone confused with client phone), "
+                            f"type your correction in the next message."
                         ),
                         author="Alex 🤖"
                     ).send()
 
                     # Ask broker to confirm before proceeding
                     res = await cl.AskActionMessage(
-                        content="Datele sunt corecte?",
+                        content="Is the data correct?",
                         actions=[
-                            cl.Action(name="confirm", label="✅ Corect — continuă", payload={"value": "confirm"}),
-                            cl.Action(name="edit", label="✏️ Vreau să corectez ceva", payload={"value": "edit"}),
+                            cl.Action(name="confirm", label="✅ Correct — continue", payload={"value": "confirm"}),
+                            cl.Action(name="edit", label="✏️ I want to correct something", payload={"value": "edit"}),
                         ],
                         author="Alex 🤖",
                         timeout=60,
@@ -2524,7 +3295,7 @@ async def on_message(message: cl.Message):
 
                     if res and res.get("payload", {}).get("value") == "edit":
                         await cl.Message(
-                            content="✏️ Scrie corecția (ex: 'Numele clientului e Ion Popescu, telefonul e 0722111222, nu cel al clinicii').",
+                            content="✏️ Type your correction (e.g. 'The client name is Ion Popescu, the phone is 0722111222, not the clinic phone').",
                             author="Alex 🤖"
                         ).send()
                         # Add analysis to context but flag that broker will correct it
@@ -2571,8 +3342,142 @@ async def on_message(message: cl.Message):
 
     history.append({"role": "user", "content": user_content})
 
-    async with cl.Step(name="Alex is thinking...", type="run", show_input=False) as thinking_step:
-        thinking_step.output = "Processing your request..."
+    # ── ORCHESTRATOR: classify intent and route to specialist module ──────
+    _orch_msg_text = message.content or ""
+    _orch_lower = _orch_msg_text.lower()
+
+    # Intent classification rules (keyword-based, fast, no API call)
+    _ORCHESTRATOR_MODULES = [
+        {
+            "id": "claims",
+            "name": "🔴 Claims Module",
+            "icon": "🔴",
+            "keywords": ["daună", "daune", "claim", "claims", "schadenm", "schaden", "accident",
+                         "pagubă", "despăgubire", "constatare", "reparație", "damage", "incident"],
+            "description": "Damage registration, claim tracking, status updates",
+        },
+        {
+            "id": "forms",
+            "name": "📋 Forms Module",
+            "icon": "📋",
+            "keywords": ["formular", "chestionar", "questionnaire", "form", "fragebogen",
+                         "completare", "link", "trimite link", "send link", "reminder",
+                         "incomplete", "follow-up", "submission"],
+            "description": "Questionnaire management, send links, track completions",
+        },
+        {
+            "id": "clients",
+            "name": "👤 Client Module",
+            "icon": "👤",
+            "keywords": ["client", "clienți", "kunde", "kunden", "caută client", "search client",
+                         "adaugă client", "add client", "profil", "profile", "contact",
+                         "telefon", "email client", "portofoliu"],
+            "description": "Client search, profiles, portfolio management",
+        },
+        {
+            "id": "policies",
+            "name": "📄 Policy Module",
+            "icon": "📄",
+            "keywords": ["poliță", "polița", "polite", "policy", "policies", "rca", "casco",
+                         "reînnoire", "renewal", "expiră", "expired", "asigurare", "insurance",
+                         "kfz", "haftpflicht", "versicherung", "pad", "home"],
+            "description": "Policy lookup, renewals, coverage verification",
+        },
+        {
+            "id": "offers",
+            "name": "💰 Offers Module",
+            "icon": "💰",
+            "keywords": ["ofertă", "oferta", "offer", "compare", "compară", "preț", "price",
+                         "premium", "angebot", "cotație", "quote", "cheapest", "ieftin"],
+            "description": "Price comparison, offer generation, quotes",
+        },
+        {
+            "id": "compliance",
+            "name": "⚖️ Compliance Module",
+            "icon": "⚖️",
+            "keywords": ["asf", "bafin", "compliance", "raport lunar", "monthly report",
+                         "regulatory", "conformitate", "audit"],
+            "description": "ASF/BaFin reports, regulatory compliance checks",
+        },
+        {
+            "id": "vehicles",
+            "name": "🚗 Vehicle Module",
+            "icon": "🚗",
+            "keywords": ["vehicul", "mașină", "auto", "vehicle", "car", "fahrzeug",
+                         "înmatriculare", "plate", "vin", "serie sasiu", "motor"],
+            "description": "Vehicle management, registration, fleet tracking",
+        },
+        {
+            "id": "knowledge",
+            "name": "🧠 Knowledge Base (RAG)",
+            "icon": "🧠",
+            "keywords": ["ce acoperă", "what covers", "exclusion", "excludere",
+                         "documente necesare", "documents needed", "cum funcționează",
+                         "how does", "knowledge", "explică", "explain"],
+            "description": "Semantic search in product docs, guides, FAQs",
+        },
+        {
+            "id": "reports",
+            "name": "📊 Reports Module",
+            "icon": "📊",
+            "keywords": ["raport", "report", "statistică", "statistics", "dashboard",
+                         "kpi", "briefing", "daily", "zilnic", "rezumat", "summary"],
+            "description": "Daily briefings, KPIs, analytics, reports",
+        },
+        {
+            "id": "automation",
+            "name": "🤖 Automation Module",
+            "icon": "🤖",
+            "keywords": ["cron", "automat", "automatic", "schedule", "programează",
+                         "reminder", "task", "job", "workflow"],
+            "description": "Cron jobs, scheduled tasks, automated workflows",
+        },
+        {
+            "id": "documents",
+            "name": "📎 Document Module",
+            "icon": "📎",
+            "keywords": ["upload", "document", "pdf", "scan", "poză", "photo", "image",
+                         "fișier", "file", "drive", "sharepoint"],
+            "description": "Document upload, AI analysis, cloud storage sync",
+        },
+        {
+            "id": "oracle",
+            "name": "🗄️ Oracle DB Module",
+            "icon": "🗄️",
+            "keywords": ["oracle", "database", "baza de date", "sync", "sincronizare",
+                         "sql", "tabel", "table", "query"],
+            "description": "Oracle database sync, queries, data management",
+        },
+    ]
+
+    # Score each module
+    _orch_scores = []
+    for _mod in _ORCHESTRATOR_MODULES:
+        _score = sum(1 for kw in _mod["keywords"] if kw in _orch_lower)
+        if _score > 0:
+            _orch_scores.append((_mod, _score))
+
+    _orch_scores.sort(key=lambda x: x[1], reverse=True)
+
+    # Determine routing
+    if _orch_scores:
+        _primary = _orch_scores[0][0]
+        _secondary = [s[0] for s in _orch_scores[1:3]]  # up to 2 secondary modules
+    else:
+        _primary = {"id": "general", "name": "💬 General Assistant", "icon": "💬",
+                     "description": "General broker assistance"}
+        _secondary = []
+
+    # Show orchestrator routing as a visible step
+    _routing_detail = f"**{_primary['name']}** — {_primary['description']}"
+    if _secondary:
+        _routing_detail += "\n" + "\n".join(
+            f"  ↳ {m['name']}" for m in _secondary
+        )
+
+    async with cl.Step(name=f"🧠 Orchestrator → {_primary['name']}", type="run", show_input=False) as _orch_step:
+        _orch_step.output = _routing_detail
+    # ── END ORCHESTRATOR ─────────────────────────────────────────────────────
 
     final_text = ""
     iterations = 0
@@ -2593,7 +3498,7 @@ async def on_message(message: cl.Message):
                         max_tokens=4096,
                         system=[{
                             "type": "text",
-                            "text": SYSTEM_PROMPT,
+                            "text": SYSTEM_PROMPT + _get_rag_context(message.content if hasattr(message, 'content') else str(message)),
                             "cache_control": {"type": "ephemeral"},
                         }],
                         tools=TOOLS,
@@ -2632,14 +3537,14 @@ async def on_message(message: cl.Message):
                 _logging.getLogger("alex").error(f"[on_message] hard error: {last_error}")
                 print(f"[alex] HARD ERROR in agentic loop: {last_error}", flush=True)
                 await cl.Message(
-                    content=f"Ceva nu a mers cum trebuie. Poți reformula cererea sau încearcă din nou?\n\n*(Eroare internă: {last_error[:200]})*",
+                    content=f"Something went wrong. Can you rephrase the request or try again?\n\n*(Internal error: {last_error[:200]})*",
                     author="Alex 🤖"
                 ).send()
                 return
 
         if response is None:
             await cl.Message(
-                content="⚠️ Serviciul AI este supraîncărcat momentan. Te rog să retrimiti mesajul.",
+                content="⚠️ AI service is overloaded at the moment. Please resend your message.",
                 author="Alex 🤖"
             ).send()
             return
@@ -2828,7 +3733,7 @@ async def on_message(message: cl.Message):
                     progress_icons = {"cedam": "🚗", "web_generic": "🌐", "desktop_generic": "🖥️"}
                     icon = progress_icons.get(connector, "⚙️")
                     await cl.Message(
-                        content=f"{icon} Execut task pe agentul local (`{connector}` / `{action}`)... ⏳",
+                        content=f"{icon} Running task on local agent (`{connector}` / `{action}`)... ⏳",
                         author="Alex 🤖",
                     ).send()
                     result = await _cu_run_task_async(
@@ -2856,12 +3761,12 @@ async def on_message(message: cl.Message):
                         _files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
 
                     if not _files:
-                        result = "📂 Nu există fișiere generate în directorul output."
+                        result = "📂 No generated files in the output directory."
                     else:
                         _total_mb = sum(f.stat().st_size for f in _files) / (1024 * 1024)
                         _lines = [
-                            f"## 📂 Fișiere generate ({len(_files)} fișiere, {_total_mb:.1f} MB total)\n",
-                            "| # | Fișier | Tip | Dimensiune | Data |",
+                            f"## 📂 Generated files ({len(_files)} files, {_total_mb:.1f} MB total)\n",
+                            "| # | File | Type | Size | Date |",
                             "|---|---|---|---|---|",
                         ]
                         from datetime import datetime as _dt
@@ -2872,8 +3777,8 @@ async def on_message(message: cl.Message):
                             _ext = _f.suffix.upper().lstrip(".")
                             _lines.append(f"| {_i} | `{_f.name}` | {_ext} | {_sz_str} | {_mtime} |")
                         if len(_files) > 50:
-                            _lines.append(f"\n_... și {len(_files) - 50} fișiere mai vechi (afișate primele 50)_")
-                        _lines.append(f"\n_Spune **'curăță fișierele output'** pentru a porni procesul de ștergere selectivă._")
+                            _lines.append(f"\n_... and {len(_files) - 50} older files (showing first 50)_")
+                        _lines.append(f"\n_Say **'clean up output files'** to start the selective deletion process._")
                         result = "\n".join(_lines)
 
                         # Trigger interactive cleanup button
@@ -2882,14 +3787,101 @@ async def on_message(message: cl.Message):
                             actions=[
                                 cl.Action(
                                     name="output_cleanup_start",
-                                    label="🧹 Curăță fișierele vechi",
+                                    label="🧹 Clean up old files",
                                     payload={"total": len(_files)},
                                 )
                             ],
                             author="Alex 🤖",
                         ).send()
                         # Result already sent — give empty result to agentic loop
-                        result = f"[Listat {len(_files)} fișiere. Buton de cleanup trimis brokerului.]"
+                        result = f"[Listed {len(_files)} files. Cleanup button sent to broker.]"
+
+                # ── Questionnaire / Form tools ─────────────────────────
+                elif tool_name == "broker_send_claim_questionnaire":
+                    try:
+                        from main import send_claim_questionnaire_direct
+                        _claim_id = tool_input.get("claim_id", "")
+                        _tpl_override = tool_input.get("template_id", "")
+                        _r = await send_claim_questionnaire_direct(_claim_id, _tpl_override)
+                        result = json.dumps(_r, ensure_ascii=False, default=str)
+                    except Exception as _eq:
+                        result = f"Error sending questionnaire: {_eq}"
+
+                elif tool_name == "broker_auto_send_questionnaires":
+                    try:
+                        from main import api_auto_send_questionnaires
+                        _r = await api_auto_send_questionnaires()
+                        result = json.dumps(_r, ensure_ascii=False, default=str)
+                    except Exception as _eq:
+                        result = f"Error auto-sending questionnaires: {_eq}"
+
+                elif tool_name == "broker_check_form_status":
+                    try:
+                        from main import api_forms_status_summary
+                        _r = await api_forms_status_summary()
+                        result = json.dumps(_r, ensure_ascii=False, default=str)
+                    except Exception as _eq:
+                        result = f"Error checking form status: {_eq}"
+
+                elif tool_name == "broker_run_form_reminders":
+                    try:
+                        from main import api_run_form_followup
+                        _r = await api_run_form_followup()
+                        result = json.dumps(_r, ensure_ascii=False, default=str)
+                    except Exception as _eq:
+                        result = f"Error running form reminders: {_eq}"
+
+                elif tool_name == "broker_form_daily_report":
+                    try:
+                        from main import api_form_daily_report
+                        _r = await api_form_daily_report()
+                        result = json.dumps(_r, ensure_ascii=False, default=str)
+                    except Exception as _eq:
+                        result = f"Error generating daily report: {_eq}"
+
+                elif tool_name == "broker_oracle_dashboard":
+                    try:
+                        from main import oracle_status, oracle_dashboard
+                        _status = await oracle_status()
+                        _dash = await oracle_dashboard()
+                        result = json.dumps({"connection": _status, "dashboard": _dash}, ensure_ascii=False, default=str)
+                    except Exception as _eq:
+                        result = f"Error connecting to Oracle: {_eq}"
+
+                elif tool_name == "broker_oracle_query":
+                    try:
+                        from main import oracle_query
+                        _sql = tool_input.get("sql", "")
+                        _r = await oracle_query({"sql": _sql})
+                        result = json.dumps(_r, ensure_ascii=False, default=str)
+                    except Exception as _eq:
+                        result = f"Error executing Oracle query: {_eq}"
+
+                elif tool_name == "broker_execute_command":
+                    try:
+                        from main import execute_command
+                        _cmd_r = await execute_command({"command": tool_input.get("command", ""), "ref": tool_input.get("ref", "")})
+                        result = json.dumps(_cmd_r, ensure_ascii=False, default=str)
+                    except Exception as _eq:
+                        result = f"Error executing command: {_eq}"
+
+                elif tool_name == "broker_list_forms":
+                    try:
+                        import httpx
+                        async with httpx.AsyncClient() as _hc:
+                            _fr = await _hc.get("http://localhost:8080/api/forms/submissions", timeout=10)
+                            result = _fr.text
+                    except Exception as _eq:
+                        result = f"Error listing forms: {_eq}"
+
+                elif tool_name == "broker_send_form_link":
+                    try:
+                        import httpx
+                        async with httpx.AsyncClient() as _hc:
+                            _fr = await _hc.post("http://localhost:8080/api/forms/send-link", json=tool_input, timeout=15)
+                            result = _fr.text
+                    except Exception as _eq:
+                        result = f"Error sending form link: {_eq}"
 
                 # ── Email send: ask broker to confirm/change recipient ────
                 elif tool_name == "broker_send_offer_email":
@@ -2914,10 +3906,10 @@ async def on_message(message: cl.Message):
                     # Ask broker to confirm or change the email address
                     _email_ask = await cl.AskUserMessage(
                         content=(
-                            f"📧 **La ce adresă trimiți oferta?**\n\n"
-                            f"Adresa din fișa clientului: **{_to_email_e or 'necunoscută'}**\n\n"
-                            f"Confirma cu **da** / **ok** pentru a folosi adresa de mai sus, "
-                            f"sau scrie o altă adresă de email."
+                            f"📧 **Which email address should the offer be sent to?**\n\n"
+                            f"Address from client file: **{_to_email_e or 'unknown'}**\n\n"
+                            f"Confirm with **yes** / **ok** to use the address above, "
+                            f"or type a different email address."
                         ),
                         timeout=120,
                         author="Alex 🤖",
@@ -2932,7 +3924,7 @@ async def on_message(message: cl.Message):
                             tool_input["to_email"] = _to_email_e
                         result = execute_tool(tool_name, tool_input)
                     else:
-                        result = "⚠️ Trimiterea email-ului a fost anulată (timeout)."
+                        result = "⚠️ Email sending was cancelled (timeout)."
 
                 else:
                     result = execute_tool(tool_name, tool_input)
@@ -2972,70 +3964,35 @@ async def on_message(message: cl.Message):
                     cl.user_session.set("last_offer_title", base_title)
                     cl.user_session.set("offer_approved", False)
 
+                    # Store tool_results in session so action callbacks can flush them
+                    cl.user_session.set("_offer_pending_tool_results", list(tool_results))
+
                     offer_md = offer_content  # already clean markdown
 
                     # Display offer as nicely formatted markdown
                     await cl.Message(
                         content=offer_md,
-                        author="Alex 🤖"
+                        author="Alex \U0001f916"
                     ).send()
 
-                    # Clean action bar — 3 options
-                    res = await cl.AskActionMessage(
-                        content="Ce facem cu oferta?",
+                    # Persistent action buttons (no timeout — works reliably on Cloud Run)
+                    await cl.Message(
+                        content="**What should we do with the offer?** Choose an action:",
                         actions=[
-                            cl.Action(name="approve", label="✅ Trimite pe email", payload={"value": "approve"}),
-                            cl.Action(name="download", label="📥 Descarcă (PDF / XLSX / DOCX)", payload={"value": "download"}),
-                            cl.Action(name="edit", label="✏️ Modifică oferta", payload={"value": "edit"}),
+                            cl.Action(name="offer_approve", label="\u2705 Send via Email", payload={"value": "approve"}),
+                            cl.Action(name="offer_save_dashboard", label="\U0001f4ec Save to Dashboard", payload={"value": "save_dashboard"}),
+                            cl.Action(name="offer_download", label="\U0001f4e5 Download (PDF / XLSX / DOCX)", payload={"value": "download"}),
+                            cl.Action(name="offer_edit", label="\u270f\ufe0f Edit Offer", payload={"value": "edit"}),
                         ],
-                        author="Alex 🤖",
-                        timeout=180,
+                        author="Alex \U0001f916"
                     ).send()
 
-                    if res:
-                        if res.get("payload", {}).get("value") == "approve":
-                            cl.user_session.set("offer_approved", True)
-                            # Extract offer ID from filename (e.g. ClientName_2026-03-11_OFF-XXXXXXXX)
-                            import re as _re
-                            _m = _re.search(r"(OFF-[A-F0-9]{8})", base_title)
-                            _offer_id_hint = _m.group(1) if _m else ""
-                            # Build user message: tool_results + approval instruction in one block
-                            # (Anthropic requires tool_results and text in same user message turn)
-                            combined_content = list(tool_results) + [{
-                                "type": "text",
-                                "text": (
-                                    f"Oferta a fost aprobată de broker. "
-                                    f"Folosește broker_send_offer_email cu offer_id='{_offer_id_hint}' "
-                                    f"pentru a o trimite pe email clientului."
-                                    if _offer_id_hint else
-                                    "Oferta a fost aprobată de broker. Trimite-o pe email clientului folosind broker_send_offer_email."
-                                )
-                            }]
-                            history.append({"role": "user", "content": combined_content})
-                            tool_results = []
-                            break  # exit tool loop, continue agentic loop
-                        elif res.get("payload", {}).get("value") == "download":
-                            await send_export_files(offer_content, base_title)
-                            cl.user_session.set("history", history)
-                            return  # done
-                        elif res.get("payload", {}).get("value") == "edit":
-                            await cl.Message(
-                                content=(
-                                    "✏️ **Ce vrei să modifici?** Scrie natural, de exemplu:\n"
-                                    "- *'Schimbă valabilitatea la 14 zile'*\n"
-                                    "- *'Adaugă o notă despre discount de 10%'*\n"
-                                    "- *'Generează în română'*\n"
-                                    "- *'Elimină produsul Generali'*"
-                                ),
-                                author="Alex 🤖"
-                            ).send()
-                            cl.user_session.set("history", history)
-                            return  # wait for broker to type the edit request
-                    else:
-                        # Timeout — generate exports automatically
-                        await send_export_files(offer_content, base_title)
-                        cl.user_session.set("history", history)
-                        return
+                    # Flush tool_results and return — action callbacks handle the rest
+                    if tool_results:
+                        history.append({"role": "user", "content": tool_results})
+                    history.append({"role": "assistant", "content": "Offer generated. Waiting for broker action."})
+                    cl.user_session.set("history", history)
+                    return  # action_callback handlers take over
 
             # Attach export for reports
             elif tool_name in ("broker_asf_summary", "broker_bafin_summary"):

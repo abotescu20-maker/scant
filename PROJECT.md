@@ -29,7 +29,7 @@ Broker email (IMAP AlexAi@tpsh.ro) →
 ### Source Code (local)
 - **Primary location**: `/Users/andreibotescu/Desktop/insurance-broker-agent/`
 - **Main file**: `main.py` (~1.08 MB, monolithic FastAPI)
-- **Git remote**: check `git remote -v` in the directory
+- **Git remote**: `https://github.com/abotescu20-maker/scant.git` (primary; old `broker` repo archived)
 - **Recommended move**: `~/Projects/alex-insurance-broker/` (better than Desktop, easier backup)
 
 ### Live Deployment (Google Cloud)

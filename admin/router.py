@@ -54,15 +54,15 @@ def require_superadmin(request: Request) -> dict:
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, error: str = ""):
-    return templates.TemplateResponse("login.html", {"request": request, "error": error})
+    return templates.TemplateResponse(request, "login.html", {"error": error})
 
 
 @router.post("/login")
 async def login_post(request: Request, email: str = Form(...), password: str = Form(...)):
     user = get_user_by_email(email)
     if not user or not verify_password(password, user["hashed_password"]):
-        return templates.TemplateResponse("login.html", {
-            "request": request, "error": "Invalid email or password"
+        return templates.TemplateResponse(request, "login.html", {
+            "error": "Invalid email or password"
         })
     token = create_access_token({
         "user_id": user["id"],
@@ -110,8 +110,8 @@ async def dashboard(request: Request, admin=Depends(require_admin)):
     finally:
         conn.close()
 
-    return templates.TemplateResponse("dashboard.html", {
-        "request": request, "current_user": admin,
+    return templates.TemplateResponse(request, "dashboard.html", {
+        "current_user": admin,
         "active_page": "dashboard",
         "stats": {
             "companies": companies,
@@ -135,8 +135,8 @@ async def companies_list(request: Request, admin=Depends(require_superadmin)):
         "FROM companies c ORDER BY c.created_at DESC"
     ).fetchall()
     conn.close()
-    return templates.TemplateResponse("companies.html", {
-        "request": request, "current_user": admin,
+    return templates.TemplateResponse(request, "companies.html", {
+        "current_user": admin,
         "active_page": "companies",
         "companies": [dict(c) for c in companies],
     })
@@ -198,8 +198,8 @@ async def users_list(request: Request, admin=Depends(require_admin)):
             "SELECT * FROM companies WHERE id=?", (admin["company_id"],)
         ).fetchall()
     conn.close()
-    return templates.TemplateResponse("users.html", {
-        "request": request, "current_user": admin,
+    return templates.TemplateResponse(request, "users.html", {
+        "current_user": admin,
         "active_page": "users",
         "users": [dict(u) for u in users],
         "companies": [dict(c) for c in companies],
@@ -271,8 +271,8 @@ async def permissions_page(user_id: str, request: Request, admin=Depends(require
         "SELECT tool_name FROM tool_permissions WHERE user_id=?", (user_id,)
     ).fetchall()]
     conn.close()
-    return templates.TemplateResponse("permissions.html", {
-        "request": request, "current_user": admin,
+    return templates.TemplateResponse(request, "permissions.html", {
+        "current_user": admin,
         "active_page": "permissions",
         "target_user": dict(user),
         "all_tools": ALL_TOOLS,
@@ -339,8 +339,8 @@ async def audit_log(
         params
     ).fetchone()["n"]
     conn.close()
-    return templates.TemplateResponse("audit.html", {
-        "request": request, "current_user": admin,
+    return templates.TemplateResponse(request, "audit.html", {
+        "current_user": admin,
         "active_page": "audit",
         "rows": [dict(r) | {"email": r["user_email"]} for r in rows],
         "current_page": page,

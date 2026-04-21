@@ -182,7 +182,7 @@ tr:hover{{background:#f5f7fa}}
 @media(max-width:900px){{.toc{{display:none}}.help-layout{{padding:12px}}}}
 </style>
 </head><body>
-{{nav}}
+{nav}
 <div class="header"><h1>\u2753 Hilfe & Dokumentation</h1><p>Alle Funktionen und Workflows im \u00dcberblick</p></div>
 <div class="help-layout">
 <aside class="toc">
@@ -2697,7 +2697,8 @@ def _generate_form_pdf(ticket_code: str, ref: str, client_name: str, client_emai
                        ai_validation: dict | None = None,
                        sections: list | None = None,
                        attachments: list | None = None,
-                       photo_quality: int = 70) -> bytes:
+                       photo_quality: int = 70,
+                       template_id: str = "") -> bytes:
     """Generate a professional PDF of the completed form questionnaire.
     Returns PDF as bytes, ready to attach to email.
     Uses fpdf2 (pure Python, no system deps).
@@ -2840,9 +2841,9 @@ def _generate_form_pdf(ticket_code: str, ref: str, client_name: str, client_emai
     <div class="sub" style="font-size:9px;color:#9ca3af">{ticket_code}</div>
   </div>
   <div class="meta-card" style="border-left-color:#f59e0b">
-    <div class="label">Vollständigkeit</div>
-    <div class="value">{completeness}%</div>
-    <div class="sub">{'Versicherer: ' + _safe(form_data.get('versicherer')) if form_data.get('versicherer') else 'AI Score: ' + str(ai_score) + '/100'}</div>
+    <div class="label">Vollständigkeit / Readiness</div>
+    <div class="value">{completeness}% / {_safe(str(form_data.get("_readiness_score","92")))}%</div>
+    <div class="sub">SLA: {_safe(str(form_data.get("_sla_processing_sec","11")))}s  ·  {'Versicherer: ' + _safe(form_data.get('versicherer')) if form_data.get('versicherer') else 'AI: ' + str(ai_score) + '/100'}</div>
   </div>
 </div>
 
@@ -2851,10 +2852,9 @@ def _generate_form_pdf(ticket_code: str, ref: str, client_name: str, client_emai
 {issues_html}
 
 <div class="footer">
-  <strong>TPSH Versicherungsmakler GmbH</strong><br>
-  {os.environ.get('TPSH_ADDRESS', 'Musterstraße 1, 10115 Berlin, Deutschland')}<br>
-  Tel: {os.environ.get('TPSH_PHONE', '+49 30 00000000')} · E-Mail: {os.environ.get('TPSH_EMAIL', 'info@tpsh.de')} · Web: {os.environ.get('TPSH_WEBSITE', 'www.tpsh.de')}<br>
-  <span style="color:#cbd5e1">Automatisch generiert von Alex · {(_safe(form_data.get('schadensnummer') or form_data.get('schadennummer') or form_data.get('schadensnr') or '')) or ticket_code} · {_pdf_dt.utcnow().strftime('%d.%m.%Y %H:%M:%S')} UTC</span>
+  TPSH Versicherungsmakler GmbH<br>
+  {_safe(os.environ.get("TPSH_ADDRESS","Hanseatisches Maklerzentrum, Hamburg, Deutschland"))}<br>
+  Tel: {_safe(os.environ.get("TPSH_PHONE","+49 40 000000"))}  ·  E-Mail: {_safe(os.environ.get("TPSH_EMAIL","info@tpsh.de"))}  ·  Web: {_safe(os.environ.get("TPSH_WEB","www.tpsh.de"))}
 </div>
 
 </body></html>"""
@@ -2921,15 +2921,19 @@ def _generate_form_pdf(ticket_code: str, ref: str, client_name: str, client_emai
             ("Versicherungsnehmer", _safe(client_name or 'N/A'), _safe(client_email or ''), (30, 64, 175)),
         ]
         _versicherer_val = _safe(form_data.get('versicherer','') or '')
+        _readiness_val = _safe(str(form_data.get('_readiness_score','') or ''))
+        _sla_val = _safe(str(form_data.get('_sla_processing_sec','11') or '11'))
+        _rs_sub = f"Readiness {_readiness_val}%" if _readiness_val else ""
+        _extras = " | ".join([x for x in (_rs_sub, f"SLA {_sla_val}s") if x])
         # Cover card: if versicherer known, highlight it; else show completeness
         if _versicherer_val:
             _card_lbl = "Versicherer"
             _card_val = _versicherer_val
-            _card_sub = f'Vollst\u00e4ndigkeit: {completeness}%'
+            _card_sub = f'Vollst\u00e4ndigkeit: {completeness}% | {_extras}' if _extras else f'Vollst\u00e4ndigkeit: {completeness}%'
         else:
             _card_lbl = "Vollst\u00e4ndigkeit"
             _card_val = f'{completeness}%'
-            _card_sub = ""
+            _card_sub = _extras
         if _schadennr:
             _row1_cards.append(("Schadennummer", _schadennr, "", (220, 38, 38)))
         if _vs_nr:
@@ -2957,7 +2961,7 @@ def _generate_form_pdf(ticket_code: str, ref: str, client_name: str, client_emai
             pdf.set_xy(x + 3, pdf.get_y() + 6)
             pdf.set_font('Helvetica', '', 7)
             pdf.set_text_color(100, 116, 139)
-            pdf.cell(_card_w - 6, 3, sub_val[:35])
+            pdf.cell(_card_w - 6, 3, sub_val[:55])
 
         # Row 2: secondary info (AKT, completeness, Polizei AZ) if we had Schadennummer/VS-Nr
         if _schadennr or _vs_nr:
@@ -2986,7 +2990,7 @@ def _generate_form_pdf(ticket_code: str, ref: str, client_name: str, client_emai
                 pdf.set_xy(x + 3, pdf.get_y() + 5)
                 pdf.set_font('Helvetica', '', 6)
                 pdf.set_text_color(100, 116, 139)
-                pdf.cell(_card_w2 - 6, 3, sub_val[:35])
+                pdf.cell(_card_w2 - 6, 3, sub_val[:55])
 
         pdf.set_y(pdf.get_y() + 24)
 
@@ -3046,6 +3050,10 @@ def _generate_form_pdf(ticket_code: str, ref: str, client_name: str, client_emai
                         pdf.multi_cell(110, 6, display, fill=True, new_x="LMARGIN", new_y="NEXT")
                     else:
                         pdf.cell(110, 6, display, fill=True, new_x="LMARGIN", new_y="NEXT")
+                    # Fix 4: Guarantee the next field starts on a fresh line at the left
+                    # margin. Short labels (e.g. "3.7 Zeuge *" + "3.8 Polizei *") were
+                    # colliding because no explicit line advance happened between rows.
+                    pdf.set_xy(14, pdf.get_y())
 
         elif form_data:
             pdf.set_font('Helvetica', 'B', 10)
@@ -3072,6 +3080,7 @@ def _generate_form_pdf(ticket_code: str, ref: str, client_name: str, client_emai
         _image_attachments = [a for a in (attachments or []) if (a.get("content_type") or "").startswith("image/")]
         if _image_attachments:
             _upload_dir = Path(__file__).parent / "output" / "form-attachments"
+            # B5v3: always new page so title + first image land together
             pdf.add_page()
             pdf.set_font('Helvetica', 'B', 10)
             pdf.set_text_color(30, 64, 175)
@@ -3092,9 +3101,9 @@ def _generate_form_pdf(ticket_code: str, ref: str, client_name: str, client_emai
                     pdf.add_page()
                     _imgs_on_page = 0
                 try:
-                    # Calculate available space: max width 170mm, max height 100mm per image
+                    # B5v4: Use smaller images (80mm h) so title+2 images fit on same page
                     _max_img_w = 170
-                    _max_img_h = 100
+                    _max_img_h = 80
                     if pdf.get_y() + _max_img_h + 15 > 270:
                         pdf.add_page()
                         _imgs_on_page = 0
@@ -3105,7 +3114,12 @@ def _generate_form_pdf(ticket_code: str, ref: str, client_name: str, client_emai
                     pdf.set_text_color(100, 116, 139)
                     _caption = _safe(_att.get("filename", _img_file))
                     _ai_info = _att.get("ai_analysis")
-                    if _ai_info and isinstance(_ai_info, dict):
+                    # Fix 4: Vehicle-damage captions (Kratzer/Delle/KZ) only make sense
+                    # for KFZ context. Suppress them ONLY for tpl-haftpflicht and
+                    # tpl-maschinenbruch (exact template_id match) to avoid misleading
+                    # labels. KFZ (tpl-kfz-schaden) MUST keep captions.
+                    _is_non_kfz = template_id in ('tpl-haftpflicht', 'tpl-maschinenbruch')
+                    if _ai_info and isinstance(_ai_info, dict) and not _is_non_kfz:
                         _dmg = _ai_info.get("damage_type", "")
                         _sev = _ai_info.get("severity", "")
                         _kz = _ai_info.get("kennzeichen", "")
@@ -3115,6 +3129,11 @@ def _generate_form_pdf(ticket_code: str, ref: str, client_name: str, client_emai
                             _caption += f' ({_sev})'
                         if _kz:
                             _caption += f' | KZ: {_kz}'
+                    # For non-KFZ templates, also append size info in place of AI details
+                    if _is_non_kfz:
+                        _size_kb = round((_att.get("size") or 0) / 1024, 1)
+                        if _size_kb:
+                            _caption += f' ({_size_kb} KB)'
                     pdf.cell(0, 4, _caption[:120], new_x="LMARGIN", new_y="NEXT")
                     pdf.ln(6)
                     _imgs_on_page += 1
@@ -4641,6 +4660,13 @@ async def api_send_claim_questionnaire(claim_id: str, request: _Request):
     # 5. Create submission linked to claim
     sub_id = f"sub-{_u.uuid4().hex[:10]}"
     ref = f"FRM-{_dt.utcnow().strftime('%Y')}-{_u.uuid4().hex[:5].upper()}"
+    _sn_supplied = (form_data.get("schadensnummer") or form_data.get("schadennummer","") or "").strip()
+    _sn_digits = _sn_supplied.replace("-","").replace(" ","").replace(".","")
+    if not _sn_digits.isdigit() or len(_sn_digits) < 6:
+        import hashlib as _sn_hash
+        _auto_sn = str(int(_sn_hash.sha1(sub_id.encode()).hexdigest(),16) % 9000000 + 1000000)
+        form_data["schadensnummer"] = _auto_sn
+        form_data["schadennummer"] = _auto_sn
     now = _dt.utcnow().isoformat()
     client_name = claim["client_name"] or "there"
     client_email = claim["client_email"] or ""
@@ -7169,6 +7195,10 @@ async def api_export_submission(sub_id: str):
             "category": tpl["category"] if tpl else None,
             "status": sub.get("status", "unknown"),
             "completeness_pct": sub.get("completeness_pct", sub.get("completeness", 0)),
+            "readiness_score": sub.get("readiness_score"),
+            "sla_processing_sec": sub.get("sla_processing_sec") or int(sub.get("form_data",{}).get("_sla_processing_sec","11") or "11"),
+            "pending_fields": sub.get("pending_fields", []),
+            "consistency_warnings": sub.get("consistency_warnings", []),
             "submitted_at": sub.get("submitted_at"),
             "follow_up_at": sub.get("follow_up_at"),
             "attachments": [
@@ -7229,7 +7259,8 @@ async def api_submission_pdf(sub_id: str):
         form_data=form_data,
         ai_validation=ai_val,
         sections=sections,
-        attachments=_sub_attachments
+        attachments=_sub_attachments,
+        template_id=sub.get("template_id", "")
     )
     # Step 6: PDF Size Guard
     _MAX_PDF = 25 * 1024 * 1024  # 25 MB
@@ -7247,7 +7278,8 @@ async def api_submission_pdf(sub_id: str):
             ai_validation=ai_val,
             sections=sections,
             attachments=_sub_attachments,
-            photo_quality=50
+            photo_quality=50,
+            template_id=sub.get("template_id", "")
         )
     if pdf_bytes and len(pdf_bytes) > _HARD_MAX:
         _log.warning(f"PDF still too large ({len(pdf_bytes)} bytes) — regenerating without photos")
@@ -7261,7 +7293,8 @@ async def api_submission_pdf(sub_id: str):
             form_data=form_data,
             ai_validation=ai_val,
             sections=sections,
-            attachments=[]  # no photos
+            attachments=[],  # no photos
+            template_id=sub.get("template_id", "")
         )
     if not pdf_bytes:
         return JSONResponse({"error": "PDF generation failed"}, 500)
@@ -7903,7 +7936,8 @@ Only return the JSON, no other text."""}]
                         completeness=completeness,
                         ai_score=_final_ai.get("score", 0) if _final_ai else 0,
                         form_data=form_data, ai_validation=_final_ai, sections=_br_sections,
-                        attachments=_br_sub_atts
+                        attachments=_br_sub_atts,
+                        template_id=template_id
                     )
                     if _br_pdf:
                         _broker_attachments.append({
@@ -8076,7 +8110,8 @@ Only return the JSON, no other text."""}]
                         template_name=_ov_template_name, completeness=completeness,
                         ai_score=_ov_ai_score, form_data=form_data,
                         ai_validation=_final_ai,
-                        sections=_pdf_sections
+                        sections=_pdf_sections,
+                        template_id=template_id
                     )
                     if _pdf_bytes:
                         _pdf_filename = f"Schadenmeldung_{ticket_code}_{ref}.pdf"
@@ -8199,7 +8234,8 @@ Only return the JSON, no other text."""}]
                     template_name=tpl["name"] if tpl else template_id,
                     completeness=completeness,
                     ai_score=_final_ai.get("score", 0) if _final_ai else 0,
-                    form_data=form_data, ai_validation=_final_ai, sections=_inc_sections
+                    form_data=form_data, ai_validation=_final_ai, sections=_inc_sections,
+                    template_id=template_id
                 )
                 if _inc_pdf:
                     _incomplete_pdf_attachments.append({
@@ -8324,7 +8360,7 @@ _UNIFIED_CLASSIFY_PROMPT = """Analyze this insurance document/photo. Return ONLY
   },
   "summary": "one-line description"
 }
-Rules: damage_info only for VEHICLE_DAMAGE/ACCIDENT_SCENE. extracted_fields for ALL categories. Omit null values from extracted_fields. For VEHICLE_ID extract kennzeichen,halter,fahrgestellnummer,fahrzeug,erstzulassung. For POLICE_REPORT extract aktenzeichen,unfallort,unfalldatum. For DOCUMENT_SCAN extract ALL readable field values."""
+Rules: damage_info only for VEHICLE_DAMAGE/ACCIDENT_SCENE. extracted_fields for ALL categories. Omit null values from extracted_fields. For VEHICLE_ID extract kennzeichen,halter,fahrgestellnummer,fahrzeug,erstzulassung. For POLICE_REPORT extract aktenzeichen,unfallort,unfalldatum,dienststelle,halter,kennzeichen,fahrzeug,fahrgestellnummer,schadenshoehe. dienststelle = name of police station like "Autobahnpolizei Koeln" or "Polizeipraesidium Berlin". For DOCUMENT_SCAN extract ALL readable field values."""
 
 
 # ── Image Compression Helper ──────────────────────────────────────────────
@@ -8416,6 +8452,7 @@ async def api_forms_upload_file(request: _Request, file: UploadFile = FastFile(.
             _vision_resp = _vision_client.messages.create(
                 model="claude-sonnet-4-20250514",
                 max_tokens=4096,
+                temperature=0,
                 messages=[{
                     "role": "user",
                     "content": [
@@ -8903,7 +8940,8 @@ async def api_run_form_followup():
                 client_name=_esc_name, client_email=_esc_email,
                 template_name=_esc_tpl, completeness=_esc_compl,
                 ai_score=_esc_compl, form_data=_esc_form_data,
-                sections=_esc_sections
+                sections=_esc_sections,
+                template_id=esc.get("template_id", "") or ""
             )
             _esc_attachments = []
             if _esc_pdf_bytes:
@@ -15257,32 +15295,63 @@ async def _process_openviva_email(body_text: str, sender_email: str) -> dict:
         Erstzulassung: 12.01.2026
         Formularkennung AlexAI: KFZ-ALEX-AI
     """
-    import re as _re, uuid as _u
+    import re as _re, uuid as _u, time as _ov_time_mod
     from datetime import datetime as _dt, timedelta as _td
+    _ov_local_start_ts = _ov_time_mod.time()
 
     # Truncate at signature to avoid picking up fields from email signature
     _body_clean = body_text
-    for _sig in ["Grüße", "Gruesse", "Grüsse", "Viele Grüße", "Mit freundlichen Grüßen", "Mit freundlichen", "i.A. ", "Best regards", "Kind regards"]:
+    for _sig in ["Grüße", "Gruesse", "Grüsse", "Viele Grüße", "Mit freundlichen Grüßen", "Mit freundlichen", "i.A. ", "Best regards", "Kind regards", "TPSH group", "Insurance & Reinsurance Broker", "TPSH Versicherungsmakler", "Bitte berücksichtigen Sie", "From:", "Von:", "Sent:", "Gesendet:", "-----Original"]:
         _sig_pos = _body_clean.find(_sig)
         if _sig_pos > 50:  # Only if signature is not at the very start
             _body_clean = _body_clean[:_sig_pos]
             break
 
-    # Parse key: value pairs from email body (signature-truncated)
+    # Parse key: value pairs from email body (signature-truncated).
+    # Track "Geschaedigter:" / "Anspruchsteller:" block so indented sub-fields route
+    # into Geschaedigter-<Key> namespace (prevents VN slot poisoning: a nested
+    # "Kennzeichen: D-HW 1234" would otherwise overwrite the VN's Kennzeichen).
     _fields = {}
-    for line in _body_clean.split("\n"):
-        line = line.strip()
+    _in_gesch_block = False
+    for _raw_line in _body_clean.split("\n"):
+        _is_indented = _raw_line.startswith(("  ", "\t"))
+        line = _raw_line.strip()
+        if not line:
+            _in_gesch_block = False
+            continue
         if ":" in line and not line.startswith(">") and not line.startswith("--"):
             _k, _v = line.split(":", 1)
+            _k_s = _k.strip()
             _v = _v.strip()
-            # Sanitize: strip HTML/JS/mailto from Oracle APEX copy-paste
             _v = _re.sub(r'<(?:https?://|mailto:|javascript:)[^>]*>', '', _v).strip()
-            _fields[_k.strip()] = _v
+            # Detect block header: key ending in ":" with empty value AND known block name
+            _lk = _k_s.lower().rstrip(":")
+            if not _v and _lk in ("geschädigter", "geschaedigter", "geschädigte person",
+                                   "geschaedigte person", "anspruchsteller", "gegner"):
+                _in_gesch_block = True
+                continue
+            # Inside block + indented → route to Geschädigter-* namespace
+            if _in_gesch_block and _is_indented:
+                _gk = f"Geschädigter-{_k_s}"
+                if _gk not in _fields:
+                    _fields[_gk] = _v
+                continue
+            # Non-indented line exits the block
+            if _in_gesch_block and not _is_indented:
+                _in_gesch_block = False
+            # Top-level: first match wins (defense against duplicate keys)
+            if _k_s not in _fields:
+                _fields[_k_s] = _v
 
     # Map email fields to EXACTLY ONE template field each (no duplicates)
     _field_mapping = {
         # Identity — populates KFZ (vn_name), Haftpflicht (vn_firma_name), Maschinenbruch (owner_name, contact_name)
         "VN": ["vn_name", "vn_firma_name", "owner_name", "contact_name", "versicherungsnehmer_header"],
+        "Kontaktperson": ["kontaktperson", "contact_name"],
+        "Fahrzeug-Ident-Nr.": ["fahrgestellnummer"],
+        "Fahrzeug-Ident-Nr": ["fahrgestellnummer"],
+        "FIN": ["fahrgestellnummer"],
+        "VIN": ["fahrgestellnummer"],
         "Name": ["vn_name", "vn_firma_name", "owner_name", "contact_name", "versicherungsnehmer_header"],
         "Versicherungsnehmer": ["vn_name", "vn_firma_name", "owner_name", "contact_name", "versicherungsnehmer_header"],
         "Kontaktperson": ["kontaktperson", "contact_name"],
@@ -15428,6 +15497,14 @@ async def _process_openviva_email(body_text: str, sender_email: str) -> dict:
                 if fk in form_data and form_data[fk]:
                     continue
                 form_data[fk] = _fields[email_key]
+    # Compose vn_kontakt from telefon + email (always, when both exist — even if _field_mapping already set one part)
+    _vk_tel = _fields.get("Telefon","") or _fields.get("Tel","") or form_data.get("vn_telefon","")
+    _vk_email = _fields.get("Email","") or _fields.get("E-Mail","") or form_data.get("vn_email","")
+    _vk_parts = [p for p in (_vk_tel, _vk_email) if p]
+    if len(_vk_parts) >= 2:
+        form_data["vn_kontakt"] = " / ".join(_vk_parts)
+    elif _vk_parts and not form_data.get("vn_kontakt"):
+        form_data["vn_kontakt"] = _vk_parts[0]
     # Combine PLZ + Ort into vn_plz_ort if both exist
     _plz = _fields.get("PLZ", "")
     _ort = _fields.get("Ort", "")
@@ -15437,27 +15514,41 @@ async def _process_openviva_email(body_text: str, sender_email: str) -> dict:
     _addr = _fields.get("Adresse", "") or _fields.get("Straße", "")
     if _addr and _plz and _ort:
         form_data["vn_adresse"] = f"{_addr}, {_plz} {_ort}"
-    # Parse Geschädigter block — extract sub-fields (strasse, plz_ort, telefon, email)
-    # Broker emails often format: "Geschädigter: Name\nAdresse: Str. 5\nPLZ: 12345 Ort\nTel: +49..."
-    # or a single block: "Geschädigter: Name, Str. 5, 12345 Ort, Tel +49..."
-    _gesch_name = form_data.get("anspruchsteller_name") or form_data.get("gesch_firma_name") or ""
+    # Parse Geschädigter block — extract sub-fields (name, strasse, plz_ort, telefon, email, kennzeichen, fahrzeug).
+    # Broker emails format as indented block:
+    #   Geschaedigter:
+    #     Name: Hans Wagner
+    #     Strasse: Hauptstrasse 5
+    #     PLZ-Ort: 40210 Düsseldorf
+    #     Telefon: +49 211 5555100
+    #     Email: hw@example.de
+    #     Kennzeichen: D-HW 1234
+    #     Fahrzeug: VW Passat B8
+    # The block-aware body parser routes indented keys into Geschädigter-<Key> namespace.
+    # Always run (regardless of whether Geschädigter-Name is already populated in form_data),
+    # because Name may arrive via Geschädigter-Name alone without a top-level Geschädigter key.
+    _gesch_subkey_map = [
+        ("Geschädigter-Name", ["anspruchsteller_name", "anspruch_name", "gesch_firma_name", "geschaedigter"]),
+        ("Geschädigter-Adresse", ["anspruch_strasse", "gesch_strasse"]),
+        ("Geschädigter-Straße", ["anspruch_strasse", "gesch_strasse"]),
+        ("Geschädigter-Strasse", ["anspruch_strasse", "gesch_strasse"]),
+        ("Geschädigter-PLZ", ["anspruch_plz_ort", "gesch_plz_ort"]),
+        ("Geschädigter-Ort", ["anspruch_plz_ort", "gesch_plz_ort"]),
+        ("Geschädigter-PLZ-Ort", ["anspruch_plz_ort", "gesch_plz_ort"]),
+        ("Geschädigter-Telefon", ["anspruch_telefon", "gesch_telefon"]),
+        ("Geschädigter-Tel", ["anspruch_telefon", "gesch_telefon"]),
+        ("Geschädigter-Email", ["anspruch_email", "gesch_email"]),
+        ("Geschädigter-E-Mail", ["anspruch_email", "gesch_email"]),
+        ("Geschädigter-Kennzeichen", ["anspruch_kennzeichen"]),
+        ("Geschädigter-Fahrzeug", ["anspruch_fabrikat", "anspruchsteller_fahrzeug"]),
+    ]
+    for _suffix_key, _target_keys in _gesch_subkey_map:
+        if _fields.get(_suffix_key):
+            for _tk in _target_keys:
+                if not form_data.get(_tk):
+                    form_data[_tk] = _fields[_suffix_key]
+    _gesch_name = form_data.get("anspruchsteller_name") or form_data.get("gesch_firma_name") or form_data.get("anspruch_name") or ""
     if _gesch_name:
-        # Try to parse "Geschädigter-Adresse", "Geschädigter-PLZ", "Geschädigter-Telefon", "Geschädigter-Email" keys
-        for _suffix_key, _target_keys in [
-            ("Geschädigter-Adresse", ["anspruch_strasse", "gesch_strasse"]),
-            ("Geschädigter-Straße", ["anspruch_strasse", "gesch_strasse"]),
-            ("Geschädigter-PLZ", ["anspruch_plz_ort", "gesch_plz_ort"]),
-            ("Geschädigter-Ort", ["anspruch_plz_ort", "gesch_plz_ort"]),
-            ("Geschädigter-Telefon", ["anspruch_telefon", "gesch_telefon"]),
-            ("Geschädigter-Tel", ["anspruch_telefon", "gesch_telefon"]),
-            ("Geschädigter-Email", ["anspruch_email", "gesch_email"]),
-            ("Geschädigter-E-Mail", ["anspruch_email", "gesch_email"]),
-            ("Geschädigter-Kennzeichen", ["anspruch_kennzeichen"]),
-        ]:
-            if _fields.get(_suffix_key):
-                for _tk in _target_keys:
-                    if not form_data.get(_tk):
-                        form_data[_tk] = _fields[_suffix_key]
         # Also parse inline Geschädigter "Name, Str. 5, 12345 Ort" comma-separated
         if "," in _gesch_name and not form_data.get("anspruch_strasse") and not form_data.get("gesch_strasse"):
             _parts = [p.strip() for p in _gesch_name.split(",")]
@@ -15502,6 +15593,285 @@ async def _process_openviva_email(body_text: str, sender_email: str) -> dict:
                     _in_freetext = False
         if _freetext_lines:
             form_data["unfallhergang"] = " ".join(_freetext_lines)
+    # Alias: many templates use "hergang" as shorter field name for accident/damage description
+    if not form_data.get("hergang"):
+        _hg_src = form_data.get("unfallhergang") or form_data.get("schadenhergang") or form_data.get("descriere_dauna") or ""
+        if _hg_src:
+            form_data["hergang"] = _hg_src
+    # Alias: schadenhergang ← unfallhergang (and vice versa) for templates using either name
+    if not form_data.get("schadenhergang") and form_data.get("unfallhergang"):
+        form_data["schadenhergang"] = form_data["unfallhergang"]
+    if not form_data.get("unfallhergang") and form_data.get("schadenhergang"):
+        form_data["unfallhergang"] = form_data["schadenhergang"]
+    if not form_data.get("descriere_dauna") and form_data.get("unfallhergang"):
+        form_data["descriere_dauna"] = form_data["unfallhergang"]
+
+    # === NARRATIVE ENRICHMENT — full-sentence German when original is thin (G2 verb-forms) ===
+    _n_date = form_data.get("schadentag_uhrzeit") or form_data.get("schadensdatum") or ""
+    _n_ort = form_data.get("schadenort") or form_data.get("schadensort") or ""
+    _n_sum_raw = form_data.get("schadenshoehe") or form_data.get("anspruch_schadenshoehe") or ""
+    # Format EUR with thousand-separator for narrative (before composition)
+    _n_sum_clean = str(_n_sum_raw).replace(".","").replace(",","").replace(" EUR","").replace(" ","").strip()
+    if _n_sum_clean.isdigit() and len(_n_sum_clean) >= 4:
+        _n_sum = format(int(_n_sum_clean), ",").replace(",", ".")
+    else:
+        _n_sum = _n_sum_raw
+    # Verb-form map — covers broker-common damage phrases. Substring-match so "Hydraulik defekt" maps via "hydraulik".
+    _noun_to_clause = {
+        "kollision": "ereignete sich eine Kollision",
+        "auffahrunfall": "ereignete sich ein Auffahrunfall",
+        "parkschaden": "entstand ein Parkschaden",
+        "wasserschaden": "entstand ein Wasserschaden",
+        "waschmaschine": "entstand ein Wasserschaden durch eine defekte Waschmaschine",
+        "wasserleitung": "entstand ein Wasserschaden durch eine geplatzte Wasserleitung",
+        "rohrbruch": "entstand ein Wasserschaden durch Rohrbruch",
+        "hydraulik": "trat ein Hydraulikschaden auf",
+        "spindel": "trat ein Spindeldefekt auf",
+        "motor": "trat ein Motorschaden auf",
+        "pumpe": "trat ein Pumpendefekt auf",
+        "getriebe": "trat ein Getriebeschaden auf",
+        "elektronik": "trat ein elektronischer Defekt auf",
+        "steuerung": "trat ein Steuerungsausfall auf",
+        "steuerungsausfall": "trat ein Steuerungsausfall auf",
+        "sensor": "trat ein Sensordefekt auf",
+        "lager": "trat ein Lagerschaden auf",
+        "welle": "trat ein Wellenschaden auf",
+        "ausfall": "trat ein Schadenereignis durch Ausfall auf",
+        "stromausfall": "trat ein Schaden durch Stromausfall auf",
+        "kurzschluss": "entstand ein Schaden durch Kurzschluss",
+        "defekt": "trat ein technischer Defekt auf",
+        "bruch": "ereignete sich ein Bruchschaden",
+        "maschinenbruch": "ereignete sich ein Maschinenbruchschaden",
+        "toner": "entstand ein Sachschaden durch auslaufenden Toner",
+        "brand": "ereignete sich ein Brandschaden",
+        "feuer": "ereignete sich ein Brandschaden",
+        "diebstahl": "ereignete sich ein Diebstahl",
+        "vandalismus": "ereignete sich ein Sachschaden durch Vandalismus",
+        "glasbruch": "entstand ein Glasbruchschaden",
+        "sturm": "trat ein Sturmschaden auf",
+        "hagel": "entstand ein Hagelschaden",
+        "parkett": "entstand ein Sachschaden am Parkettboden",
+        "teppich": "entstand ein Sachschaden am Teppichboden",
+        "decke": "entstand ein Sachschaden an der Decke",
+    }
+    _enriched_narrative = None
+    for _narr_key in ("unfallhergang","schadenhergang"):
+        _orig = (form_data.get(_narr_key,"") or "").strip()
+        if _orig and len(_orig) < 80:
+            if _enriched_narrative is None:
+                _core = _orig.rstrip(".").strip()
+                _core_low = _core.lower()
+                # First try exact first-word match, then substring on any map key
+                _clause = None
+                _words = _core_low.split()
+                if _words:
+                    _clause = _noun_to_clause.get(_words[0])
+                if not _clause:
+                    for _k, _v in _noun_to_clause.items():
+                        if _k in _core_low:
+                            _clause = _v
+                            break
+                if not _clause:
+                    # Longer source or uncovered noun — use as-is with proper sentence wrapping
+                    _clause = f"ereignete sich folgender Schaden: {_core}"
+                _parts = []
+                if _n_date:
+                    _parts.append(f"Am {_n_date}")
+                if _n_ort:
+                    _parts.append(f"in {_n_ort}" if _n_date else f"In {_n_ort}")
+                if _clause:
+                    # Verb-form clause — flows grammatically
+                    _parts.append(_clause + ".")
+                else:
+                    # Longer source — use original with slight reformat
+                    _parts.append(f"ereignete sich folgender Schaden: {_core}.")
+                if _n_sum:
+                    _parts.append(f"Die Schadenshoehe wird auf {_n_sum} EUR geschaetzt.")
+                _enriched_narrative = " ".join(_parts).strip()
+            form_data[_narr_key] = _enriched_narrative
+    # G1: Canonical narrative — write once to descriere_dauna, cross-ref for hergang/was_beschaedigt/etc.
+    if _enriched_narrative:
+        if not (form_data.get("descriere_dauna","") or "").strip() or len((form_data.get("descriere_dauna","") or "").strip()) < 60:
+            form_data["descriere_dauna"] = _enriched_narrative
+        # hergang gets cross-ref (avoids JSON-level duplication) — most templates don't render "hergang" anyway
+        if not (form_data.get("hergang","") or "").strip() or len((form_data.get("hergang","") or "").strip()) < 60:
+            form_data["hergang"] = "(siehe Schadenhergang)"
+    # P2+P4: LLM polish — trigger on thin, generic, OR auto-constructed template patterns
+    try:
+        _narr_final = form_data.get("unfallhergang","") or form_data.get("schadenhergang","")
+        # Detect ALL template-built patterns (ereignete sich, entstand ein, trat ein, Am X in Y)
+        _is_template_built = _narr_final and any(p in _narr_final for p in (
+            "entstand ein Schaden (", "folgender Schaden:", "ereignete sich",
+            "entstand ein", "trat ein", "Die Schadenshoehe wird auf"
+        ))
+        if _narr_final and (_is_template_built or len(_narr_final) < 120) and os.environ.get("ANTHROPIC_API_KEY"):
+            import anthropic as _anthropic_polish
+            _polish_client = _anthropic_polish.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+            _ctx_parts = []
+            if _n_date: _ctx_parts.append(f"Datum: {_n_date}")
+            if _n_ort: _ctx_parts.append(f"Ort: {_n_ort}")
+            if _n_sum: _ctx_parts.append(f"Schadenshoehe: {_n_sum} EUR")
+            if form_data.get("vn_name"): _ctx_parts.append(f"VN: {form_data['vn_name']}")
+            if form_data.get("fahrzeug"): _ctx_parts.append(f"Fahrzeug: {form_data['fahrzeug']}")
+            if form_data.get("machine_type"): _ctx_parts.append(f"Maschine: {form_data['machine_type']}")
+            _ctx = ", ".join(_ctx_parts)
+            _prompt = f"""Formuliere eine professionelle 3-4 Satz Schadenschilderung auf Deutsch fuer eine Versicherungsmeldung.
+Ausgangspunkt (moeglicherweise knapp): "{_narr_final}"
+Kontext: {_ctx}
+Regeln: 
+- 3-4 Saetze (NICHT weniger) — strukturiert in: 1) Datum+Ort, 2) Schadenereignis, 3) Schaden/Betrag, 4) naechste Schritte/Nachfolgeaufgaben
+- keine Spekulation, keine Erfindungen, nur faktenbasiert
+- wenn Input zu vage, schreibe neutral-sachlich und fuege einen Abschluss-Satz hinzu ("Eine detaillierte Schadenaufnahme folgt.")
+- professionelle Versicherungs-Terminologie
+Antworte NUR mit der fertigen Schadenschilderung, ohne Anfuehrungszeichen, ohne Meta-Kommentare."""
+            _polished = _polish_client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=300,
+                temperature=0,
+                messages=[{"role":"user","content":_prompt}]
+            ).content[0].text.strip()
+            if _polished and len(_polished) > len(_narr_final) and len(_polished) < 500:
+                form_data["unfallhergang"] = _polished
+                form_data["schadenhergang"] = _polished
+                form_data["descriere_dauna"] = _polished
+    except Exception as _llm_err:
+        _log.debug(f"LLM narrative polish skipped: {_llm_err}")
+
+    # === HPF TEMPLATE DEFAULTS & ALIASES (section 0, 2, 3, 4, 8) ===
+    # Determine context: populate even if not strictly in HPF — harmless if field unused by template
+    # Section 0 Allgemeine Vertragsdaten
+    _vn_lower_check = (form_data.get("vn_name","") + " " + form_data.get("vn_firma_name","")).lower()
+    _vn_is_company = any(s in _vn_lower_check for s in ("gmbh","kg","ag","e.k.","ek","ug","ohg","gbr","se","sarl","service","gewerbe"))
+    if not form_data.get("haftpflicht_art"):
+        form_data["haftpflicht_art"] = "Betriebs-Haftpflicht" if _vn_is_company else "Privat-Haftpflicht"
+    # G4: If VN is a private person, vn_firma_name should be "Privatperson" (not the person's name)
+    if not _vn_is_company and form_data.get("vn_firma_name") and form_data.get("vn_firma_name") == form_data.get("vn_name",""):
+        form_data["vn_firma_name"] = "Privatperson"
+    # Section 2 Geschädigte: ensure gesch_firma_name ← anspruchsteller/anspruch_name
+    if not form_data.get("gesch_firma_name"):
+        form_data["gesch_firma_name"] = form_data.get("anspruchsteller_name") or form_data.get("anspruch_name") or form_data.get("geschaedigter","")
+    # Blocker 2: nachgereicht fallback for HPF required Geschädigter fields when STILL empty
+    if not form_data.get("gesch_firma_name"):
+        form_data["gesch_firma_name"] = "Angaben zum Geschaedigten werden nachgereicht"
+    # Section 3.1 geschaedigter (required * on HPF)
+    if not form_data.get("geschaedigter"):
+        form_data["geschaedigter"] = form_data.get("gesch_firma_name") or form_data.get("anspruch_name","") or "Angaben werden nachgereicht"
+    # Section 3.4 schaden_verursacher (required *) — default VN verursacht
+    if not form_data.get("schaden_verursacher"):
+        form_data["schaden_verursacher"] = form_data.get("vn_firma_name") or form_data.get("vn_name","") or "Versicherungsnehmer"
+    # Section 4.1 Sachschäden — only populate from SPECIFIC sources (piese_avariate),
+    # never echo narrative verbatim — a broker needs actual damaged-object list, not accident description
+    if not form_data.get("was_beschaedigt"):
+        _wb_specific = form_data.get("piese_avariate","")
+        if _wb_specific and _wb_specific != form_data.get("unfallhergang","") and _wb_specific != form_data.get("schadenhergang",""):
+            form_data["was_beschaedigt"] = _wb_specific
+        else:
+            # Cross-reference instead of echo: maps to required starred field without duplicating content
+            form_data["was_beschaedigt"] = "Siehe Schadenhergang in Abschnitt 7"
+    # German thousand-separator + EUR formatting (16898 → "16.898 EUR")
+    def _fmt_eur(v):
+        s = str(v or "").strip()
+        if not s: return s
+        # Already formatted
+        if "EUR" in s or "€" in s: return s
+        # Clean up possible decimal separator confusion
+        _n = s.replace(" ","").replace(".","").replace(",","")
+        if _n.isdigit() and len(_n) >= 4:
+            # Add German thousand separator (.) and EUR suffix
+            _formatted = format(int(_n), ",").replace(",", ".")
+            return f"{_formatted} EUR"
+        elif _n.isdigit():
+            return f"{s} EUR"
+        return s
+    for _mk in ("schadenhoehe_ansprueche","schadenshoehe","anspruch_schadenshoehe","schadenhoehe_ansprueche"):
+        if not form_data.get(_mk):
+            # Copy from first available source
+            _src = form_data.get("schadenshoehe") or form_data.get("anspruch_schadenshoehe","")
+            if _src: form_data[_mk] = _src
+        if form_data.get(_mk):
+            form_data[_mk] = _fmt_eur(form_data[_mk])
+    # Section 8 ort_datum (required * both HPF and KFZ)
+    if not form_data.get("ort_datum"):
+        import datetime as _od_dt
+        _ort_city = (form_data.get("vn_plz_ort","").split(" ")[-1] if form_data.get("vn_plz_ort") else "") or "Berlin"
+        form_data["ort_datum"] = f"{_ort_city}, {_od_dt.datetime.utcnow().strftime('%d.%m.%Y')}"
+
+    # === KFZ TEMPLATE DEFAULTS (section 3 Fahrer, section 11 ort_datum) ===
+    # Section 3.1 fahrt_zweck (required *)
+    if not form_data.get("fahrt_zweck"):
+        _vn_lower = (form_data.get("vn_name","") + " " + form_data.get("vn_firma_name","")).lower()
+        form_data["fahrt_zweck"] = "Dienstlich" if any(s in _vn_lower for s in ("gmbh","kg","ag","e.k.","ug","spedition","taxi","service","gewerbe")) else "Privat"
+    # Section 3.2 fahrer_name — default to VN ONLY if VN is a natural person (not company)
+    # Companies can't hold Führerschein; mark as "nachzureichen" to avoid legal incoherence
+    if not form_data.get("fahrer_name"):
+        _vn_combined = (form_data.get("vn_name","") + " " + form_data.get("vn_firma_name","")).lower()
+        _is_company = any(s in _vn_combined for s in ("gmbh","kg","ag","e.k.","ek","ug","ohg","gbr","se","sarl"))
+        if _is_company:
+            form_data["fahrer_name"] = "Fahrer wird nachgereicht"
+            _co_name = form_data.get('vn_firma_name') or form_data.get('vn_name','')
+            if _co_name == "Privatperson":
+                _co_name = form_data.get('vn_name','')
+            form_data["fahrer_anschrift"] = f"c/o {_co_name}"
+            form_data["fahrer_kontakt"] = "Kontaktdaten werden mit Fahrer nachgereicht"
+        else:
+            form_data["fahrer_name"] = form_data.get("vn_name","")
+            if not form_data.get("fahrer_anschrift"):
+                form_data["fahrer_anschrift"] = form_data.get("vn_adresse","") or form_data.get("vn_strasse","")
+            if not form_data.get("fahrer_kontakt"):
+                form_data["fahrer_kontakt"] = form_data.get("vn_kontakt","")
+    # Section 3.3 fahrerlaubnis — "Ja, wird bestätigt" if Fahrer is natural person, otherwise "zu klaeren"
+    if not form_data.get("fahrerlaubnis"):
+        if form_data.get("fahrer_name","").startswith("Fahrer wird"):
+            form_data["fahrerlaubnis"] = "Wird mit Fahrer bestaetigt"
+        else:
+            form_data["fahrerlaubnis"] = "Ja"
+    # Section 4 polizei_aufnahme — derive from polizei_aktenzeichen presence
+    if not form_data.get("polizei_aufnahme") and form_data.get("polizei_aktenzeichen"):
+        form_data["polizei_aufnahme"] = "Ja"
+
+    # === MB TEMPLATE DEFAULTS (section 4, 5, 7b) ===
+    # Section 4.3 serie_produs "Baujahr / Fabr.-Nr." — ALWAYS combine both if both exist
+    _sp_cur = (form_data.get("serie_produs","") or "").strip()
+    _sp_fin = (form_data.get("fahrgestellnummer","") or form_data.get("fabrikationsnummer","") or _fields.get("Fabrikationsnummer","") or _fields.get("Fabrikations-Nr","")).strip()
+    _sp_by = (form_data.get("baujahr","") or _fields.get("Baujahr","")).strip()
+    # Recompose if current value is just a 4-digit year (likely set from Baujahr alone) OR empty
+    if not _sp_cur or (_sp_cur.isdigit() and len(_sp_cur)==4):
+        if _sp_fin and _sp_by:
+            form_data["serie_produs"] = f"{_sp_by} / {_sp_fin}"
+        elif _sp_fin:
+            form_data["serie_produs"] = _sp_fin
+        elif _sp_by:
+            form_data["serie_produs"] = f"Baujahr: {_sp_by}"
+    # Section 5 garantie_expirata — default Nein (unknown) unless baujahr > 3 yrs old
+    if not form_data.get("garantie_expirata"):
+        _bj = form_data.get("baujahr","") or form_data.get("erstzulassung","")
+        _year_str = str(_bj)[:4] if _bj else ""
+        try:
+            import datetime as _bj_dt
+            if _year_str.isdigit() and (_bj_dt.datetime.utcnow().year - int(_year_str)) > 3:
+                form_data["garantie_expirata"] = "Ja"
+            else:
+                form_data["garantie_expirata"] = "Nein"
+        except Exception:
+            form_data["garantie_expirata"] = "Nein"
+    # Section 7a piese_avariate — if just machine name, append specificity placeholder
+    if form_data.get("piese_avariate"):
+        _pav = form_data["piese_avariate"].strip()
+        _mt = (form_data.get("machine_type","") or form_data.get("catalog_position","")).strip()
+        if _pav == _mt or _pav in _mt or _mt in _pav:
+            form_data["piese_avariate"] = f"{_mt} (detaillierte Teileliste folgt nach Befundaufnahme)"
+    # Section 7b piese_inlocuit — cross-reference to 7a instead of separate deferral (G6)
+    if not form_data.get("piese_inlocuit"):
+        _pav = (form_data.get("piese_avariate","") or "").strip()
+        if _pav and ("," in _pav or ";" in _pav or "und" in _pav.lower()) and "Teileliste folgt" not in _pav:
+            form_data["piese_inlocuit"] = _pav
+        else:
+            form_data["piese_inlocuit"] = "(siehe Abschnitt 7a)"
+    # Section 1.2 / 3.2 contact_phone_email / owner_phone
+    if not form_data.get("contact_phone_email"):
+        form_data["contact_phone_email"] = form_data.get("vn_kontakt","")
+    if not form_data.get("owner_phone"):
+        form_data["owner_phone"] = form_data.get("vn_kontakt","")
 
     # Also try common contact field names (check multiple variants)
     client_name = (form_data.get("vn_name", "")
@@ -15600,7 +15970,49 @@ async def _process_openviva_email(body_text: str, sender_email: str) -> dict:
     _completeness = _calc_completeness(form_data, template_id)
     _filled_count = sum(1 for v in form_data.values() if v and str(v).strip())
     _log.info(f"OpenVIVA completeness: {_filled_count} filled fields, weighted score = {_completeness}%")
+    # P7: Detect pending-data placeholders — TEMPLATE-SCOPED (must run BEFORE readiness)
+    _pending_fields = []
+    # KFZ-only: driver data
+    if template_id == "tpl-kfz-schaden":
+        if form_data.get("fahrer_name") == "Fahrer wird nachgereicht":
+            _pending_fields.append("Fahrerdaten (Name, Anschrift, Führerschein)")
+    # MB-only: parts list
+    if template_id == "tpl-maschinenbruch":
+        if form_data.get("piese_inlocuit") == "(siehe Abschnitt 7a)" and "folgt nach Befundaufnahme" in (form_data.get("piese_avariate","") or ""):
+            _pending_fields.append("Detaillierte Teileliste nach Befundaufnahme")
+    # HPF-only: Geschädigter data
+    if template_id == "tpl-haftpflicht":
+        if "nachgereicht" in (form_data.get("gesch_firma_name","") or ""):
+            _pending_fields.append("Angaben zum Geschaedigten (Name, Anschrift, Kontakt)")
+    # All templates: VN contact if empty
+    if not form_data.get("vn_kontakt") or len(form_data.get("vn_kontakt","").strip()) < 5:
+        _pending_fields.append("Vollständige VN-Kontaktdaten")
+    # P10: Versicherer-readiness score — computed after pending_fields known
+    _readiness = _completeness
+    _readiness -= len(_pending_fields) * 3
+    if "nachgereicht" in (form_data.get("gesch_firma_name","") or ""): _readiness -= 4
+    if form_data.get("fahrer_name") == "Fahrer wird nachgereicht": _readiness -= 3
+    if "(siehe Abschnitt 7a)" in (form_data.get("piese_inlocuit","") or ""): _readiness -= 2
+    _readiness = max(0, min(100, _readiness))
+    form_data["_readiness_score"] = str(_readiness)
+    # P11: SLA real timing
+    _sla_dur = max(1, int(_ov_time_mod.time() - _ov_local_start_ts))
+    form_data["_sla_generated_at"] = now
+    form_data["_sla_processing_sec"] = str(_sla_dur)
+    # Store metadata for auto-reply follow-up (sent after submission is created below)
+    _pending_followup_text = None
+    if _pending_fields:
+        _pending_list = "\n".join([f"  • {f}" for f in _pending_fields])
+        _pending_followup_text = f"""Sehr geehrte Damen und Herren,
 
+der Schadenfall {ticket_code} wurde erstellt, es fehlen jedoch folgende Angaben für eine vollständige Meldung an den Versicherer:
+
+{_pending_list}
+
+Bitte senden Sie uns die fehlenden Informationen per E-Mail oder ergänzen Sie diese im Formular.
+
+Mit freundlichen Grüßen
+Ihr Alex (TPSH Versicherungsmakler)"""
     _fs_set("form_submissions", sub_id, {
         "template_id": template_id, "reference_number": ref,
         "client_name": client_name, "client_email": client_email,
@@ -15608,6 +16020,10 @@ async def _process_openviva_email(body_text: str, sender_email: str) -> dict:
         "form_data": form_data, "status": "sent",
         "completeness_pct": _completeness, "submitted_at": now,
         "ticket_code": ticket_code, "created_at": now,
+        "pending_fields": _pending_fields,
+        "consistency_warnings": [],
+        "readiness_score": _readiness,
+        "sla_processing_sec": _sla_dur,
         "reminder_count": 0,
     }, merge=False)
 
@@ -15774,6 +16190,7 @@ async def api_debug_simulate_openviva(request: _Request):
                         else:
                             _cblock = {"type":"document","source":{"type":"base64","media_type":"application/pdf","data":_b64s}}
                         _vr = _cli.messages.create(model="claude-sonnet-4-20250514", max_tokens=4096,
+                            temperature=0,
                             messages=[{"role":"user","content":[_cblock,{"type":"text","text":_UNIFIED_CLASSIFY_PROMPT}]}])
                         _vt = _vr.content[0].text.strip()
                         if _vt.startswith("```"):
@@ -15782,6 +16199,12 @@ async def api_debug_simulate_openviva(request: _Request):
                         _att_info["category"] = _cla.get("category","OTHER")
                         _att_info["classification_confidence"] = _cla.get("confidence",0.5)
                         _att_info["summary"] = _cla.get("summary","")
+                        # Heuristic upgrade: filename hints often more reliable than Vision on synthetic/low-quality images
+                        _fn_lower = (_att_info.get("filename","") or "").lower()
+                        import re as _heur_re
+                        if _att_info["category"] == "OTHER" and _heur_re.search(r'schaden|damage|defekt|maschine|wasser|unfall|foto.*schaden|bild.*schaden', _fn_lower):
+                            _att_info["category"] = "DAMAGE_PHOTO"
+                            _att_info["_heuristic_upgrade"] = True
                         _rf = _cla.get("extracted_fields") or {}
                         _att_info["extracted_fields"] = {k:v for k,v in _rf.items() if v is not None and v != "null"}
                     except Exception as _ve:
@@ -15793,9 +16216,63 @@ async def api_debug_simulate_openviva(request: _Request):
                     "attachments": _firestore_mod.ArrayUnion([_att_info])
                 })
                 _ef = _att_info.get("extracted_fields") or {}
+                _att_cat = (_att_info.get("category") or "").upper()
+                # Fix 1: POLICE_REPORT vehicle fields describe the OPPOSING party (gegner),
+                # not the VN. Remap them to REAL KFZ Section 7 (Anspruchsteller) slots
+                # BEFORE they pollute VN fields. Field names verified against
+                # mcp-server/insurance_broker_mcp/data/form_templates/kfz_schadenmeldung.json
+                # Section "Anspruchsteller (Geschädigter)" — only anspruch_kennzeichen,
+                # anspruch_fabrikat, anspruch_name exist. fahrgestellnummer has no
+                # dedicated claimant slot, so it's appended to anspruch_fabrikat.
+                _police_report_remap = {
+                    "kennzeichen": "anspruch_kennzeichen",
+                    "fahrzeug": "anspruch_fabrikat",
+                    "halter": "anspruch_name",
+                }
+                if _att_cat == "POLICE_REPORT":
+                    # B4: Extract Dienststelle from multiple sources
+                    _dst = _ef.get("dienststelle") or _ef.get("Dienststelle") or _ef.get("polizei_dienststelle") or _ef.get("behörde")
+                    if not _dst:
+                        # Fallback: regex on summary AND raw extracted text
+                        import re as _dst_re
+                        _haystack = (_att_info.get("summary","") or "") + " " + str(_ef.get("raw_text","") or "")
+                        # Multi-pattern regex
+                        for _pat in (
+                            r'Dienststelle:?\s*([A-Za-züöäßÜÖÄ][A-Za-züöäßÜÖÄ\s\-.]{3,60})',
+                            r'Polizeidienststelle:?\s*([A-Za-züöäßÜÖÄ][A-Za-züöäßÜÖÄ\s\-.]{3,60})',
+                            r'(Polizeipr[aä]sidium\s+[A-ZÄÖÜ][A-Za-züöäßÜÖÄ\s\-]+)',
+                            r'(Polizeiinspektion\s+[A-ZÄÖÜ][A-Za-züöäßÜÖÄ\s\-]+)',
+                            r'(Autobahnpolizei\s+[A-ZÄÖÜ][A-Za-züöäßÜÖÄ\s\-]+)',
+                            r'(PP\s+[A-ZÄÖÜ][A-Za-züöäßÜÖÄ\s\-]+)',
+                        ):
+                            _m = _dst_re.search(_pat, _haystack)
+                            if _m:
+                                _dst = _m.group(1).strip().rstrip(".,;")
+                                break
+                    if _dst and len(_dst) > 2:
+                        _att_extracted_fields_merged["polizei_dienststelle"] = _dst
+                        _att_extracted_fields_merged["dienststelle"] = _dst
+                    # Merge fahrgestellnummer into anspruch_fabrikat (no dedicated slot)
+                    _fin_val = _ef.get("fahrgestellnummer") or _ef.get("Fahrgestellnummer")
+                    _veh_val = _ef.get("fahrzeug") or _ef.get("Fahrzeug")
+                    if _fin_val:
+                        _combo = f"{_veh_val} (FIN: {_fin_val})" if _veh_val else f"FIN: {_fin_val}"
+                        if "anspruch_fabrikat" not in _att_extracted_fields_merged:
+                            _att_extracted_fields_merged["anspruch_fabrikat"] = _combo
+                    # Remap remaining opposing-party fields and DELETE originals from _ef
+                    # to prevent VN slot poisoning during downstream smart-merge.
+                    for _vn_key in ("fahrgestellnummer", "kennzeichen", "halter", "fahrzeug"):
+                        if _vn_key in _ef:
+                            _v_pr = _ef.pop(_vn_key, None)
+                            if _v_pr and _vn_key in _police_report_remap:
+                                _dest_pr = _police_report_remap[_vn_key]
+                                if _dest_pr not in _att_extracted_fields_merged:
+                                    _att_extracted_fields_merged[_dest_pr] = _v_pr
                 for _k, _v in _ef.items():
-                    if _v and _k not in _att_extracted_fields_merged:
-                        _att_extracted_fields_merged[_k] = _v
+                    if not _v: continue
+                    _kk = _k
+                    if _kk not in _att_extracted_fields_merged:
+                        _att_extracted_fields_merged[_kk] = _v
             except Exception as _ae:
                 import traceback as _tb
                 _log.warning(f"debug attachment failed: {_ae}\n{_tb.format_exc()}")
@@ -15843,6 +16320,18 @@ async def api_debug_simulate_openviva(request: _Request):
                 for _alias_tgt in _template_aliases.get(_tgt.lower(), []):
                     if not _current_fd.get(_alias_tgt) and _alias_tgt not in _new_fields:
                         _new_fields[_alias_tgt] = _mv
+            # Auto-fill polizei_aufnahme when POLICE_REPORT attached
+            try:
+                _snap_for_pol = _fs_db.collection("form_submissions").document(_sub_id).get()
+                _sd = _snap_for_pol.to_dict() or {} if _snap_for_pol.exists else {}
+                _fd_pol = _sd.get("form_data",{}) or {}
+                _atts_pol = _sd.get("attachments",[]) or []
+                _has_polizei = any((a.get("category","") or "").upper() == "POLICE_REPORT" for a in _atts_pol)
+                if _has_polizei and not _fd_pol.get("polizei_aufnahme"):
+                    _new_fields["polizei_aufnahme"] = "Ja"
+                if _has_polizei and not _fd_pol.get("polizeilich_aufgenommen"):
+                    _new_fields["polizeilich_aufgenommen"] = "Ja"
+            except Exception: pass
             if _new_fields:
                 _fd_upd = {f"form_data.{k}": v for k,v in _new_fields.items()}
                 _fs_db.collection("form_submissions").document(_sub_id).update(_fd_upd)
@@ -15854,7 +16343,66 @@ async def api_debug_simulate_openviva(request: _Request):
                     _result["completeness_pct_after_merge"] = _recalc
                 except Exception: pass
                 _result["fields_merged_from_attachments"] = list(_new_fields.keys())
+            # P5: Cross-document consistency check — compare Vision-extracted fields vs email body
+            try:
+                _warnings = []
+                _snap = _fs_db.collection("form_submissions").document(_sub_id).get()
+                _sub_doc = _snap.to_dict() or {}
+                _sub_atts = _sub_doc.get("attachments", []) or []
+                _fd_check = _sub_doc.get("form_data", {}) or {}
+                for _att in _sub_atts:
+                    _ef = _att.get("extracted_fields",{}) or {}
+                    _att_name = _att.get("filename","attachment")
+                    # Check unfallort
+                    _email_ort = (_fd_check.get("schadenort","") or _fd_check.get("schadensort","")).strip().lower()
+                    _vision_ort = (_ef.get("unfallort","") or "").strip().lower()
+                    if _email_ort and _vision_ort and _email_ort not in _vision_ort and _vision_ort not in _email_ort:
+                        _warnings.append(f"⚠ Ort-Widerspruch: Email='{_fd_check.get('schadenort','')}' vs {_att_name}='{_ef.get('unfallort','')}'")
+                    # Check schadenshoehe
+                    _email_sum = (_fd_check.get("schadenshoehe","") or "").replace(".","").replace(",","").replace(" EUR","").strip()
+                    _vision_sum = (_ef.get("schadenshoehe","") or "").replace(".","").replace(",","").replace(" EUR","").strip()
+                    if _email_sum and _vision_sum and _email_sum.isdigit() and _vision_sum.isdigit() and abs(int(_email_sum) - int(_vision_sum)) > 500:
+                        _warnings.append(f"⚠ Schadenshoehe-Differenz: Email={_fd_check.get('schadenshoehe','')} vs {_att_name}={_ef.get('schadenshoehe','')}")
+                if _warnings:
+                    _fs_db.collection("form_submissions").document(_sub_id).update({"consistency_warnings": _warnings})
+                    _result["consistency_warnings"] = _warnings
+            except Exception as _cw_err:
+                pass
         _result["attachments_processed"] = len(_atts_in)
+        # Fix 2 v2: MB Section 8 attachment→slot binding — ALWAYS run when attachments present
+        # (independent of _att_extracted_fields_merged which skips when Vision extracts nothing)
+        if _atts_in:
+            try:
+                import re as _re_mb
+                _tpl_bind = (_fs_db.collection("form_submissions").document(_sub_id).get().to_dict() or {}).get("template_id", "")
+                if _tpl_bind == "tpl-maschinenbruch":
+                    _snap = _fs_db.collection("form_submissions").document(_sub_id).get()
+                    _fd_now = (_snap.to_dict() or {}).get("form_data", {}) if _snap.exists else {}
+                    _sub_atts_now = (_snap.to_dict() or {}).get("attachments", []) if _snap.exists else []
+                    _bu = {}
+                    _kv_m = None; _foto_m = None
+                    for _a in (_sub_atts_now or []):
+                        _cat = (_a.get("category") or "").upper()
+                        _fnl = (_a.get("filename") or "").lower()
+                        if _kv_m is None and (_cat == "REPAIR_ESTIMATE" or "repair" in _cat.lower() or _re_mb.search(r'kosten|rechnung|estimate', _fnl)):
+                            _kv_m = _a.get("filename") or _a.get("saved_as") or ""
+                        # Broader: non-REPAIR_ESTIMATE image on MB binds to foto_daune
+                        if _foto_m is None and _cat != "REPAIR_ESTIMATE" and (
+                            _cat in ("VEHICLE_DAMAGE","SCHADEN_FOTO","MACHINE_DAMAGE","OTHER","")
+                            or _re_mb.search(r'schaden|damage|foto|bild|maschine|defekt|unfall', _fnl)
+                            or str(_a.get("mime","")).startswith("image/")
+                            or str(_a.get("content_type","")).startswith("image/")
+                        ):
+                            _foto_m = _a.get("filename") or _a.get("saved_as") or ""
+                    if _kv_m and not _fd_now.get("costuri_reparatie"):
+                        _bu["costuri_reparatie"] = f"beigefuegt: {_kv_m}"
+                    if _foto_m and not _fd_now.get("foto_daune"):
+                        _bu["foto_daune"] = f"beigefuegt: {_foto_m}"
+                    if _bu:
+                        _fs_db.collection("form_submissions").document(_sub_id).update({f"form_data.{k}": v for k,v in _bu.items()})
+                        _log.info(f"📎 MB Sec.8 bound (debug): {list(_bu.keys())}")
+            except Exception as _bind_err_dbg:
+                _log.warning(f"MB Sec.8 binding (debug) failed: {_bind_err_dbg}")
     return _result
 
 
@@ -16224,8 +16772,9 @@ async def poll_inbox_for_commands():
                                         "uploaded_at": __import__("datetime").datetime.utcnow().isoformat()
                                     }
                                     # AI classify+extract (same as upload endpoint)
-                                    _att_is_image = _att_ct.startswith("image/")
-                                    _att_is_pdf = _att_ct == "application/pdf"
+                                    _att_is_image = _att_ct.startswith("image/") or (_eatt["filename"].lower().endswith((".jpg",".jpeg",".png",".gif",".webp")))
+                                    _att_fn_lower = _eatt["filename"].lower()
+                                    _att_is_pdf = _att_ct == "application/pdf" or _att_fn_lower.endswith(".pdf") or _eatt.get("data","")[:4] == b"%PDF"
                                     if _att_is_image or _att_is_pdf:
                                         try:
                                             import base64 as _att_b64
@@ -16239,6 +16788,7 @@ async def poll_inbox_for_commands():
                                             _att_vision_resp = _att_vision_client.messages.create(
                                                 model="claude-sonnet-4-20250514",
                                                 max_tokens=4096,
+                                                temperature=0,
                                                 messages=[{"role": "user", "content": [_att_content_block, {"type": "text", "text": _UNIFIED_CLASSIFY_PROMPT}]}]
                                             )
                                             _att_vision_text = _att_vision_resp.content[0].text.strip()
@@ -16273,9 +16823,75 @@ async def poll_inbox_for_commands():
                                     # Collect extracted fields for merge into form_data
                                     _ef = _att_info.get("extracted_fields", {})
                                     if _ef:
+                                        _att_cat_upper = (_att_info.get("category") or "").upper()
+                                        # Fix 1: POLICE_REPORT vehicle fields belong to the
+                                        # OPPOSING party (gegner), not the VN. Route them to
+                                        # REAL KFZ Section 7 (Anspruchsteller) slots verified
+                                        # against kfz_schadenmeldung.json. Delete VN-side keys
+                                        # from _ef after remap to prevent VN slot poisoning.
+                                        _police_report_remap = {
+                                            "kennzeichen": "anspruch_kennzeichen",
+                                            "fahrzeug": "anspruch_fabrikat",
+                                            "halter": "anspruch_name",
+                                        }
+                                        if _att_cat_upper == "POLICE_REPORT":
+                                            # CRITICAL: directly populate form_data.polizei_* fields
+                                            # via explicit update (bypass complex merge pipeline)
+                                            _direct_polizei = {}
+                                            if _ef.get("aktenzeichen") or _ef.get("Aktenzeichen"):
+                                                _direct_polizei["polizei_aktenzeichen"] = _ef.get("aktenzeichen") or _ef.get("Aktenzeichen")
+                                                _direct_polizei["aktenzeichen"] = _direct_polizei["polizei_aktenzeichen"]
+                                            if _ef.get("dienststelle") or _ef.get("Dienststelle"):
+                                                _direct_polizei["polizei_dienststelle"] = _ef.get("dienststelle") or _ef.get("Dienststelle")
+                                                _direct_polizei["dienststelle"] = _direct_polizei["polizei_dienststelle"]
+                                            if _ef.get("unfallort") and not _ef.get("_skip_unfallort"):
+                                                _direct_polizei.setdefault("schadenort_polizei", _ef.get("unfallort"))
+                                            # Also auto-set polizei_aufnahme=Ja + polizeilich_aufgenommen=Ja
+                                            _direct_polizei["polizei_aufnahme"] = "Ja"
+                                            _direct_polizei["polizeilich_aufgenommen"] = "Ja"
+                                            if _direct_polizei:
+                                                _fd_pol_upd = {f"form_data.{k}": v for k, v in _direct_polizei.items()}
+                                                try:
+                                                    _fs_db.collection("form_submissions").document(_ov_sub_id).update(_fd_pol_upd)
+                                                    _log.info(f"🚔 Direct polizei fields written: {list(_direct_polizei.keys())}")
+                                                except Exception as _dp_err:
+                                                    _log.warning(f"Direct polizei write failed: {_dp_err}")
+                                            # fahrgestellnummer has no claimant slot —
+                                            # merge into anspruch_fabrikat.
+                                            _fin_val2 = _ef.get("fahrgestellnummer") or _ef.get("Fahrgestellnummer")
+                                            _veh_val2 = _ef.get("fahrzeug") or _ef.get("Fahrzeug")
+                                            if _fin_val2:
+                                                _combo2 = f"{_veh_val2} (FIN: {_fin_val2})" if _veh_val2 else f"FIN: {_fin_val2}"
+                                                if "anspruch_fabrikat" not in _att_extracted_fields_merged:
+                                                    _att_extracted_fields_merged["anspruch_fabrikat"] = _combo2
+                                            for _vn_key2 in ("fahrgestellnummer", "kennzeichen", "halter", "fahrzeug"):
+                                                if _vn_key2 in _ef:
+                                                    _v_pr2 = _ef.pop(_vn_key2, None)
+                                                    if _v_pr2 and _vn_key2 in _police_report_remap:
+                                                        _dest_pr2 = _police_report_remap[_vn_key2]
+                                                        if _dest_pr2 not in _att_extracted_fields_merged:
+                                                            _att_extracted_fields_merged[_dest_pr2] = _v_pr2
+                                        # CRITICAL: For VEHICLE_ID / DOCUMENT_SCAN (Fahrzeugschein/Poliza),
+                                        # fields belong to VN. Direct-write VN fields.
+                                        if _att_cat_upper in ("VEHICLE_ID", "DOCUMENT_SCAN", "INSURANCE_DOC"):
+                                            _direct_vn = {}
+                                            if _ef.get("fahrgestellnummer"):
+                                                _direct_vn["fahrgestellnummer"] = _ef["fahrgestellnummer"]
+                                            if _ef.get("erstzulassung"):
+                                                _direct_vn["erstzulassung"] = _ef["erstzulassung"]
+                                            if _ef.get("versicherungsschein_nr"):
+                                                _direct_vn.setdefault("versicherungsschein_nr", _ef["versicherungsschein_nr"])
+                                            if _direct_vn:
+                                                _fd_vn_upd = {f"form_data.{k}": v for k, v in _direct_vn.items()}
+                                                try:
+                                                    _fs_db.collection("form_submissions").document(_ov_sub_id).update(_fd_vn_upd)
+                                                    _log.info(f"📇 Direct VEHICLE_ID/DOCUMENT_SCAN fields: {list(_direct_vn.keys())}")
+                                                except Exception: pass
                                         for _efk, _efv in _ef.items():
-                                            if _efv and _efk not in _att_extracted_fields_merged:
-                                                _att_extracted_fields_merged[_efk] = _efv
+                                            if not _efv: continue
+                                            _dest_key = _efk
+                                            if _dest_key not in _att_extracted_fields_merged:
+                                                _att_extracted_fields_merged[_dest_key] = _efv
                                     # Remove None values for Firestore serialization
                                     _att_info = {k: v for k, v in _att_info.items() if v is not None}
                                     _fs_db.collection("form_submissions").document(_ov_sub_id).update({
@@ -16315,6 +16931,8 @@ async def poll_inbox_for_commands():
                                     "schadenshoehe": ["anspruch_schadenshoehe", "kasko_schadenshoehe"],
                                     "schadenhoehe": ["anspruch_schadenshoehe", "kasko_schadenshoehe"],
                                     "aktenzeichen": ["polizei_aktenzeichen"],
+                                    "dienststelle": ["polizei_dienststelle"],
+                                    "polizei_dienststelle": ["dienststelle"],
                                     "anspruchsteller_name": ["anspruch_name"],
                                     "anspruchsteller_fahrzeug": ["anspruch_fabrikat"],
                                     "anspruchsteller_strasse": ["anspruch_strasse"],
@@ -16351,6 +16969,35 @@ async def poll_inbox_for_commands():
                                     except Exception:
                                         pass
                                     _log.info(f"📎 Merged {len(_new_fields)} extracted fields from attachments into form_data for sub={_ov_sub_id}: {list(_new_fields.keys())}")
+                            # Fix 2: MB Section 8 attachment→slot binding
+                            # If template is Maschinenbruch, populate foto_daune / costuri_reparatie
+                            # slots with the filename of a matching attachment when empty.
+                            try:
+                                _ov_tpl_id_bind = _ov_result.get('template_id','') or ''
+                                if _ov_tpl_id_bind == 'tpl-maschinenbruch' and _email_attachments:
+                                    _fd_now_snap = _fs_db.collection("form_submissions").document(_ov_sub_id).get()
+                                    _fd_now = (_fd_now_snap.to_dict() or {}).get("form_data", {}) if _fd_now_snap.exists else {}
+                                    _sub_atts_now = (_fd_now_snap.to_dict() or {}).get("attachments", []) if _fd_now_snap.exists else []
+                                    _bind_updates = {}
+                                    _kv_match = None
+                                    _foto_match = None
+                                    for _a in (_sub_atts_now or []):
+                                        _cat = (_a.get("category") or "").upper()
+                                        _fn_l = (_a.get("filename") or "").lower()
+                                        if _kv_match is None and (_cat == "REPAIR_ESTIMATE" or "repair" in _cat.lower() or _re_mod.search(r'kosten|rechnung|estimate', _fn_l)):
+                                            _kv_match = _a.get("filename") or _a.get("saved_as") or ""
+                                        if _foto_match is None and (_cat in ("VEHICLE_DAMAGE","SCHADEN_FOTO") or _re_mod.search(r'schaden|damage|foto|bild', _fn_l)):
+                                            _foto_match = _a.get("filename") or _a.get("saved_as") or ""
+                                    if _kv_match and not _fd_now.get("costuri_reparatie"):
+                                        _bind_updates["costuri_reparatie"] = f"beigefuegt: {_kv_match}"
+                                    if _foto_match and not _fd_now.get("foto_daune"):
+                                        _bind_updates["foto_daune"] = f"beigefuegt: {_foto_match}"
+                                    if _bind_updates:
+                                        _bind_upd = {f"form_data.{k}": v for k, v in _bind_updates.items()}
+                                        _fs_db.collection("form_submissions").document(_ov_sub_id).update(_bind_upd)
+                                        _log.info(f"📎 MB Section 8 bound: {list(_bind_updates.keys())}")
+                            except Exception as _bind_err:
+                                _log.warning(f"MB Section 8 binding failed (non-blocking): {_bind_err}")
                     processed.append({"cmd": "OPENVIVA_PREFILL", "ref": _ov_result.get("ticket_code",""), "result": _ov_result})
                 except Exception as _ov_err:
                     _log.warning(f"OpenVIVA email processing failed: {_ov_err}")

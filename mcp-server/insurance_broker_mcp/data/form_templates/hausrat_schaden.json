@@ -1,0 +1,43 @@
+{
+  "id": "tpl-hausrat",
+  "name": "Hausratversicherung Schadenmeldung",
+  "language": "de",
+  "category": "claims",
+  "status": "published",
+  "sections": [
+    {"number":"1","title":"Versicherungsnehmer","fields":[
+      {"name":"versicherungsschein_nr","label":"Versicherungsschein-Nr.","type":"text","required":true},
+      {"name":"vn_name","label":"Name, Vorname","type":"text","required":true},
+      {"name":"vn_adresse","label":"Straße, PLZ und Ort","type":"text","required":true},
+      {"name":"vn_kontakt","label":"Telefon / E-Mail","type":"text","required":true}
+    ]},
+    {"number":"2","title":"Versicherte Räume","fields":[
+      {"name":"wohnung_adresse","label":"Anschrift der versicherten Wohnung","type":"text","required":true},
+      {"name":"wohnflaeche","label":"Wohnfläche (m²)","type":"number","required":false},
+      {"name":"zimmer_anzahl","label":"Anzahl der Räume","type":"number","required":false}
+    ]},
+    {"number":"3","title":"Schadenereignis","fields":[
+      {"name":"schadentag_uhrzeit","label":"Schadentag / Uhrzeit","type":"text","required":true},
+      {"name":"schadenursache","label":"Ursache","type":"select","required":true,
+       "options":["Einbruchdiebstahl","Raub","Vandalismus","Feuer/Brand","Leitungswasser","Sturm/Hagel","Sonstiges"]},
+      {"name":"schadenhergang","label":"Hergang (detailliert)","type":"textarea","required":true}
+    ]},
+    {"number":"4","title":"Polizei","fields":[
+      {"name":"polizei_gemeldet","label":"Wurde der Schaden der Polizei gemeldet?","type":"select","required":true,"options":["ja","nein"]},
+      {"name":"polizei_dienststelle","label":"Dienststelle","type":"text","required":false},
+      {"name":"polizei_aktenzeichen","label":"Aktenzeichen","type":"text","required":false}
+    ]},
+    {"number":"5","title":"Entwendete/Beschädigte Gegenstände","fields":[
+      {"name":"gegenstaende_liste","label":"Liste der Gegenstände (Bezeichnung, Anschaffungsjahr, Neuwert)","type":"textarea","required":true},
+      {"name":"gesamtschaden","label":"Gesamtschadenshöhe €","type":"number","required":true}
+    ]},
+    {"number":"6","title":"Nachweise","fields":[
+      {"name":"nachweise_vorhanden","label":"Quittungen/Rechnungen vorhanden?","type":"select","required":false,"options":["ja","nein","teilweise"]},
+      {"name":"fotos_vorhanden","label":"Fotos der Gegenstände vorher?","type":"select","required":false,"options":["ja","nein"]}
+    ]},
+    {"number":"7","title":"Bankverbindung & Unterschrift","fields":[
+      {"name":"iban","label":"IBAN","type":"text","required":false},
+      {"name":"ort_datum","label":"Ort / Datum","type":"text","required":true}
+    ]}
+  ]
+}

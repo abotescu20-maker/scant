@@ -1,0 +1,80 @@
+{
+  "id": "tpl-maschinenbruch",
+  "name": "Maschinenbruch-Schadenformular",
+  "description": "Schadenformular für Maschinen- und Geräteversicherung",
+  "language": "de",
+  "category": "claims",
+  "status": "published",
+  "sections": [
+    {
+      "number": "1",
+      "title": "Kontaktperson / Servicemitarbeiter",
+      "fields": [
+        {"id": "contact_name", "name": "contact_name", "label": "1.1 Name und Anschrift des Servicemitarbeiters", "type": "textarea", "required": true, "placeholder": "z.B. Max Mustermann, Musterstraße 2, 10115 Berlin"},
+        {"id": "contact_phone_email", "name": "contact_phone_email", "label": "1.2 Telefonnummer / E-Mail", "type": "text", "required": true, "placeholder": "z.B. +49 170 1234567 / name@firma.de"},
+        {"id": "dosar_nr_client", "name": "dosar_nr_client", "label": "Schadennummer des Kunden", "type": "text", "placeholder": "z.B. T2111/2026"},
+        {"id": "dosar_nr_tpsh", "name": "dosar_nr_tpsh", "label": "TPSH Schadenakte-Nr.", "type": "text"}
+      ]
+    },
+    {
+      "number": "2",
+      "title": "Wann ereignete sich der Schaden?",
+      "fields": [
+        {"id": "schadensdatum", "name": "schadensdatum", "label": "2.1 Datum", "type": "date", "required": true},
+        {"id": "schadenszeit", "name": "schadenszeit", "label": "Uhrzeit", "type": "text", "placeholder": "z.B. 14:30"},
+        {"id": "schadensort", "name": "schadensort", "label": "2.2 Ort", "type": "text", "required": true, "placeholder": "z.B. München, Bayern"}
+      ]
+    },
+    {
+      "number": "3",
+      "title": "Eigentümer der Maschine",
+      "fields": [
+        {"id": "owner_name", "name": "owner_name", "label": "Name und Anschrift des Eigentümers", "type": "textarea", "required": true},
+        {"id": "owner_phone", "name": "owner_phone", "label": "3.2 Telefonnummer / E-Mail", "type": "text", "required": true, "placeholder": "z.B. +49 170 1234567"}
+      ]
+    },
+    {
+      "number": "4",
+      "title": "Welche versicherte Sache wurde beschädigt?",
+      "fields": [
+        {"id": "catalog_position", "name": "catalog_position", "label": "4.1 Position des Verzeichnisses zum Versicherungsschein", "type": "text", "required": true, "placeholder": "z.B. PUMA 165"},
+        {"id": "producator", "name": "producator", "label": "4.2 Hersteller", "type": "text", "required": true, "placeholder": "z.B. CASE IH, John Deere, Claas"},
+        {"id": "serie_produs", "name": "serie_produs", "label": "4.3 Baujahr / Fabr.-Nr.", "type": "text", "required": true, "placeholder": "z.B. DBDPU165CMD254600"},
+        {"id": "versicherungsschein_nr", "name": "versicherungsschein_nr", "label": "Versicherungsschein-Nr.", "type": "text"}
+      ]
+    },
+    {
+      "number": "5",
+      "title": "Ist die Garantiezeit abgelaufen?",
+      "fields": [
+        {"id": "garantie_expirata", "name": "garantie_expirata", "label": "Ist die Garantiezeit abgelaufen?", "type": "yesno", "required": true},
+        {"id": "garantie_data", "name": "garantie_data", "label": "Seit wann?", "type": "date", "show_if": {"field": "garantie_expirata", "value": "ja"}}
+      ]
+    },
+    {
+      "number": "6",
+      "title": "Wodurch wurde der Schaden verursacht?",
+      "fields": [
+        {"id": "descriere_dauna", "name": "descriere_dauna", "label": "6.1 Ausführliche Schilderung des Herganges einschließlich Zeugenaussagen", "type": "textarea", "required": true, "minLength": 20, "placeholder": "Bitte beschreiben Sie detailliert, wie der Schaden entstanden ist..."}
+      ]
+    },
+    {
+      "number": "7",
+      "title": "In welchem Umfang wurde die Sache beschädigt?",
+      "fields": [
+        {"id": "piese_avariate", "name": "piese_avariate", "label": "a. Welche Teile wurden beschädigt? (gemäß Servicebericht)", "type": "textarea", "required": true, "placeholder": "z.B. Drehzahlsensor, elektrische Anlage"},
+        {"id": "piese_inlocuit", "name": "piese_inlocuit", "label": "b. Welche Teile müssen ersetzt werden? (gemäß Proforma)", "type": "textarea", "required": true, "placeholder": "z.B. Drehzahlsensor – Teilenummer XYZ123"}
+      ]
+    },
+    {
+      "number": "8",
+      "title": "Beizufügende Unterlagen",
+      "fields": [
+        {"id": "foto_daune", "name": "foto_daune", "label": "Aussagekräftige Schadenfotos", "type": "file"},
+        {"id": "costuri_reparatie", "name": "costuri_reparatie", "label": "Kostenvoranschlag / Reparaturrechnung", "type": "file"},
+        {"id": "nota_service", "name": "nota_service", "label": "Servicebericht (optional)", "type": "file"},
+        {"id": "proforma", "name": "proforma", "label": "Proforma / Ersatzteilangebot (optional)", "type": "file"}
+      ]
+    }
+  ]
+}

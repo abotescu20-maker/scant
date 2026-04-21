@@ -1,0 +1,44 @@
+{
+  "id": "tpl-wohngebaeude",
+  "name": "Wohngebäudeversicherung Schadenmeldung",
+  "language": "de",
+  "category": "claims",
+  "status": "published",
+  "sections": [
+    {"number":"1","title":"Versicherungsnehmer","fields":[
+      {"name":"versicherungsschein_nr","label":"Versicherungsschein-Nr.","type":"text","required":true},
+      {"name":"vn_name","label":"Name, Vorname","type":"text","required":true},
+      {"name":"vn_adresse","label":"Straße, PLZ und Ort","type":"text","required":true},
+      {"name":"vn_kontakt","label":"Telefon / E-Mail","type":"text","required":true}
+    ]},
+    {"number":"2","title":"Betroffenes Gebäude","fields":[
+      {"name":"gebaeude_adresse","label":"Anschrift des versicherten Gebäudes","type":"text","required":true},
+      {"name":"gebaeude_typ","label":"Art des Gebäudes (Einfamilienhaus/Mehrfamilienhaus/etc.)","type":"select","required":true,
+       "options":["Einfamilienhaus","Mehrfamilienhaus","Reihenhaus","Doppelhaushälfte","Eigentumswohnung","Sonstiges"]},
+      {"name":"eigentuemer","label":"Eigentümer","type":"text","required":true}
+    ]},
+    {"number":"3","title":"Schadenereignis","fields":[
+      {"name":"schadentag_uhrzeit","label":"Schadentag / Uhrzeit","type":"text","required":true},
+      {"name":"schadenursache","label":"Schadenursache (Sturm/Hagel/Feuer/Leitungswasser/etc.)","type":"select","required":true,
+       "options":["Sturm","Hagel","Feuer/Brand","Blitzschlag","Leitungswasser","Frost","Einbruch","Sonstiges"]},
+      {"name":"schadenhergang","label":"Hergang des Schadens","type":"textarea","required":true}
+    ]},
+    {"number":"4","title":"Betroffene Bereiche","fields":[
+      {"name":"betroffene_raeume","label":"Welche Räume/Bereiche sind betroffen?","type":"textarea","required":true},
+      {"name":"gebaeudeteile","label":"Betroffene Gebäudeteile (Dach/Fassade/Keller/etc.)","type":"textarea","required":false}
+    ]},
+    {"number":"5","title":"Schadenhöhe","fields":[
+      {"name":"schadenshoehe","label":"Geschätzte Schadenhöhe €","type":"number","required":true},
+      {"name":"kostenvoranschlag","label":"Liegt ein Kostenvoranschlag vor?","type":"select","required":false,"options":["ja","nein"]}
+    ]},
+    {"number":"6","title":"Weitere Meldungen","fields":[
+      {"name":"polizei_gemeldet","label":"Wurde Polizei eingeschaltet?","type":"select","required":false,"options":["ja","nein"]},
+      {"name":"polizei_aktenzeichen","label":"Aktenzeichen","type":"text","required":false},
+      {"name":"feuerwehr","label":"Feuerwehr-Einsatznummer (bei Feuer/Brand)","type":"text","required":false}
+    ]},
+    {"number":"7","title":"Bankverbindung & Unterschrift","fields":[
+      {"name":"iban","label":"IBAN","type":"text","required":false},
+      {"name":"ort_datum","label":"Ort / Datum","type":"text","required":true}
+    ]}
+  ]
+}
