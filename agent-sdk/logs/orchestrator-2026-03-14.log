@@ -421,3 +421,76 @@
 2026-03-14 20:02:29,414 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
 2026-03-14 20:02:29,418 [INFO] Upload summary saved: /Users/andreibotescu/Desktop/insurance-broker-agent/agent-sdk/logs/upload-summary-2026-03-14.html
 2026-03-14 20:02:29,418 [INFO] Orchestrator finished
+2026-03-14 20:26:26,259 [INFO] Alex Orchestrator starting — task: upload-reports
+2026-03-14 20:26:26,260 [INFO] API URL: https://insurance-broker-alex-elo6xae6nq-ey.a.run.app
+2026-03-14 20:26:26,260 [INFO] n8n Webhook: ⚪ not set
+2026-03-14 20:26:26,260 [INFO] GCS Bucket: ✅ alex-broker-reports
+2026-03-14 20:26:26,260 [INFO] SharePoint: ⚪ not set
+2026-03-14 20:26:26,261 [INFO] Date: 2026-03-14T20:26:26.260998
+2026-03-14 20:26:26,261 [INFO] === TASK: Upload Reports to Cloud Storage ===
+2026-03-14 20:26:26,261 [INFO] Found 6 reports to upload
+2026-03-14 20:26:26,261 [INFO]   Uploading: renewals-2026-03-14.html
+2026-03-14 20:26:28,408 [INFO] [GCS] ✅ Uploaded renewals-2026-03-14.html → https://storage.googleapis.com/alex-broker-reports/2026-03-14/renewals-2026-03-14.html
+2026-03-14 20:26:28,408 [INFO]   Uploading: upload-summary-2026-03-14.html
+2026-03-14 20:26:29,317 [INFO] [GCS] ✅ Uploaded upload-summary-2026-03-14.html → https://storage.googleapis.com/alex-broker-reports/2026-03-14/upload-summary-2026-03-14.html
+2026-03-14 20:26:29,318 [INFO]   Uploading: local-agent-sync-2026-03-14.html
+2026-03-14 20:26:30,172 [INFO] [GCS] ✅ Uploaded local-agent-sync-2026-03-14.html → https://storage.googleapis.com/alex-broker-reports/2026-03-14/local-agent-sync-2026-03-14.html
+2026-03-14 20:26:30,172 [INFO]   Uploading: claims-followup-2026-03-14.html
+2026-03-14 20:26:31,142 [INFO] [GCS] ✅ Uploaded claims-followup-2026-03-14.html → https://storage.googleapis.com/alex-broker-reports/2026-03-14/claims-followup-2026-03-14.html
+2026-03-14 20:26:31,142 [INFO]   Uploading: morning-brief-2026-03-14.html
+2026-03-14 20:26:31,979 [INFO] [GCS] ✅ Uploaded morning-brief-2026-03-14.html → https://storage.googleapis.com/alex-broker-reports/2026-03-14/morning-brief-2026-03-14.html
+2026-03-14 20:26:31,979 [INFO]   Uploading: cross-sell-2026-03-14.html
+2026-03-14 20:26:32,879 [INFO] [GCS] ✅ Uploaded cross-sell-2026-03-14.html → https://storage.googleapis.com/alex-broker-reports/2026-03-14/cross-sell-2026-03-14.html
+2026-03-14 20:26:33,809 [INFO] [GCS] ✅ Uploaded index.html → https://storage.googleapis.com/alex-broker-reports/2026-03-14/index.html
+2026-03-14 20:26:33,810 [INFO] [GCS] Index page: https://storage.googleapis.com/alex-broker-reports/2026-03-14/index.html
+2026-03-14 20:26:43,550 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-03-14 20:26:43,576 [INFO] Upload summary saved: /Users/andreibotescu/Desktop/insurance-broker-agent/agent-sdk/logs/upload-summary-2026-03-14.html
+2026-03-14 20:26:43,576 [INFO] Orchestrator finished
+2026-03-14 20:36:20,733 [INFO] Alex Orchestrator starting — task: generate-approvals
+2026-03-14 20:36:20,734 [INFO] API URL: https://insurance-broker-alex-elo6xae6nq-ey.a.run.app
+2026-03-14 20:36:20,734 [INFO] n8n Webhook: ⚪ not set
+2026-03-14 20:36:20,734 [INFO] GCS Bucket: ✅ alex-broker-reports
+2026-03-14 20:36:20,734 [INFO] SharePoint: ⚪ not set
+2026-03-14 20:36:20,734 [INFO] Date: 2026-03-14T20:36:20.734255
+2026-03-14 20:36:20,734 [INFO] === TASK: Generate Approval Items ===
+2026-03-14 20:36:27,545 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-03-14 20:36:27,570 [INFO] [Approval] Created renewal item APR-C15B5FDB for Gheorghe Popa (priority: urgent)
+2026-03-14 20:36:34,157 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-03-14 20:36:34,164 [INFO] [Approval] Created renewal item APR-CA99959C for Ion Gheorghe (priority: high)
+2026-03-14 20:36:41,416 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-03-14 20:36:41,422 [INFO] [Approval] Created renewal item APR-7AE285FC for Kristina Weber (priority: medium)
+2026-03-14 20:36:48,686 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-03-14 20:36:48,699 [INFO] [Approval] Created renewal item APR-F71B8E4B for SC Logistic Trans SRL (priority: medium)
+2026-03-14 20:36:48,834 [ERROR] Task generate-approvals failed: 'str' object has no attribute 'get'
+2026-03-14 20:39:03,921 [INFO] Alex Orchestrator starting — task: generate-approvals
+2026-03-14 20:39:03,922 [INFO] API URL: https://insurance-broker-alex-elo6xae6nq-ey.a.run.app
+2026-03-14 20:39:03,922 [INFO] n8n Webhook: ⚪ not set
+2026-03-14 20:39:03,922 [INFO] GCS Bucket: ✅ alex-broker-reports
+2026-03-14 20:39:03,922 [INFO] SharePoint: ⚪ not set
+2026-03-14 20:39:03,922 [INFO] Date: 2026-03-14T20:39:03.922744
+2026-03-14 20:39:03,922 [INFO] === TASK: Generate Approval Items ===
+2026-03-14 20:39:11,112 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-03-14 20:39:11,148 [INFO] [Approval] Created renewal item APR-B6719969 for Gheorghe Popa (priority: urgent)
+2026-03-14 20:39:18,093 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-03-14 20:39:18,102 [INFO] [Approval] Created renewal item APR-4627AF6F for Ion Gheorghe (priority: high)
+2026-03-14 20:39:24,444 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-03-14 20:39:24,451 [INFO] [Approval] Created renewal item APR-C6959B94 for Kristina Weber (priority: medium)
+2026-03-14 20:39:31,420 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-03-14 20:39:31,428 [INFO] [Approval] Created renewal item APR-BB483E23 for SC Logistic Trans SRL (priority: medium)
+2026-03-14 20:39:39,225 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-03-14 20:39:39,230 [INFO] [Approval] Created cross_sell item APR-F8A1F816 for Andrei Ionescu (priority: medium)
+2026-03-14 20:39:46,763 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-03-14 20:39:46,768 [INFO] [Approval] Created cross_sell item APR-BFDDB067 for SC Logistic Trans SRL (priority: medium)
+2026-03-14 20:39:54,102 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-03-14 20:39:54,105 [INFO] [Approval] Created cross_sell item APR-8E3B6FA8 for Ion Gheorghe (priority: medium)
+2026-03-14 20:40:00,058 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-03-14 20:40:00,063 [INFO] [Approval] Created cross_sell item APR-6434CED4 for Immobilien GmbH Müller (priority: medium)
+2026-03-14 20:40:06,470 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-03-14 20:40:06,473 [INFO] [Approval] Created cross_sell item APR-3E1AA410 for SC TechRom SRL (priority: medium)
+2026-03-14 20:40:13,902 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-03-14 20:40:13,911 [INFO] [Approval] Created cross_sell item APR-DE045872 for Gheorghe Popa (priority: medium)
+2026-03-14 20:40:20,879 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-03-14 20:40:20,886 [INFO] [Approval] Created cross_sell item APR-514667A5 for Kristina Weber (priority: medium)
+2026-03-14 20:40:20,889 [INFO] === Generated 11 approval items ===
+2026-03-14 20:40:20,889 [INFO] Approvals report saved: /Users/andreibotescu/Desktop/insurance-broker-agent/agent-sdk/logs/approvals-generated-2026-03-14.html
+2026-03-14 20:40:20,889 [INFO] Orchestrator finished

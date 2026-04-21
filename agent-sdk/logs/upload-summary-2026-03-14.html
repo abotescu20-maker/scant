@@ -1,35 +1,33 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="UTF-8">
-    <title>Cloud Storage Upload Summary</title>
+    <title>Upload Summary - March 14, 2026</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
-        .notification { background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); max-width: 600px; }
-        .header { color: #2c5aa0; font-size: 18px; font-weight: bold; margin-bottom: 15px; }
-        .summary { background: #e8f4fd; padding: 10px; border-radius: 5px; margin-bottom: 15px; }
-        .section { margin-bottom: 15px; }
-        .section-title { font-weight: bold; color: #333; margin-bottom: 8px; }
-        .success { color: #28a745; }
-        .warning { color: #ffc107; }
-        .file-list { font-size: 12px; color: #666; margin-left: 10px; }
-        .bucket-info { background: #f8f9fa; padding: 8px; border-radius: 4px; font-family: monospace; font-size: 12px; }
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }
+        .notification { background: white; border-left: 4px solid #2196F3; padding: 15px; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .header { color: #1976D2; font-weight: bold; margin-bottom: 10px; }
+        .section { margin: 10px 0; }
+        .success { color: #4CAF50; }
+        .warning { color: #FF9800; }
+        .file-list { font-size: 0.9em; margin-left: 20px; }
+        .bucket-info { background: #E3F2FD; padding: 8px; border-radius: 3px; font-family: monospace; }
+        .index-link { background: #4CAF50; color: white; padding: 5px 10px; text-decoration: none; border-radius: 3px; }
+        .index-link:hover { background: #45a049; }
     </style>
 </head>
 <body>
     <div class="notification">
-        <div class="header">📁 Cloud Storage Upload Summary - March 14, 2026</div>
+        <div class="header">📊 Report Upload Summary - March 14, 2026</div>
         
-        <div class="summary">
-            <strong>Files Processed:</strong> 6 reports uploaded successfully
-        </div>
-
         <div class="section">
-            <div class="section-title">✅ Google Cloud Storage</div>
-            <div class="success">Status: Successfully configured and uploaded</div>
+            <strong>Files Processed:</strong> <span class="success">6 files uploaded successfully</span>
+        </div>
+        
+        <div class="section">
+            <strong>📁 Google Cloud Storage:</strong> <span class="success">✅ All uploads successful</span>
             <div class="bucket-info">
-                Bucket: alex-broker-reports<br>
-                Path: gs://alex-broker-reports/2026-03-14/
+                Bucket: <strong>alex-broker-reports</strong><br>
+                Path: <strong>/2026-03-14/</strong>
             </div>
             <div class="file-list">
                 • renewals-2026-03-14.html<br>
@@ -40,13 +38,13 @@
                 • cross-sell-2026-03-14.html
             </div>
         </div>
-
+        
         <div class="section">
-            <div class="section-title">⚠️ SharePoint</div>
-            <div class="warning">Status: Not configured - no uploads attempted</div>
-            <div style="font-size: 12px; color: #666; margin-top: 5px;">
-                Configure SharePoint integration to enable automatic document sharing.
-            </div>
+            <strong>📋 SharePoint:</strong> <span class="warning">⚠️ Not configured</span>
+        </div>
+        
+        <div class="section">
+            <a href="https://storage.googleapis.com/alex-broker-reports/2026-03-14/index.html" class="index-link" target="_blank">📑 View Report Index</a>
         </div>
     </div>
 </body>
