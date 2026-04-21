@@ -7373,6 +7373,116 @@ async def api_submission_pdf(sub_id: str):
     )
 
 
+@app.post("/api/admin/resend-saz/{sub_id}")
+async def api_admin_resend_saz(sub_id: str, request: _Request = None):
+    """Regenerate SAZ PDF for an existing submission and optionally resend to broker+Versicherer.
+
+    Body (optional JSON):
+      - dry_run: bool (default true) — if true, return PDF bytes without sending
+      - override_broker_email: str — override stored broker_email (useful if missing)
+      - override_versicherer_email: str — override VERSICHERER_EMAIL env
+
+    Purpose: recovery for submissions with missing/null gcs_uri on attachments,
+    or when broker_email was not captured at IMAP time. Also bypasses the
+    "status == 'sent'" precondition in /api/forms/submit.
+    """
+    # Parse body
+    _dry = True
+    _override_broker = ""
+    _override_vr = ""
+    try:
+        if request is not None:
+            _b = await request.json()
+            _dry = bool(_b.get("dry_run", True))
+            _override_broker = str(_b.get("override_broker_email","") or "").strip()
+            _override_vr = str(_b.get("override_versicherer_email","") or "").strip()
+    except Exception:
+        pass
+
+    sub = _fs_get("form_submissions", sub_id)
+    if not sub:
+        return JSONResponse({"error": "Submission not found"}, 404)
+    sub["id"] = sub_id
+    tpl = _fs_get("form_templates", sub.get("template_id", "")) or {}
+    form_data = sub.get("form_data") or {}
+    if isinstance(form_data, str): form_data = json.loads(form_data or "{}")
+    sec = (tpl.get("sections") or tpl.get("sections_json", [])) if tpl else None
+    if isinstance(sec, str): sec = json.loads(sec or "[]")
+    _sub_atts = sub.get("attachments") or []
+    if isinstance(_sub_atts, str): _sub_atts = json.loads(_sub_atts or "[]")
+    ticket = sub.get("ticket_code") or sub_id
+    ref = sub.get("reference_number") or ""
+    client = sub.get("client_name","")
+    client_em = sub.get("client_email","")
+    schnr = form_data.get("schadensnummer") or form_data.get("schadennummer") or ""
+    completeness = sub.get("completeness_pct", 0)
+
+    pdf_bytes = _generate_form_pdf(
+        ticket_code=ticket, ref=ref,
+        client_name=client, client_email=client_em,
+        template_name=tpl.get("name", sub.get("template_id","")),
+        completeness=completeness, ai_score=sub.get("ai_quality_score",0),
+        form_data=form_data, ai_validation=sub.get("ai_validation"),
+        sections=sec, attachments=_sub_atts,
+        template_id=sub.get("template_id",""),
+    )
+    if not pdf_bytes:
+        return JSONResponse({"error": "PDF generation failed", "pdf_size": 0}, 500)
+
+    # Audit
+    _audit("admin.resend_saz.pdf_built", actor="admin", entity_type="form_submission",
+           entity_id=sub_id, details=f"ticket={ticket}, size={len(pdf_bytes)}, dry_run={_dry}")
+
+    if _dry:
+        filename = f"{ticket}_SAZ_RESEND_DRYRUN.pdf"
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "X-Resend-DryRun": "true",
+                "X-Sub-Id": sub_id,
+                "X-Ticket": ticket,
+                "X-PDF-Size": str(len(pdf_bytes)),
+                "X-Attachments-Count": str(len(_sub_atts)),
+            }
+        )
+
+    # Not dry_run — actually send
+    _broker = _override_broker or sub.get("broker_email","") or ""
+    _vr = _override_vr or os.environ.get("VERSICHERER_EMAIL", "")
+    _subj = f"✅ [{ticket}] SAZ vollständig ausgefüllt — {client} / SN {schnr}"
+    _html = f"""<html><body style="font-family:Arial"><h2 style="color:#10b981">SAZ vollständig — bereit für Versicherer</h2>
+<p><b>Aktenzeichen:</b> {ticket}<br><b>Versicherungsnehmer:</b> {client}<br><b>Schadennummer:</b> {schnr}<br><b>Vollständigkeit:</b> {completeness}%</p>
+<p>Anbei die vollständig ausgefüllte Schadenanzeige mit allen Dokumenten und Fotos embedded.</p></body></html>"""
+    _atts = [{"filename": f"{ticket}_SAZ_VOLLSTAENDIG.pdf", "content": pdf_bytes, "mime": "application/pdf"}]
+
+    _sent_broker = False
+    _sent_vr = False
+    if _broker and "@" in _broker:
+        try:
+            _sent_broker = _send_email_html([_broker], _subj, _html, attachments=_atts)
+            _audit("admin.resend_saz.broker_sent", actor="admin", entity_type="form_submission",
+                   entity_id=sub_id, details=f"broker={_broker}")
+        except Exception as e:
+            _log.warning(f"resend-saz broker send failed: {e}")
+    if _vr and "@" in _vr:
+        try:
+            _vr_subj = f"Schadenmeldung {ticket} — {client} — {form_data.get('versicherer','')}"
+            _sent_vr = _send_email_html([_vr], _vr_subj, _html, attachments=_atts)
+            _audit("admin.resend_saz.vr_sent", actor="admin", entity_type="form_submission",
+                   entity_id=sub_id, details=f"vr={_vr}")
+        except Exception as e:
+            _log.warning(f"resend-saz VR send failed: {e}")
+
+    return JSONResponse({
+        "ok": True, "sub_id": sub_id, "ticket": ticket,
+        "pdf_size": len(pdf_bytes), "attachments_in_pdf": len(_sub_atts),
+        "broker_email": _broker, "broker_sent": _sent_broker,
+        "versicherer_email": _vr, "versicherer_sent": _sent_vr,
+    })
+
+
 @app.get("/api/forms/submissions/{sub_id}/photos")
 async def api_submission_photos_zip(sub_id: str):
     """Download all photo attachments for a submission as a ZIP archive."""
