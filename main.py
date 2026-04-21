@@ -16224,9 +16224,19 @@ Ihr Alex (TPSH Versicherungsmakler)"""
 
 @app.post("/api/commands/poll-inbox")
 @app.post("/api/inbox/poll")
-async def api_poll_inbox():
-    """Manually trigger IMAP inbox poll for CMD emails and OpenVIVA structured emails."""
-    result = await poll_inbox_for_commands()
+async def api_poll_inbox(request: _Request = None):
+    """Manually trigger IMAP inbox poll for CMD emails and OpenVIVA structured emails.
+    Body (optional): {"force_uids": ["262","263"]} — bypass Message-ID dedup for these UIDs.
+    """
+    _force_uids = []
+    try:
+        if request is not None:
+            _b = await request.json()
+            _fu = _b.get("force_uids") or []
+            _force_uids = [str(u).strip() for u in _fu if str(u).strip()]
+    except Exception:
+        pass
+    result = await poll_inbox_for_commands(force_uids=_force_uids)
     return result
 
 
@@ -16612,11 +16622,17 @@ Wenn du die Frage nicht beantworten kannst, sage dem Kunden, dass er die Frage a
         }
 
 
-async def poll_inbox_for_commands():
+async def poll_inbox_for_commands(force_uids: list = None):
     """Poll Gmail IMAP inbox for operator CMD replies.
     Looks for emails with CMD1-CMD7 codes, executes them, sends result back.
     Should be called by cron every 5 minutes.
+
+    force_uids: list of IMAP UIDs (as strings) to re-process even if already in
+                processed_emails (bypasses Message-ID dedup). Useful for manual
+                reprocessing of specific emails when prior runs didn't persist
+                attachments to GCS correctly.
     """
+    _force_uid_set = set(force_uids or [])
     import imaplib, email as _email_mod, re as _re_mod
     from datetime import datetime as _dt
 
@@ -16650,10 +16666,20 @@ async def poll_inbox_for_commands():
         _pe_docs = _fs_query("processed_emails", filters=[("processed_at", ">=", _2d_ago)], limit=500)
         _already_processed = {d["_id"] for d in _pe_docs}
 
-        for msg_id in _msg_ids[0].split()[-20:]:  # max 20 per poll
+        # If force_uids is specified, scan wider window (last 7 days) so old UIDs are reachable
+        _scan_ids = _msg_ids[0].split()[-20:]
+        if _force_uid_set:
+            # Re-query with larger window for force reprocessing
+            _since_wide = (_imap_dt.utcnow() - _imap_td(days=7)).strftime("%d-%b-%Y")
+            _st2, _ids2 = mail.search(None, f'(SINCE {_since_wide})')
+            if _st2 == "OK" and _ids2 and _ids2[0]:
+                _scan_ids = _ids2[0].split()
+
+        for msg_id in _scan_ids:
             # Check if already processed (by IMAP UID)
             _msg_uid = msg_id.decode() if isinstance(msg_id, bytes) else str(msg_id)
-            if _msg_uid in _already_processed:
+            _is_forced = _msg_uid in _force_uid_set
+            if _msg_uid in _already_processed and not _is_forced:
                 continue
 
             _status, _data = mail.fetch(msg_id, "(RFC822)")
@@ -16664,7 +16690,7 @@ async def poll_inbox_for_commands():
             _msg_id_hdr = str(msg.get("Message-ID","") or msg.get("Message-Id","") or "").strip("<>").strip()
             if _msg_id_hdr:
                 _mid_key = f"mid-{_msg_id_hdr.replace('@','_at_').replace('.','_')[:100]}"
-                if _mid_key in _already_processed:
+                if _mid_key in _already_processed and not _is_forced:
                     try: mail.store(msg_id, "+FLAGS", "\\Seen")
                     except: pass
                     continue
