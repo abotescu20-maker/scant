@@ -541,7 +541,7 @@
           "type": "select",
           "options": [
             "per Überweisung / Bank",
-            "per Scheck"
+            "Zahlung an die Werkstatt"
           ]
         },
         {
