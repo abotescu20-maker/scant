@@ -2313,7 +2313,7 @@ async def health():
     except: _sched_ok = False; _sched_jobs = 0
     return {
         "status": "ok",
-        "version": "rev-00127-narrative-subfields",
+        "version": "rev-00129-cover-conditional",
         "timestamp": _hdt.datetime.utcnow().isoformat() + "Z",
         "scheduler_running": _sched_ok,
         "scheduler_jobs": _sched_jobs,
@@ -2921,14 +2921,22 @@ def _generate_form_pdf(ticket_code: str, ref: str, client_name: str, client_emai
             ("Versicherungsnehmer", _safe(client_name or 'N/A'), _safe(client_email or ''), (30, 64, 175)),
         ]
         _versicherer_val = _safe(form_data.get('versicherer','') or '')
-        _completeness_sub = f'Versicherer: {_versicherer_val}' if _versicherer_val else ''
+        # Cover card: if versicherer known, highlight it; else show completeness
+        if _versicherer_val:
+            _card_lbl = "Versicherer"
+            _card_val = _versicherer_val
+            _card_sub = f'Vollst\u00e4ndigkeit: {completeness}%'
+        else:
+            _card_lbl = "Vollst\u00e4ndigkeit"
+            _card_val = f'{completeness}%'
+            _card_sub = ""
         if _schadennr:
             _row1_cards.append(("Schadennummer", _schadennr, "", (220, 38, 38)))
         if _vs_nr:
             _row1_cards.append(("VS-Nr.", _vs_nr, "", (124, 58, 237)))
         if not _schadennr and not _vs_nr:
             _row1_cards.append(("Aktenzeichen", _safe(ticket_code), _safe(f'Ref: {ref}'), (16, 185, 129)))
-            _row1_cards.append(("Vollst\u00e4ndigkeit", f'{completeness}%', _completeness_sub, (245, 158, 11)))
+            _row1_cards.append((_card_lbl, _card_val, _card_sub, (245, 158, 11)))
 
         for i, (lbl, val, sub_val, color) in enumerate(_row1_cards):
             x = 14 + i * (_card_w + 4)
@@ -2956,7 +2964,7 @@ def _generate_form_pdf(ticket_code: str, ref: str, client_name: str, client_emai
             pdf.set_y(pdf.get_y() + 24)
             _row2_cards = [
                 ("Aktenzeichen", _safe(ticket_code), _safe(f'Ref: {ref}'), (100, 116, 139)),
-                ("Vollst\u00e4ndigkeit", f'{completeness}%', _completeness_sub, (245, 158, 11)),
+                (_card_lbl, _card_val, _card_sub, (245, 158, 11)),
             ]
             if _polizei_az:
                 _row2_cards.append(("Polizei AZ", _polizei_az, "", (59, 130, 246)))
@@ -3016,11 +3024,14 @@ def _generate_form_pdf(ticket_code: str, ref: str, client_name: str, client_emai
                     bg = (249, 250, 251) if idx % 2 == 0 else (255, 255, 255)
                     pdf.set_fill_color(*bg)
                     y_before = pdf.get_y()
-                    # Truncate label to safely fit in 68mm at Helvetica 8pt (~48 chars incl req_mark)
+                    # Truncate label only (not req_mark) to avoid asterisk glued to value bug.
+                    # Max label = 48 - req_mark_len - 3 (ellipsis)
                     req_mark = ' *' if req else ''
-                    _label_text = f'{label}{req_mark}'
-                    if len(_label_text) > 48:
-                        _label_text = _label_text[:45] + '...' + (' *' if req else '')
+                    _max_label = 48 - len(req_mark) - 3
+                    if len(label) + len(req_mark) > 48:
+                        _label_text = label[:_max_label] + '...' + req_mark
+                    else:
+                        _label_text = label + req_mark
                     display = _safe(val) if val else "-"
                     # Use multi_cell for value to get wrap; measure label height similarly
                     pdf.set_font('Helvetica', 'B', 8)
