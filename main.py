@@ -2611,12 +2611,46 @@ def _greeting_for(name: str, kontaktperson: str | None = None) -> str:
         return "Sehr geehrte Damen und Herren,"
     return f"Guten Tag {name}," if name else "Sehr geehrte Damen und Herren,"
 
+# ── SMTP circuit breaker (prevents runaway on rate-limit/quota errors) ─────
+_SMTP_CB = {"fail_count": 0, "cooldown_until": 0.0, "last_error": ""}
+
+def _smtp_cb_in_cooldown() -> tuple[bool, float]:
+    """Return (in_cooldown, seconds_left)."""
+    import time as _t
+    _left = _SMTP_CB["cooldown_until"] - _t.time()
+    return (_left > 0, max(0.0, _left))
+
+def _smtp_cb_record_error(err_str: str):
+    """On SMTP error, increment fail counter. If rate-limit (554) or >=3 consecutive,
+    trigger 60-min cooldown."""
+    import time as _t
+    _SMTP_CB["fail_count"] += 1
+    _SMTP_CB["last_error"] = err_str[:500]
+    _is_rate = ("554" in err_str and ("outgoing messages" in err_str.lower() or "5.7.0" in err_str or "quota" in err_str.lower()))
+    if _is_rate or _SMTP_CB["fail_count"] >= 3:
+        _cooldown_seconds = 3600 if _is_rate else 900  # 60min for rate-limit, 15min otherwise
+        _SMTP_CB["cooldown_until"] = _t.time() + _cooldown_seconds
+        _log.warning(f"🔴 SMTP circuit breaker TRIPPED ({_SMTP_CB['fail_count']} fails, rate_limit={_is_rate}) — cooldown {_cooldown_seconds}s")
+
+def _smtp_cb_record_success():
+    """On success, reset counter."""
+    _SMTP_CB["fail_count"] = 0
+    _SMTP_CB["last_error"] = ""
+
 def _send_email_html(to_list: list, subject: str, html: str, attachments: list | None = None,
                      bcc: list | None = None, auto_bcc_operator: bool = False) -> bool:
     """Send HTML email via SMTP. Supports optional file attachments and BCC.
     attachments: list of dicts [{"filename": "x.pdf", "content": bytes, "mime": "application/pdf"}, ...]
     bcc: explicit BCC list. auto_bcc_operator: if True, auto-adds OPERATOR_EMAIL to BCC.
+    Returns False immediately if circuit breaker is open.
     """
+    # Circuit breaker check
+    _cb_open, _cb_left = _smtp_cb_in_cooldown()
+    if _cb_open:
+        _log.warning(f"⏸️ SMTP circuit breaker OPEN ({_cb_left:.0f}s left) — skipping send to {to_list}")
+        _audit("email.skipped_cb", actor="system", entity_type="email",
+               details=f"To: {', '.join(to_list)}, Subject: {subject[:80]}, cooldown_left_sec: {_cb_left:.0f}, last_err: {_SMTP_CB['last_error'][:120]}")
+        return False
     import smtplib
     from email.mime.multipart import MIMEMultipart
     from email.mime.text import MIMEText
@@ -2684,11 +2718,13 @@ def _send_email_html(to_list: list, subject: str, html: str, attachments: list |
         _log.info("Email sent to %s%s (attachments: %d)", ", ".join(to_list), _bcc_info, len(attachments or []))
         _audit("email.sent", actor="system", entity_type="email",
                details=f"To: {', '.join(to_list)}, Subject: {subject[:100]}")
+        _smtp_cb_record_success()
         return True
     except Exception as e:
         _log.error("Email error: %s", e)
         _audit("email.failed", actor="system", entity_type="email",
                details=f"To: {', '.join(to_list)}, Error: {str(e)[:200]}")
+        _smtp_cb_record_error(str(e))
         return False
 
 
@@ -7371,6 +7407,30 @@ async def api_submission_pdf(sub_id: str):
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
+
+
+@app.get("/api/admin/smtp-status")
+async def api_admin_smtp_status():
+    """Return SMTP circuit breaker state (dashboard ops tool)."""
+    import time as _t
+    _open, _left = _smtp_cb_in_cooldown()
+    return {
+        "circuit_open": _open,
+        "cooldown_seconds_left": int(_left),
+        "fail_count": _SMTP_CB["fail_count"],
+        "last_error": _SMTP_CB["last_error"][:300],
+        "smtp_host": os.environ.get("SMTP_HOST",""),
+        "smtp_user": os.environ.get("SMTP_USER",""),
+    }
+
+
+@app.post("/api/admin/smtp-reset")
+async def api_admin_smtp_reset():
+    """Force-reset SMTP circuit breaker (use when you know rate limit has cleared)."""
+    _SMTP_CB["fail_count"] = 0
+    _SMTP_CB["cooldown_until"] = 0.0
+    _SMTP_CB["last_error"] = ""
+    return {"ok": True, "reset": True}
 
 
 @app.post("/api/admin/resend-saz/{sub_id}")
@@ -16170,6 +16230,43 @@ Antworte NUR mit der fertigen Schadenschilderung, ohne Anfuehrungszeichen, ohne 
 
     template_id = tpl["id"]
     template_name = tpl.get("name", "")
+
+    # ── De-duplicate guard (scheduler+poll race) ──────────────────────────
+    # If a submission with the same schadensnummer + sender exists within the
+    # last 10 minutes, return it instead of creating a duplicate.
+    _dedup_sn = (form_data.get("schadensnummer") or form_data.get("schadennummer","") or "").strip()
+    if _dedup_sn:
+        from datetime import timedelta as _dedup_td
+        _dedup_cutoff = (_dt.utcnow() - _dedup_td(minutes=10)).isoformat()
+        try:
+            _dedup_hits = _fs_query(
+                "form_submissions",
+                filters=[("created_at", ">=", _dedup_cutoff)],
+                order_by=("created_at",), limit=50
+            )
+        except Exception:
+            _dedup_hits = []
+        for _dh in (_dedup_hits or []):
+            _dh_fd = _dh.get("form_data") or {}
+            if isinstance(_dh_fd, str):
+                try: _dh_fd = json.loads(_dh_fd or "{}")
+                except Exception: _dh_fd = {}
+            _dh_sn = (_dh_fd.get("schadensnummer") or _dh_fd.get("schadennummer","") or "").strip()
+            _dh_sender = (_dh.get("broker_email") or _dh.get("sender_email") or "").lower()
+            if _dh_sn == _dedup_sn and _dh_sender == (sender_email or "").lower():
+                _log.info(f"🔁 OpenVIVA dedup hit: existing sub={_dh.get('_id','?')} for SN={_dedup_sn} + {_dh_sender}")
+                return {
+                    "ok": True, "deduplicated": True,
+                    "sub_id": _dh.get("_id",""),
+                    "ticket_code": _dh.get("ticket_code",""),
+                    "reference": _dh.get("reference_number",""),
+                    "client_name": _dh.get("client_name",""),
+                    "client_email": _dh.get("client_email",""),
+                    "template_name": _dh.get("template_name", template_name),
+                    "prefilled_fields": len(_dh_fd),
+                    "form_url": "",
+                    "form_data": _dh_fd,
+                }
 
     # Create pre-filled submission
     sub_id = f"sub-{_u.uuid4().hex[:10]}"
