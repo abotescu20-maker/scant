@@ -8028,6 +8028,8 @@ Only return the JSON, no other text."""}]
                 # Generate PDF + JSON for broker email
                 _broker_attachments = []
                 try:
+                    # Fetch template for PDF generation (fix: tpl was undefined)
+                    tpl = _fs_get("form_templates", template_id) or {}
                     _br_sections = (tpl.get("sections") or tpl.get("sections_json", [])) if tpl else None
                     if isinstance(_br_sections, str): _br_sections = json.loads(_br_sections)
                     _br_sub_atts = body.get("attachments") or []
