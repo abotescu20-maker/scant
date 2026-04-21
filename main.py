@@ -14637,8 +14637,8 @@ async def api_advance_claim_step(claim_id: str, request: _Request):
         eq = _fs_get("equipment", claim.get("equipment_id")) if claim.get("equipment_id") else None
         eq_info = dict(eq) if eq else {}
         email_template = step_def.get("email_template", "")
-        subject = f"Maschinenbruch — {eq_info.get('machine_type', 'N/A')} — Step {next_step}: {step_def['name']}"
-        body_html = f"<h2>Machinery Claim: {claim_id}</h2><p>Step {next_step}: {step_def['name']} / {step_def['name_de']}</p><p>Equipment: {eq_info.get('machine_type', 'N/A')} ({eq_info.get('serial_no', 'N/A')})</p><p>{notes}</p>"
+        subject = f"Maschinenbruch — {eq_info.get('machine_type', 'N/A')} — Schritt {next_step}: {step_def.get('name_de', step_def['name'])}"
+        body_html = f"<h2>Maschinenbruch-Schaden: {claim_id}</h2><p>Schritt {next_step}: {step_def.get('name_de', step_def['name'])}</p><p>Gerät: {eq_info.get('machine_type', 'N/A')} ({eq_info.get('serial_no', 'N/A')})</p><p>{notes}</p>"
         try:
             _fs_set("approval_queue", approval_id, {
                 "type": "claim_followup", "client_id": claim.get("client_id", ""),
@@ -15578,7 +15578,7 @@ async def _process_openviva_email(body_text: str, sender_email: str) -> dict:
 
     # Truncate at signature to avoid picking up fields from email signature
     _body_clean = body_text
-    for _sig in ["Grüße", "Gruesse", "Grüsse", "Viele Grüße", "Mit freundlichen Grüßen", "Mit freundlichen", "i.A. ", "Best regards", "Kind regards", "TPSH group", "Insurance & Reinsurance Broker", "TPSH Versicherungsmakler", "Bitte berücksichtigen Sie", "From:", "Von:", "Sent:", "Gesendet:", "-----Original"]:
+    for _sig in ["Grüße", "Gruesse", "Grüsse", "Viele Grüße", "Mit freundlichen Grüßen", "Mit freundlichen", "i.A. ", "i. A. ", "i.A ", "i. V. ", "i.V. ", "Best regards", "Kind regards", "TPSH group", "TPSH-Group", "TPSH-Goup", "Insurance & Reinsurance Broker", "TPSH Versicherungsmakler", "Bitte berücksichtigen Sie", "Bitte beruecksichtigen Sie", "From:", "Von:", "Sent:", "Gesendet:", "-----Original"]:
         _sig_pos = _body_clean.find(_sig)
         if _sig_pos > 50:  # Only if signature is not at the very start
             _body_clean = _body_clean[:_sig_pos]
@@ -16394,7 +16394,9 @@ Ihr Alex (TPSH Versicherungsmakler)"""
         </div>
         <p style="font-size:12px;color:#9ca3af;text-align:center">
           {('Schadennummer: ' + form_data.get('schadensnummer', form_data.get('schadennummer', '')) + ' | ') if form_data.get('schadensnummer') or form_data.get('schadennummer') else ''}Ref: {ref}<br>
-          TPSH Versicherungsmakler GmbH
+          TPSH Versicherungsmakler GmbH<br>
+          {os.environ.get("TPSH_ADDRESS","Inselkammerstr. 1, 82008 Unterhaching")} · Tel. {os.environ.get("TPSH_PHONE","+49 89 66550-100")}<br>
+          Ansprechpartner: {os.environ.get("TPSH_ANSPRECHPARTNER","Valeria Teodoru — VTeodoru@tpsh.de")}
         </p>
       </div>
     </div>"""
@@ -18400,7 +18402,7 @@ async def api_cron_claim_followup():
 </table>
 <p style="color:#dc2626;font-weight:bold">Empfehlung: Nachfassen beim Versicherer {insurer}</p>
 </div>"""
-        subject = f"[REMINDER] Keine Antwort - {c['id']} - {machine} - {days_waiting} Tage"
+        subject = f"[ERINNERUNG] Keine Antwort — {c['id']} — {machine} — {days_waiting} Tage"
         if operator_email:
             _send_email_html([operator_email], subject, html)
             notified += 1
