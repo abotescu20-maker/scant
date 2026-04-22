@@ -46,6 +46,11 @@ class QualityTier(str, Enum):
 class AnimationMode(str, Enum):
     life       = "life"       # animatie naturala: clipit fata, shimmer cana, sway planta
     cinemagraph = "cinemagraph"  # o singura zona animata, restul static
+    blink      = "blink"      # eye blink effect
+    steam      = "steam"      # rising vapor wisps
+    wind       = "wind"       # horizontal wind displacement
+    glisten    = "glisten"    # sparkle points on bright areas
+    sweep      = "sweep"      # diagonal light beam sweep
 
 
 class GenerateRequest(BaseModel):
@@ -84,6 +89,7 @@ class GenerateResponse(BaseModel):
     style_id: str
     quality: str
     share_code: str
+    subject_type: str = "object"
 
 
 class StatusResponse(BaseModel):

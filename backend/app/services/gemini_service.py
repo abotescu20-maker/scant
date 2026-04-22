@@ -257,14 +257,13 @@ STYLE_INSTRUCTIONS = {
         "The image looks like it was found in a shoebox, shot impulsively, accidentally perfect."
     ),
     StyleId.cyberpunk: (
-        "Transform using cyberpunk neon-noir visual language influenced by Syd Mead and "
-        "1980s retrofuturism. Ground the scene in near-total darkness — deep indigo-black "
-        "environment. Illuminate only with neon practical sources: electric magenta, cyan, "
-        "acid green, amber. Apply lens effects: neon bloom and wet-surface reflections "
-        "doubling every light source. Overlay subtle HUD scan-line pattern across the image. "
-        "Occasional glitch artifact — horizontal pixel-shift bands or RGB channel separation. "
-        "Visible rain streaks catching the neon. Surfaces: wet concrete, chrome, glass, "
-        "black vinyl. The subject feels like the most human thing in a machine world."
+        "Transform using cyberpunk neon-noir visual language, Syd Mead 1980s retrofuturism. "
+        "Near-total darkness — deep indigo-black environment illuminated only by neon "
+        "practical sources: electric magenta, cyan, hot pink, amber. Neon bloom and "
+        "wet-surface reflections doubling every light source. Subtle HUD scan-lines across "
+        "the image. Occasional RGB glitch artifacts. Visible rain streaks catching the neon. "
+        "Surfaces: wet chrome, glass, black vinyl. The subject becomes the focal point — "
+        "the most alive thing in a machine world."
     ),
     StyleId.brutalist: (
         "Transform using Brutalist architecture and graphic design aesthetic. Dominant material "
@@ -390,7 +389,7 @@ No explanation, no markdown, just the JSON array."""
         from app.config import settings
 
         vertexai.init(project=settings.google_cloud_project, location=settings.google_cloud_location)
-        model = GenerativeModel("gemini-2.0-flash-001")
+        model = GenerativeModel("gemini-2.5-flash")
         response = model.generate_content(variation_prompt)
         text = response.text.strip()
         # Parse JSON
@@ -437,11 +436,16 @@ async def generate_creative_prompt(image_bytes: bytes, style_id: StyleId) -> str
     instruction = STYLE_INSTRUCTIONS.get(style_id, STYLE_INSTRUCTIONS[StyleId.dali])
     motion_suffix = STYLE_MOTION_SUFFIX.get(style_id, "animated in a seamless cinematic loop")
 
-    prompt_text = f"""Analyze this image and identify the main subject/object.
-Then write a single vivid, cinematic video generation prompt (max 120 words) that:
-1. Describes the subject clearly with precise visual details
-2. {instruction}
+    prompt_text = f"""Analyze this image and identify the EXACT subject/object shown.
+
+CRITICAL: You must describe and transform what is ACTUALLY IN the photo. Do NOT replace the subject with something else. Do NOT generate a portrait of the artist. If the photo shows a number, describe that number. If it shows a chair, describe that chair. Apply the artistic technique TO the actual subject.
+
+Write a single vivid, cinematic video generation prompt (max 120 words) that:
+1. Describes the ACTUAL subject from the photo with precise visual details (what it is, its colors, shape, material, context)
+2. Applies this artistic technique to that exact subject: {instruction}
 3. Ends with: {motion_suffix}
+
+The subject in the output MUST match the subject in the input photo. Never substitute it.
 
 Return ONLY the prompt text, nothing else."""
 

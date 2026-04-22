@@ -78,5 +78,22 @@ def _upload_thumbnail_sync(image_bytes: bytes, creation_id: str) -> str:
     return _public_url(settings.gcs_bucket_name, blob_name)
 
 
+async def upload_original(image_bytes: bytes, creation_id: str) -> str:
+    """Uploadează imaginea originală (full res) pentru regenerare fără pierdere."""
+    import asyncio
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _upload_original_sync, image_bytes, creation_id)
+
+
+def _upload_original_sync(image_bytes: bytes, creation_id: str) -> str:
+    client = _get_client()
+    bucket = client.bucket(settings.gcs_bucket_name)
+    blob_name = f"originals/{creation_id}.jpg"
+    blob = bucket.blob(blob_name)
+    blob.upload_from_string(image_bytes, content_type="image/jpeg")
+    blob.make_public()
+    return _public_url(settings.gcs_bucket_name, blob_name)
+
+
 def generate_share_code() -> str:
     return uuid.uuid4().hex[:8]

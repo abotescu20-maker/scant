@@ -52,6 +52,7 @@ async def save_creation(
     video_url: str,
     thumbnail_url: str,
     share_code: str,
+    original_url: str = "",
 ) -> None:
     """Salvează creația în Firestore. Non-blocking - nu aruncă excepții."""
     data = {
@@ -63,6 +64,7 @@ async def save_creation(
         "video_url": video_url,
         "thumbnail_url": thumbnail_url,
         "share_code": share_code,
+        "original_url": original_url,
         "created_at": datetime.now(timezone.utc),
     }
     try:
@@ -269,3 +271,79 @@ def _get_recent_creations_sync(limit: int = 20) -> list:
 async def get_recent_creations(limit: int = 20) -> list:
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _get_recent_creations_sync, limit)
+
+
+# ─── Style Performance Tracker ───────────────────────────────────────────────
+
+PERF_COLLECTION = "style_performance"
+
+def _track_performance_sync(data: dict) -> None:
+    db = _get_db()
+    db.collection(PERF_COLLECTION).add(data)
+
+async def track_style_performance(
+    style_id: str,
+    subject_type: str,
+    success: bool,
+    generation_time_ms: int,
+    model_used: str = "imagen-4",
+    fallback_used: bool = False,
+) -> None:
+    """Track each generation for style performance analytics."""
+    data = {
+        "style_id": style_id,
+        "subject_type": subject_type,
+        "success": success,
+        "generation_time_ms": generation_time_ms,
+        "model_used": model_used,
+        "fallback_used": fallback_used,
+        "timestamp": datetime.now(timezone.utc),
+    }
+    try:
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _track_performance_sync, data)
+    except Exception as e:
+        print(f"Performance tracking failed (non-critical): {e}")
+
+
+def _get_style_stats_sync() -> dict:
+    """Aggregate style performance stats."""
+    db = _get_db()
+    stats = {}
+    try:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+        for d in db.collection(PERF_COLLECTION).where(
+            filter=firestore.FieldFilter("timestamp", ">=", cutoff)
+        ).stream():
+            item = d.to_dict()
+            sid = item.get("style_id", "unknown")
+            if sid not in stats:
+                stats[sid] = {"total": 0, "success": 0, "fail": 0, "avg_time_ms": 0,
+                              "fallbacks": 0, "subject_types": {}, "times": []}
+            stats[sid]["total"] += 1
+            if item.get("success"):
+                stats[sid]["success"] += 1
+            else:
+                stats[sid]["fail"] += 1
+            if item.get("fallback_used"):
+                stats[sid]["fallbacks"] += 1
+            t = item.get("generation_time_ms", 0)
+            if t:
+                stats[sid]["times"].append(t)
+            st = item.get("subject_type", "object")
+            stats[sid]["subject_types"][st] = stats[sid]["subject_types"].get(st, 0) + 1
+
+        # Compute averages
+        for sid in stats:
+            times = stats[sid].pop("times")
+            stats[sid]["avg_time_ms"] = int(sum(times) / len(times)) if times else 0
+            stats[sid]["success_rate"] = round(stats[sid]["success"] / max(stats[sid]["total"], 1) * 100, 1)
+    except Exception as e:
+        print(f"Style stats failed: {e}")
+    return stats
+
+
+async def get_style_stats() -> dict:
+    """Get aggregated style performance stats (last 30 days)."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _get_style_stats_sync)

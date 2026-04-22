@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     google_cloud_location: str = "us-central1"
     google_api_key: str = ""
     gcs_bucket_name: str = "scanart-results"
-    gemini_model: str = "gemini-2.0-flash"
+    gemini_model: str = "gemini-2.5-flash"
     allowed_origins: list[str] = ["*"]
 
     # Veo tier config
