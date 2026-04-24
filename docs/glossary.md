@@ -1,0 +1,61 @@
+# Glossary
+
+Alphabetical list of all techniques and key terms.
+
+## Techniques
+
+- [[alla-prima|alla prima (wet-in-wet)]] — painting completed in a single session into still-wet paint, without waiting for layers to dry; strokes blend by dragging rather than glazin.
+- [[aquatint-etching|aquatint etching]] — Powdered resin dusted on the plate creates tonal areas when bitten — rich velvety blacks and grey tones as in Goya's Caprichos and Disasters.
+- [[atmospheric-perspective|atmospheric perspective (Roman wall-painting)]] — Suggestion of distance by progressive softening and blueing of tone on remote mountains and buildings, and by diffusing their contours as if.
+- [[automatic-drawing-painting|Automatic drawing / painting]] — Letting the hand move without conscious control in order to release unconscious imagery (inspired by Freud's free association).
+- [[black-figure-vase-painting|black-figure vase painting]] — Figures drawn in silhouette with a refined clay slip onto the reddish body of an Attic vase; interior details incised with a fine needle; re.
+- [[bozzetto-oil-sketch|bozzetto / oil sketch]] — small rapid oil study on panel used to work out a large altarpiece's composition, colour, and light before scaling up.
+- [[broken-colour-divided-brushwork|Broken colour / divided brushwork]] — Small discrete strokes of unmixed pigment laid side by side so that they fuse optically at viewing distance into a luminous vibrating whole.
+- [[buon-fresco|buon fresco (true fresco)]] — Pigments mixed only with water are brushed onto a freshly laid patch of wet lime plaster (the giornata).
+- [[camera-obscura|camera obscura (aided drawing)]] — optical box projecting the scene upside-down onto a paper/canvas; used to check perspective and tonal relationships, not traced mechanically.
+- [[champleve-and-cloisonne-enamel|champlevé and cloisonné enamel]] — Champlevé: hollows carved out of a copper or bronze plate are filled with powdered coloured glass and fired so the glass fuses.
+- [[chance-composition|Chance composition]] — Deliberately surrendering compositional choice to random processes — torn paper dropped on a ground, dripped paint, rolled dice.
+- [[chrysography|chrysography (gold highlighting)]] — Fine linear rays of gold drawn on drapery and hair with a brush of mordant gold or shell gold, following the folds in a schematic web.
+- [[cloisonne-synthetist-outlining|Cloisonné / Synthetist outlining]] — Flat areas of unmodulated saturated colour bounded by dark contour, borrowed from medieval stained glass and Japanese prints.
+- [[contrapposto|contrapposto]] — Standing pose in which the body's weight rests on one leg, throwing the hip up on that side and the shoulder down; the opposite shoulder ris.
+- [[cubist-faceting|Cubist faceting]] — An object is shown simultaneously from several viewpoints; its surfaces are split into flat intersecting planes and reassembled on a shallow.
+- [[decalcomania|Decalcomania]] — Thin wet paint is pressed between two surfaces and pulled apart, leaving a chance veined or marbled texture used as the seed of a Surrealist.
+- [[egg-tempera|egg tempera]] — Powdered pigment bound with egg yolk (sometimes plus vinegar or fig-milk) painted in small hatched strokes on a gessoed wooden panel.
+- [[egyptian-canon-of-proportion|Egyptian canon of proportion]] — Standing figures laid out on a grid - originally of 18, later 21, equal squares from sole to hairline - with fixed squares assigned to knee,.
+- [[encaustic|encaustic]] — Pigments suspended in hot beeswax applied to a wood panel with heated spatulas.
+- [[fauvist-colour|Fauvist colour]] — Saturated anti-naturalistic hue (red trees, green faces, pink skies) used for emotional and decorative effect, not description.
+- [[figura-serpentinata|figura serpentinata]] — compositional rule that the body should twist in a spiralling S-shape from feet to head, showing as many viewpoints as possible in one figur.
+- [[foreshortening|foreshortening]] — Drawing an object or limb receding sharply into depth so that near parts are enlarged and far parts compressed, producing the illusion of pr.
+- [[fresco-secco|fresco secco]] — Pigments mixed with a binder (egg, glue or lime) and painted onto already-dry plaster.
+- [[frottage|Frottage]] — Placing paper over a textured surface (wood grain, leaves) and rubbing with a soft pencil or crayon so the grain is captured; the chance ima.
+- [[glazing|glazing]] — transparent veil of oil colour laid over a dried under-painting; the lower layer shows through and the whole appears to glow from within.
+- [[gold-ground-mosaic|gold-ground mosaic]] — Cubes (tesserae) of coloured glass, including glass backed with gold leaf, set irregularly into wet plaster on walls and apses.
+- [[gold-ground-with-tooled-halos|gold ground with tooled halos]] — Sheets of beaten gold leaf laid over red bole clay onto a panel, then burnished to mirror brightness.
+- [[gold-leaf-mosaic-ornament|Gold-leaf / mosaic ornament (modern)]] — Byzantine/mosaic gold ground revived in modern painting as pure decorative surface, set against realistically rendered faces and hands.
+- [[gothic-sway|Gothic sway (S-curve)]] — Standing figure pose in which the body curves like an elongated S - hip thrown out on one side, head tilted the opposite way, weight distrib.
+- [[grattage-scraping|Grattage / scraping]] — Paint scraped away with palette knife, comb or brush handle to reveal underlayers or to create texture.
+- [[hieratic-scale|hieratic scale]] — Figures drawn at sizes proportional to their spiritual or social importance, not to optical reality.
+- [[impasto|impasto]] — pigment applied so thickly that it stands in physical relief on the canvas; palette-knife or stiff-bristle brush leaves visible ridges that.
+- [[interlace-zoomorphic-interlace|interlace / zoomorphic interlace]] — Linear decoration in which ribbons, cords or the stretched bodies of stylized animals weave over and under each other in endlessly complex k.
+- [[japonisme-ukiyo-e-composition|Japonisme / ukiyo-e composition]] — Absorption of Japanese woodblock conventions: high viewpoint, asymmetric cropping, flat silhouette, decorative outline, diagonal composition.
+- [[lithography|Lithography]] — Drawing with a greasy crayon on limestone so that ink adheres only to the drawn areas — enabled mass-produced tonal images.
+- [[lost-wax-bronze-casting|lost-wax bronze casting]] — A full-size clay core is coated in wax sculpted to final surface detail, then invested in clay with runners and vents.
+- [[manuscript-illumination|manuscript illumination]] — Painted decoration of books on parchment or vellum using mineral pigments (ultramarine, vermilion, lead white, verdigris) bound with gum or.
+- [[papier-colle-collage|Papier collé / collage]] — Pasting of ordinary real-world materials — newspaper, patterned wallpaper, oilcloth, corrugated cardboard, bus tickets — onto the picture.
+- [[photomontage|Photomontage]] — Composition built from cut-up photographs (usually mass-media press images) re-glued into a new satirical or dream-like whole.
+- [[plein-air-oil-sketch|plein-air oil sketch (precursor)]] — quickly painting directly outdoors in front of the motif on prepared paper or small millboard, capturing a fleeting weather state.
+- [[pointille|pointillé (Vermeer highlight dab)]] — small round dabs of lead-white or lead-tin yellow placed on lit edges of bread, metal, pearl — producing an aureole of light rather than a h.
+- [[pointillism-divisionism|Pointillism / divisionism]] — Broken colour systematised into tiny regular dots of pure pigment chosen from complementary pairs; optical mixture based on 19th-century col.
+- [[quadratura-sotto-in-su-ceiling-painting|quadratura / sotto in su ceiling painting]] — illusionistic ceiling painting in which painted architecture continues the real architecture upward and figures are foreshortened from below.
+- [[readymade|Readymade]] — An ordinary manufactured object (urinal, bicycle wheel, bottle-rack) designated 'art' by the artist's signature and title, thereby dethronin.
+- [[red-figure-vase-painting|red-figure vase painting]] — Inverse of black-figure: the background is filled with the slip that fires black, leaving figures reserved in natural red clay, with interna.
+- [[reverse-perspective|reverse perspective]] — Spatial convention used in Byzantine and Russian icons in which lines of receding objects diverge outward toward the viewer rather than conv.
+- [[roman-concrete-vaulting|Roman concrete vaulting]] — Opus caementicium - a mix of lime mortar, volcanic pozzolana sand and stone rubble - poured into wooden formwork.
+- [[ruckenfigur-composition|Rückenfigur composition]] — placing a figure (or small group) with its back to the viewer, looking into the sublime landscape, so the viewer shares their contemplation.
+- [[sand-and-sawdust-in-paint|Sand and sawdust in paint]] — Aggregate mixed into oil paint to give physical grit and texture to the surface; shared by Cubists and later informel painters.
+- [[stained-glass|stained glass]] — Pieces of coloured (pot-metal) glass cut to shape, details painted with vitreous black or brown enamel and fired, then assembled with H-sect.
+- [[stone-relief|stone relief (sunk / raised)]] — Figure carved from a stone block so that it projects from (raised) or is cut into (sunk) the background plane.
+- [[tenebrism|tenebrism]] — extreme form of chiaroscuro where most of the picture is plunged into near-black darkness, with a single raking light picking out a few figu.
+- [[tympanum-relief-composition|tympanum relief composition]] — The semicircular field above a Romanesque or Gothic church doorway filled with carved relief, usually Christ in Majesty or Last Judgement.
+- [[whiplash-s-curve-line|Whiplash / S-curve line]] — Long continuous organic curves borrowed from plant tendrils and flowing hair, the signature linear unit of Art Nouveau in poster, ironwork,.
+- [[woodcut|Woodcut (modern Expressionist)]] — Deliberate roughness — splinters, tool marks, coarse grain — left visible as expressive element, in contrast to the smooth refinement of 19t.

@@ -598,31 +598,44 @@ def _generate_free_sync(
 
 
 def _analyze_subject(image_bytes: bytes) -> tuple:
-    """Gemini analizează poza → (descriere_subiect, tip_subiect).
-    Returnează descriere vizuală detaliată + categorie."""
-    PROMPT = """Look at this photo and describe the main subject in ONE detailed sentence.
+    """Gemini analizează poza → (subject_fingerprint, subject_type).
+    v35: rich fingerprint (SHAPE+COLORS+IDENTIFIERS+CONTEXT) for subject preservation."""
+    PROMPT = """Analyze this photo and extract a SUBJECT FINGERPRINT so an AI artist can
+transform only the STYLE while keeping the EXACT same subject (not a similar one).
 
-On the FIRST LINE write ONLY one category word:
-face | cup | animal | plant | food | object | text | sign | number
+Return EXACTLY this structure, no extra text:
 
-Choose:
-- face: person's face or portrait
-- cup: mug, cup, glass, bottle, drink container
-- animal: pet, cat, dog, bird, any animal
-- plant: plant, flower, tree, vegetation
-- food: food, meal, fruit, edible item
-- text: text, letters, words, typography
-- sign: sign, poster, label, plaque
-- number: numbers, digits, numeric display
-- object: everything else
+CATEGORY: <one word: face | cup | animal | plant | food | object | text | sign | number>
 
-On the SECOND LINE write a detailed visual description (20-40 words):
-- Include: what it is, exact colors, materials, texture, size, context
-- For text/numbers: what it says, font style, colors, what surface it's on
-- Be specific: "large red sans-serif digits 78 in white wooden frame on dark background"
-  NOT vague: "a framed number"
+SHAPE: <distinctive silhouette in 6-10 words. Ex: "1960s rounded VW Beetle with sloped rear">
 
-Return ONLY these two lines, nothing else."""
+COLORS: <exact color palette in 6-10 words. Ex: "cherry red body, chrome bumpers, dark tire rims">
+
+IDENTIFIERS: <2-4 unique visible details that make THIS specific subject unique, not a generic one. Ex: "oval rear window, small round headlights, chrome VW logo on hood, license plate B-123">
+
+CONTEXT: <scene/environment in 5-10 words. Ex: "parked on cobblestone street, daylight from left">
+
+FULL_DESCRIPTION: <one natural sentence 20-35 words combining all above>"""
+
+    def parse_fingerprint(text: str) -> tuple:
+        import re
+        fields = {}
+        for line in text.strip().split("\n"):
+            m = re.match(r"^(CATEGORY|SHAPE|COLORS|IDENTIFIERS|CONTEXT|FULL_DESCRIPTION):\s*(.+)$", line.strip())
+            if m:
+                fields[m.group(1)] = m.group(2).strip()
+        category = fields.get("CATEGORY", "object").lower().strip()
+        valid = {"face", "cup", "animal", "plant", "food", "object", "text", "sign", "number"}
+        if category not in valid:
+            category = "object"
+        base = fields.get("FULL_DESCRIPTION", "a subject in the photo")
+        fp = " ".join([
+            f"[SHAPE: {fields.get('SHAPE', 'n/a')}]",
+            f"[COLORS: {fields.get('COLORS', 'n/a')}]",
+            f"[IDENTIFIERS: {fields.get('IDENTIFIERS', 'n/a')}]",
+            f"[CONTEXT: {fields.get('CONTEXT', 'n/a')}]",
+        ])
+        return f"{base} {fp}".strip(), category
 
     try:
         import vertexai
@@ -630,13 +643,7 @@ Return ONLY these two lines, nothing else."""
         vertexai.init(project=settings.google_cloud_project, location=settings.google_cloud_location)
         model = GenerativeModel("gemini-2.5-flash")
         response = model.generate_content([PROMPT, Part.from_data(data=image_bytes, mime_type="image/jpeg")])
-        lines = response.text.strip().split("\n", 1)
-        subject_type = lines[0].strip().lower()
-        valid_types = {"face", "cup", "animal", "plant", "food", "object", "text", "sign", "number"}
-        if subject_type not in valid_types:
-            subject_type = "object"
-        subject_desc = lines[1].strip() if len(lines) > 1 else "an object"
-        return subject_desc, subject_type
+        return parse_fingerprint(response.text)
     except Exception as e:
         print(f"Subject analysis failed: {e}")
         return "an object in a photograph", "object"
@@ -837,14 +844,39 @@ Creative direction: {variation}
 {variation_hint}
 
 Write an 80-120 word IMAGE GENERATION PROMPT for the final masterpiece.
-Rules:
-- The original subject must be RECOGNIZABLE but CREATIVELY TRANSFORMED
-- USE the artist's signature techniques: if Dalí, the subject can melt and drape; if Van Gogh, impasto brushstrokes cover every surface; if Klimt, gold mosaic; if Hokusai, bold ink outlines and bokashi
-- Describe specific artistic decisions: unusual color choices, dramatic composition, texture surprises, atmospheric landscapes
-- Include material and surface qualities (oil paint ridges, ink bleeding, gold leaf, melting chrome, draped surfaces)
-- Add atmosphere and environment — sky, landscape, lighting, mood. What does this artwork FEEL like?
-- Think about what would make this artwork WIN an art prize — be bold and ambitious
-- Transform the SUBJECT ITSELF using the technique rather than placing a famous painting next to it
+
+═══ CRITICAL SUBJECT PRESERVATION (MANDATORY) ═══
+You MUST keep the EXACT subject from the photo. Do NOT substitute it with a similar
+but different object.
+
+PROPORTIONS RULE (strict):
+- Look at the SHAPE from the fingerprint. Describe the EXACT proportions:
+  height:width ratio, size of each feature, relative scale
+- If the subject has SMALL discrete handles, keep them SMALL — NOT large ornate loops
+- If the body is ELONGATED, keep it elongated — NOT rounded/classical
+- If the neck is TALL, keep it tall — NOT short
+- The AI will tend to "stylize toward iconic versions" (e.g., plain amphora → textbook
+  Greek amphora with large handles). EXPLICITLY prevent this — emphasize the
+  specific UN-TEXTBOOK proportions in the photo
+
+OBJECT IDENTITY RULE:
+- If the photo shows a red Volkswagen Beetle with small chrome bumpers and oval
+  rear window, the output must show THE SAME Beetle with SAME proportions — not
+  a textbook Beetle, not a different model
+- If the photo shows a terracotta amphora with SMALL discreet handles and
+  ELONGATED body, the output must match those exact proportions — not a classical
+  Greek amphora with large decorative handles
+
+Only the ARTISTIC TECHNIQUE changes (brushwork, material, color treatment).
+The IDENTITY, SHAPE, and PROPORTIONS of the subject must be PRESERVED.
+
+═══ ARTISTIC RULES ═══
+- Start your prompt with the subject's EXACT SHAPE + PROPORTIONS + COLORS verbatim
+- Describe handle size, body shape, neck length, base width — match the original photo
+- USE the artist's signature techniques: if Dalí, the subject can melt; if Van Gogh, impasto brushstrokes; if Klimt, gold mosaic; if Hokusai, bold ink outlines and bokashi
+- Describe specific artistic decisions: unusual color choices, dramatic composition, texture surprises
+- Include material and surface qualities (oil paint ridges, ink bleeding, gold leaf, melting chrome)
+- Add atmosphere around the subject — sky, landscape, lighting, mood
 - Write as ONE paragraph, present tense, describing the finished artwork"""
 
         # Build content: text + photo + (optional) style anchor for consistency on regen
@@ -870,7 +902,52 @@ Rules:
         if session_id:
             _remember_style(session_id, style_id, artwork_description)
 
-        # STEP 2: Imagen 4 with minimal config (no negative_prompt → maximum creativity)
+        # STEP 2: Imagen 3 edit_image cu SubjectReferenceImage (via Vertex AI client)
+        subject_type_map = {
+            "face": "SUBJECT_TYPE_PERSON",
+            "animal": "SUBJECT_TYPE_ANIMAL",
+        }
+        subject_ref_type = subject_type_map.get(locals().get("subject_type", "object"), "SUBJECT_TYPE_PRODUCT")
+
+        try:
+            # Vertex AI client required for edit_image (not available on API key client)
+            from google import genai as genai_vertex
+            vertex_client = genai_vertex.Client(
+                vertexai=True,
+                project=settings.google_cloud_project,
+                location=settings.google_cloud_location,
+            )
+            subject_ref = types.SubjectReferenceImage(
+                reference_id=1,
+                reference_image=types.Image(image_bytes=image_bytes, mime_type="image/jpeg"),
+                config=types.SubjectReferenceConfig(
+                    subject_type=subject_ref_type,
+                    subject_description="the exact subject from the reference photo",
+                ),
+            )
+            edit_prompt = f"Render [1] in the following artistic style. PRESERVE the exact shape, proportions, and unique details of [1]:\n{artwork_description}"
+            imagen_response = vertex_client.models.edit_image(
+                model="imagen-3.0-capability-001",
+                prompt=edit_prompt,
+                reference_images=[subject_ref],
+                config=types.EditImageConfig(
+                    edit_mode="EDIT_MODE_DEFAULT",
+                    number_of_images=1,
+                    aspect_ratio="1:1",
+                ),
+            )
+            if imagen_response.generated_images:
+                img_result = imagen_response.generated_images[0]
+                img = Image.open(io.BytesIO(img_result.image.image_bytes)).convert("RGB")
+                img = img.resize((512, 512), Image.LANCZOS)
+                print(f"Imagen 3 edit_image SUCCESS for {style_id} (subject preserved via Vertex)")
+                if session_id:
+                    _save_style_anchor(session_id, style_id, img)
+                return img
+        except Exception as edit_err:
+            print(f"Imagen edit_image failed ({edit_err}), falling back to generate_images")
+
+        # FALLBACK: Imagen 4 Ultra generate_images
         imagen_response = client.models.generate_images(
             model="imagen-4.0-ultra-generate-001",
             prompt=artwork_description,
@@ -883,8 +960,7 @@ Rules:
         for img_result in imagen_response.generated_images:
             img = Image.open(io.BytesIO(img_result.image.image_bytes)).convert("RGB")
             img = img.resize((512, 512), Image.LANCZOS)
-            print(f"Imagen 4 gen SUCCESS for {style_id} ({img.size})")
-            # Save anchor for future regens with same session
+            print(f"Imagen 4 gen SUCCESS (fallback) for {style_id} ({img.size})")
             if session_id:
                 _save_style_anchor(session_id, style_id, img)
             return img
